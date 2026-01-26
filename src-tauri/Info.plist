@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Open Rec needs screen recording permission to capture your screen content.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Open Rec needs camera access to record your webcam alongside screen capture.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Open Rec needs microphone access to record audio with your screen capture.</string>
+</dict>
+</plist>

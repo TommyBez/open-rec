@@ -4,28 +4,28 @@ overview: Build a macOS 15+ Tauri (v2) desktop app for screen+camera recording w
 todos:
   - id: ui-shell
     content: Replace template UI with Recorder + Editor routes and Cap-inspired layout skeleton.
-    status: pending
+    status: completed
   - id: recording-engine
     content: Implement ScreenCaptureKit recording (source list, start/stop, system+mic audio) in Rust using `screencapturekit` (macos_15_0).
-    status: pending
+    status: completed
   - id: recording-widget
     content: Add a floating always-on-top recording controls widget (timer + pause/resume/stop) shown while recording; wire to Tauri commands/events.
-    status: pending
+    status: completed
   - id: camera-capture
     content: Add camera preview + optional camera recording in the frontend using getUserMedia + MediaRecorder; persist camera.mp4 + sync offset.
-    status: pending
+    status: completed
   - id: project-model
     content: Create project folder structure and `project.json` EDL model; wire create/load/save flows.
-    status: pending
+    status: completed
   - id: editor-preview
     content: Implement timeline model + preview playback mapping (cut/zoom/speed) without re-encoding.
-    status: pending
+    status: completed
   - id: export-ffmpeg
     content: Bundle ffmpeg as a sidecar; build ffmpeg command generation from EDL and stream export progress events to UI; implement Export modal options.
-    status: pending
+    status: completed
   - id: macos-permissions
     content: Add Info.plist usage descriptions, set minimumSystemVersion=15, and ensure screen recording permission UX is handled gracefully.
-    status: pending
+    status: completed
 isProject: false
 ---
 
