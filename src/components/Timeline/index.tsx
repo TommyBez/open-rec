@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { Scissors, ZoomIn, Gauge, Trash2, Plus, Minus, Film, Sparkles, Timer } from "lucide-react";
+import { Scissors, ZoomIn, Gauge, Trash2, Plus, Minus, Film, Timer } from "lucide-react";
 import type { Segment, ZoomEffect, SpeedEffect } from "../../types/project";
 import {
   Tooltip,
@@ -17,7 +17,8 @@ interface TimelineProps {
   onSeek: (time: number) => void;
   selectedTool: "cut" | "zoom" | "speed";
   onToolChange: (tool: "cut" | "zoom" | "speed") => void;
-  onToggleSegment?: (segmentId: string) => void;
+  selectedSegmentId: string | null;
+  onSelectSegment: (segmentId: string | null) => void;
   onDeleteZoom?: (zoomId: string) => void;
 }
 
@@ -36,7 +37,8 @@ export function Timeline({
   onSeek,
   selectedTool,
   onToolChange,
-  onToggleSegment,
+  selectedSegmentId,
+  onSelectSegment,
   onDeleteZoom,
 }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -62,6 +64,8 @@ export function Timeline({
     const percentage = x / rect.width;
     const newTime = percentage * duration;
     onSeek(Math.max(0, Math.min(duration, newTime)));
+    // Deselect segment when clicking on timeline background
+    onSelectSegment(null);
   }
 
   function handleMouseDown(e: React.MouseEvent) {
@@ -81,9 +85,8 @@ export function Timeline({
 
   function handleSegmentClick(e: React.MouseEvent, segmentId: string) {
     e.stopPropagation();
-    if (onToggleSegment) {
-      onToggleSegment(segmentId);
-    }
+    // Toggle selection - clicking the same segment deselects it
+    onSelectSegment(selectedSegmentId === segmentId ? null : segmentId);
   }
 
   function handleZoomDelete(e: React.MouseEvent, zoomId: string) {
@@ -129,32 +132,38 @@ export function Timeline({
         {/* Clip track */}
         <TrackRow label="Clips" icon={<Film className="size-3.5" strokeWidth={1.75} />}>
           <div className="relative h-full w-full overflow-hidden rounded-lg bg-gradient-to-r from-primary/10 to-primary/5">
-            {segments.map((segment) => (
-              <div
-                key={segment.id}
-                className={cn(
-                  "absolute flex h-full cursor-grab items-center justify-between rounded-md px-3 transition-all active:cursor-grabbing",
-                  "bg-gradient-to-r from-primary/80 to-primary/60 border border-primary/30",
-                  !segment.enabled && "opacity-40"
-                )}
-                style={{
-                  left: `${(segment.startTime / duration) * 100}%`,
-                  width: `${((segment.endTime - segment.startTime) / duration) * 100}%`,
-                }}
-                onClick={(e) => handleSegmentClick(e, segment.id)}
-                title={segment.enabled ? "Click to disable segment" : "Click to enable segment"}
-              >
-                <span className="text-[11px] font-medium text-primary-foreground">Clip</span>
-                <span className="font-mono text-[10px] text-primary-foreground/70">
-                  {Math.round(segment.endTime - segment.startTime)}s
-                </span>
-              </div>
-            ))}
+            {segments.map((segment) => {
+              const isSelected = selectedSegmentId === segment.id;
+              
+              return (
+                <div
+                  key={segment.id}
+                  className={cn(
+                    "group/segment absolute flex h-full cursor-pointer items-center justify-between rounded-md px-3 transition-all",
+                    "bg-gradient-to-r from-primary/80 to-primary/60 border border-primary/30",
+                    isSelected && "ring-2 ring-white ring-offset-1 ring-offset-background",
+                    !segment.enabled && "opacity-40"
+                  )}
+                  style={{
+                    left: `${(segment.startTime / duration) * 100}%`,
+                    width: `${((segment.endTime - segment.startTime) / duration) * 100}%`,
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => handleSegmentClick(e, segment.id)}
+                  title="Click to select segment"
+                >
+                  <span className="text-[11px] font-medium text-primary-foreground">Clip</span>
+                  <span className="font-mono text-[10px] text-primary-foreground/70">
+                    {Math.round(segment.endTime - segment.startTime)}s
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </TrackRow>
 
         {/* Zoom track */}
-        <TrackRow label="Zoom" icon={<Sparkles className="size-3.5" strokeWidth={1.75} />}>
+        <TrackRow label="Zoom" icon={<ZoomIn className="size-3.5" strokeWidth={1.75} />}>
           <div className="relative h-full w-full overflow-hidden rounded-lg bg-muted/30">
             {zoom.length > 0 ? (
               zoom.map((effect) => (

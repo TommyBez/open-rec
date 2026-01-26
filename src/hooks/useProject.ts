@@ -1,23 +1,52 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
+
+const MAX_HISTORY_SIZE = 50;
 
 export function useProject(initialProject: Project | null) {
   const [project, setProject] = useState<Project | null>(initialProject);
   const [isDirty, setIsDirty] = useState(false);
+  
+  // History for undo functionality
+  const historyRef = useRef<Project[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
 
   // Generate a unique ID for new effects
   const generateId = () => crypto.randomUUID();
+
+  // Push current state to history before making changes
+  const pushToHistory = useCallback((currentProject: Project) => {
+    historyRef.current = [
+      ...historyRef.current.slice(-(MAX_HISTORY_SIZE - 1)),
+      currentProject,
+    ];
+    setCanUndo(true);
+  }, []);
+
+  // Undo: restore previous state
+  const undo = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+    
+    const previousState = historyRef.current.pop();
+    if (previousState) {
+      setProject(previousState);
+      setIsDirty(true);
+      setCanUndo(historyRef.current.length > 0);
+    }
+  }, []);
 
   // Update project and mark as dirty
   const updateProject = useCallback((updater: (p: Project) => Project) => {
     setProject((prev) => {
       if (!prev) return prev;
+      // Save current state to history before updating
+      pushToHistory(prev);
       const updated = updater(prev);
       setIsDirty(true);
       return updated;
     });
-  }, []);
+  }, [pushToHistory]);
 
   // Save project to backend
   const saveProject = useCallback(async () => {
@@ -74,15 +103,35 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [updateProject]);
 
-  // Delete a segment
+  // Delete a segment and shift subsequent segments left
   const deleteSegment = useCallback((segmentId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        segments: p.edits.segments.filter((s) => s.id !== segmentId),
-      },
-    }));
+    updateProject((p) => {
+      const segmentIndex = p.edits.segments.findIndex((s) => s.id === segmentId);
+      if (segmentIndex === -1) return p;
+      
+      const deletedSegment = p.edits.segments[segmentIndex];
+      const deletedDuration = deletedSegment.endTime - deletedSegment.startTime;
+      
+      // Filter out the deleted segment and shift subsequent ones left
+      const newSegments = p.edits.segments
+        .filter((s) => s.id !== segmentId)
+        .map((s) => {
+          // Shift segments that start after the deleted segment
+          if (s.startTime >= deletedSegment.endTime) {
+            return {
+              ...s,
+              startTime: s.startTime - deletedDuration,
+              endTime: s.endTime - deletedDuration,
+            };
+          }
+          return s;
+        });
+      
+      return {
+        ...p,
+        edits: { ...p.edits, segments: newSegments },
+      };
+    });
   }, [updateProject]);
 
   // Add a zoom effect
@@ -198,6 +247,9 @@ export function useProject(initialProject: Project | null) {
     setProject,
     isDirty,
     saveProject,
+    // History
+    canUndo,
+    undo,
     // Cutting
     cutAt,
     toggleSegment,

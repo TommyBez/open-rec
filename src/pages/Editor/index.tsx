@@ -12,6 +12,8 @@ import {
   Gauge,
   Film,
   Download,
+  Undo2,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,8 +37,10 @@ export function EditorPage() {
     setProject,
     isDirty,
     saveProject,
+    canUndo,
+    undo,
     cutAt,
-    toggleSegment,
+    deleteSegment,
     addZoom,
     deleteZoom,
     addSpeed,
@@ -47,6 +51,7 @@ export function EditorPage() {
   const [duration, setDuration] = useState(0);
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedTool, setSelectedTool] = useState<"cut" | "zoom" | "speed">("cut");
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Convert filesystem path to asset URL for video playback
@@ -91,6 +96,20 @@ export function EditorPage() {
       return () => clearTimeout(timeout);
     }
   }, [isDirty, project, saveProject]);
+
+  // Keyboard shortcut for undo (⌘Z / Ctrl+Z)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo) {
+          undo();
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canUndo, undo]);
 
   async function loadProject(id: string) {
     setIsLoading(true);
@@ -173,6 +192,16 @@ export function EditorPage() {
     const end = Math.min(currentTime + 5, duration);
     addSpeed(start, end, 2.0);
   }
+
+  function handleDeleteSelectedSegment() {
+    if (selectedSegmentId && project && project.edits.segments.length > 1) {
+      deleteSegment(selectedSegmentId);
+      setSelectedSegmentId(null);
+    }
+  }
+
+  // Check if we can delete the selected segment
+  const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
 
   function formatTime(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -262,15 +291,35 @@ export function EditorPage() {
           
           {/* Playback Controls */}
           <div className="studio-panel flex items-center justify-between rounded-xl px-4 py-3 animate-fade-up-delay-2">
-            {/* Timecode */}
-            <div className="flex items-center gap-2">
-              <span className="min-w-[140px] font-mono text-sm text-muted-foreground">
-                {formatTime(currentTime)}
-              </span>
-              <span className="text-muted-foreground/40">/</span>
-              <span className="font-mono text-sm text-muted-foreground/60">
-                {formatTime(duration)}
-              </span>
+            {/* Timecode + Undo */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="min-w-[140px] font-mono text-sm text-muted-foreground">
+                  {formatTime(currentTime)}
+                </span>
+                <span className="text-muted-foreground/40">/</span>
+                <span className="font-mono text-sm text-muted-foreground/60">
+                  {formatTime(duration)}
+                </span>
+              </div>
+              {/* Undo button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button 
+                    onClick={undo}
+                    disabled={!canUndo}
+                    className={cn(
+                      "flex size-8 items-center justify-center rounded-lg transition-colors",
+                      canUndo 
+                        ? "text-muted-foreground hover:bg-muted hover:text-foreground" 
+                        : "text-muted-foreground/30 cursor-not-allowed"
+                    )}
+                  >
+                    <Undo2 className="size-4" strokeWidth={1.75} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Undo (⌘Z)</TooltipContent>
+              </Tooltip>
             </div>
 
             {/* Transport Controls */}
@@ -339,6 +388,30 @@ export function EditorPage() {
                 icon={<Gauge className="size-4" strokeWidth={1.75} />}
                 tooltip="Add speed effect"
               />
+              
+              {/* Separator */}
+              <div className="mx-1 h-5 w-px bg-border/50" />
+              
+              {/* Delete selected segment */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleDeleteSelectedSegment}
+                    disabled={!canDeleteSegment}
+                    className={cn(
+                      "flex size-9 items-center justify-center rounded-lg transition-all",
+                      canDeleteSegment
+                        ? "text-destructive hover:bg-destructive/10"
+                        : "text-muted-foreground/30 cursor-not-allowed"
+                    )}
+                  >
+                    <Trash2 className="size-4" strokeWidth={1.75} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {canDeleteSegment ? "Delete selected segment" : "Select a segment to delete"}
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -355,7 +428,8 @@ export function EditorPage() {
           onSeek={handleTimelineClick}
           selectedTool={selectedTool}
           onToolChange={setSelectedTool}
-          onToggleSegment={toggleSegment}
+          selectedSegmentId={selectedSegmentId}
+          onSelectSegment={setSelectedSegmentId}
           onDeleteZoom={deleteZoom}
         />
       </div>
