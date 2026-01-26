@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Circle, Maximize2 } from "lucide-react";
 import { SourceSelector } from "../../components/SourceSelector";
 import { ToggleRow } from "../../components/ToggleRow";
-import { Button } from "../../components/Button";
+import { Button } from "@/components/ui/button";
 import { CameraPreview } from "../../components/CameraPreview";
-import "./styles.css";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export interface CaptureSource {
   id: string;
@@ -148,24 +149,24 @@ export function RecorderPage() {
   // Show permission request UI if permission not granted
   if (hasPermission === false) {
     return (
-      <div className="recorder-page">
-        <header className="recorder-header">
-          <div className="app-logo">
-            <div className="logo-icon" />
-            <span className="app-name">Open Rec</span>
+      <div className="bg-background flex h-full flex-col p-4">
+        <header className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="size-10 rounded-full border-3 border-secondary bg-gradient-to-br from-blue-400 to-blue-500 shadow-md" />
+            <span className="text-foreground text-lg font-semibold">Open Rec</span>
           </div>
         </header>
 
-        <main className="recorder-content permission-request">
-          <div className="permission-icon">🔒</div>
-          <h2>Screen Recording Permission Required</h2>
-          <p>Open Rec needs permission to record your screen.</p>
-          <Button variant="primary" size="large" onClick={requestPermission}>
+        <main className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+          <div className="mb-2 text-5xl">🔒</div>
+          <h2 className="text-foreground text-lg font-semibold">Screen Recording Permission Required</h2>
+          <p className="text-muted-foreground text-sm">Open Rec needs permission to record your screen.</p>
+          <Button size="lg" onClick={requestPermission}>
             Grant Permission
           </Button>
-          <p className="permission-hint">
+          <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
             If the system dialog doesn't appear, go to<br />
-            <strong>System Settings → Privacy & Security → Screen Recording</strong><br />
+            <strong className="text-foreground">System Settings → Privacy & Security → Screen Recording</strong><br />
             and enable Open Rec.
           </p>
         </main>
@@ -176,58 +177,53 @@ export function RecorderPage() {
   // Show loading state while checking permission
   if (hasPermission === null) {
     return (
-      <div className="recorder-page">
-        <header className="recorder-header">
-          <div className="app-logo">
-            <div className="logo-icon" />
-            <span className="app-name">Open Rec</span>
+      <div className="bg-background flex h-full flex-col p-4">
+        <header className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="size-10 rounded-full border-3 border-secondary bg-gradient-to-br from-blue-400 to-blue-500 shadow-md" />
+            <span className="text-foreground text-lg font-semibold">Open Rec</span>
           </div>
         </header>
-        <main className="recorder-content">
-          <p>Checking permissions...</p>
+        <main className="flex flex-1 flex-col gap-3">
+          <p className="text-muted-foreground">Checking permissions...</p>
         </main>
       </div>
     );
   }
 
   return (
-    <div className="recorder-page">
-      <header className="recorder-header">
-        <div className="app-logo">
-          <div className="logo-icon" />
-          <span className="app-name">Open Rec</span>
+    <div className="bg-background flex h-full flex-col p-4">
+      <header className="mb-5 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="size-10 rounded-full border-3 border-secondary bg-gradient-to-br from-blue-400 to-blue-500 shadow-md" />
+          <span className="text-foreground text-lg font-semibold">Open Rec</span>
         </div>
       </header>
 
-      <main className="recorder-content">
+      <main className="flex flex-col gap-3">
         {/* Source Type Selector */}
-        <div className="source-type-selector">
-          <div className="crop-icon" />
+        <div className="bg-card flex items-center gap-3 rounded-lg border border-border p-2.5 px-3.5">
+          <Maximize2 className="text-muted-foreground size-5 opacity-60" />
           <SourceSelector
             sources={sources}
             selectedSource={selectedSource}
             onSelect={setSelectedSource}
             isLoading={isLoading}
           />
-          <div className="source-type-tabs">
-            <button
-              className={`source-type-tab ${sourceType === "display" ? "active" : ""}`}
-              onClick={() => setSourceType("display")}
-            >
-              Screen
-            </button>
-            <button
-              className={`source-type-tab ${sourceType === "window" ? "active" : ""}`}
-              onClick={() => setSourceType("window")}
-            >
-              Window
-            </button>
-          </div>
+          <Tabs
+            value={sourceType}
+            onValueChange={(value) => setSourceType(value as "display" | "window")}
+          >
+            <TabsList>
+              <TabsTrigger value="display">Screen</TabsTrigger>
+              <TabsTrigger value="window">Window</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
         {/* Camera Preview */}
         {captureCamera && (
-          <div className="camera-preview-container">
+          <div className="my-2 flex justify-center">
             <CameraPreview
               enabled={captureCamera}
               isRecording={isRecording}
@@ -238,7 +234,7 @@ export function RecorderPage() {
         )}
 
         {/* Toggle Options */}
-        <div className="toggle-options">
+        <div className="flex flex-col gap-2">
           <ToggleRow
             icon="camera"
             label={captureCamera ? (cameraReady ? "Camera" : "Camera (loading...)") : "No Camera"}
@@ -261,13 +257,12 @@ export function RecorderPage() {
 
         {/* Start Recording Button */}
         <Button
-          variant="primary"
-          size="large"
+          size="lg"
           onClick={startRecording}
           disabled={!selectedSource || isRecording}
-          className="start-recording-btn"
+          className="mt-2 w-full gap-2"
         >
-          <span className="recording-icon" />
+          <Circle className="size-4 fill-current" />
           Start Recording
         </Button>
       </main>

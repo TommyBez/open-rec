@@ -1,6 +1,13 @@
 import { useRef, useEffect, useState } from "react";
+import { Scissors, ZoomIn, Gauge, Trash2, Plus, Minus } from "lucide-react";
 import { Segment, ZoomEffect, SpeedEffect } from "../../types/project";
-import "./styles.css";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface TimelineProps {
   duration: number;
@@ -14,6 +21,12 @@ interface TimelineProps {
   onToggleSegment?: (segmentId: string) => void;
   onDeleteZoom?: (zoomId: string) => void;
 }
+
+const toolConfig = {
+  cut: { icon: Scissors, label: "Cut" },
+  zoom: { icon: ZoomIn, label: "Zoom" },
+  speed: { icon: Gauge, label: "Speed" },
+} as const;
 
 export function Timeline({
   duration,
@@ -92,16 +105,16 @@ export function Timeline({
   const playheadPosition = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="timeline-container">
+    <div className="flex flex-col gap-1 border-t border-[#333] bg-[#1e1e1e] px-4 pb-4 pt-2">
       {/* Time markers */}
-      <div className="time-markers">
+      <div className="relative mb-1 h-6">
         {markers.map((marker) => (
           <div
             key={marker.time}
-            className="time-marker"
+            className="absolute -translate-x-1/2"
             style={{ left: `${(marker.time / duration) * 100}%` }}
           >
-            <span className="marker-label">{marker.label}</span>
+            <span className="font-mono text-[11px] text-[#666]">{marker.label}</span>
           </div>
         ))}
       </div>
@@ -109,17 +122,21 @@ export function Timeline({
       {/* Timeline tracks */}
       <div
         ref={timelineRef}
-        className="timeline-tracks"
+        className="relative flex min-h-[100px] cursor-pointer flex-col gap-2"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
       >
         {/* Clip track */}
-        <div className="track clip-track">
+        <div className="relative h-10 overflow-hidden rounded-md bg-gradient-to-r from-[#1e4a6e] to-[#1e5a7e]">
           {segments.map((segment) => (
             <div
               key={segment.id}
-              className={`segment ${segment.enabled ? "enabled" : "disabled"}`}
+              className={cn(
+                "absolute flex h-full cursor-grab items-center justify-between rounded px-3 transition-opacity active:cursor-grabbing",
+                "bg-gradient-to-r from-blue-500 to-blue-600",
+                !segment.enabled && "opacity-40"
+              )}
               style={{
                 left: `${(segment.startTime / duration) * 100}%`,
                 width: `${((segment.endTime - segment.startTime) / duration) * 100}%`,
@@ -127,8 +144,8 @@ export function Timeline({
               onClick={(e) => handleSegmentClick(e, segment.id)}
               title={segment.enabled ? "Click to disable segment" : "Click to enable segment"}
             >
-              <span className="segment-label">Clip</span>
-              <span className="segment-duration">
+              <span className="text-xs font-medium text-white">Clip</span>
+              <span className="font-mono text-[11px] text-white/70">
                 {Math.round(segment.endTime - segment.startTime)}s
               </span>
             </div>
@@ -136,52 +153,54 @@ export function Timeline({
         </div>
 
         {/* Zoom track */}
-        <div className="track zoom-track">
+        <div className="relative h-10 overflow-hidden rounded-md bg-[#2a2a2a]">
           {zoom.length > 0 ? (
             zoom.map((effect) => (
               <div
                 key={effect.id}
-                className="zoom-effect"
+                className="group/zoom absolute flex h-full cursor-grab items-center justify-between rounded bg-gradient-to-r from-violet-600 to-violet-800 px-3"
                 style={{
                   left: `${(effect.startTime / duration) * 100}%`,
                   width: `${((effect.endTime - effect.startTime) / duration) * 100}%`,
                 }}
               >
-                <span className="effect-label">Zoom</span>
-                <span className="effect-value">{effect.scale}x</span>
-                <button 
-                  className="effect-delete"
+                <span className="text-xs font-medium text-white">Zoom</span>
+                <span className="font-mono text-[11px] text-white/70">{effect.scale}x</span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/zoom:opacity-100"
                   onClick={(e) => handleZoomDelete(e, effect.id)}
                 >
-                  ×
-                </button>
+                  <Trash2 className="size-3" />
+                </Button>
               </div>
             ))
           ) : (
-            <div className="track-placeholder">
+            <div className="flex h-full items-center justify-center text-xs text-[#555]">
               <span>Zoom</span>
             </div>
           )}
         </div>
 
         {/* Speed track */}
-        <div className="track speed-track">
+        <div className="relative h-10 overflow-hidden rounded-md bg-[#2a2a2a]">
           {speed.length > 0 ? (
             speed.map((effect) => (
               <div
                 key={effect.id}
-                className="speed-effect"
+                className="absolute flex h-full cursor-grab items-center justify-between rounded bg-gradient-to-r from-amber-500 to-amber-600 px-3"
                 style={{
                   left: `${(effect.startTime / duration) * 100}%`,
                   width: `${((effect.endTime - effect.startTime) / duration) * 100}%`,
                 }}
               >
-                <span className="effect-label">Speed</span>
-                <span className="effect-value">{effect.speed}x</span>
+                <span className="text-xs font-medium text-white">Speed</span>
+                <span className="font-mono text-[11px] text-white/70">{effect.speed}x</span>
               </div>
             ))
           ) : (
-            <div className="track-placeholder">
+            <div className="flex h-full items-center justify-center text-xs text-[#555]">
               <span>Speed</span>
             </div>
           )}
@@ -189,43 +208,72 @@ export function Timeline({
 
         {/* Playhead */}
         <div
-          className="playhead"
+          className="pointer-events-none absolute inset-y-0 z-10 w-0.5"
           style={{ left: `${playheadPosition}%` }}
         >
-          <div className="playhead-head" />
-          <div className="playhead-line" />
+          <div className="absolute -top-2 left-1/2 size-3 -translate-x-1/2 rounded-sm bg-red-500 [clip-path:polygon(0_0,100%_0,100%_60%,50%_100%,0_60%)]" />
+          <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-red-500" />
         </div>
       </div>
 
       {/* Timeline toolbar */}
-      <div className="timeline-toolbar">
-        <div className="tool-buttons">
-          <button
-            className={`tool-btn ${selectedTool === "cut" ? "active" : ""}`}
-            onClick={() => onToolChange("cut")}
-            title="Cut tool"
-          >
-            ✂️ Cut
-          </button>
-          <button
-            className={`tool-btn ${selectedTool === "zoom" ? "active" : ""}`}
-            onClick={() => onToolChange("zoom")}
-            title="Zoom tool"
-          >
-            🔍 Zoom
-          </button>
-          <button
-            className={`tool-btn ${selectedTool === "speed" ? "active" : ""}`}
-            onClick={() => onToolChange("speed")}
-            title="Speed tool"
-          >
-            ⚡ Speed
-          </button>
+      <div className="flex items-center justify-between pt-2">
+        <div className="flex gap-1">
+          {(Object.keys(toolConfig) as Array<keyof typeof toolConfig>).map((tool) => {
+            const { icon: Icon, label } = toolConfig[tool];
+            return (
+              <Tooltip key={tool}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={selectedTool === tool ? "default" : "secondary"}
+                    size="sm"
+                    onClick={() => onToolChange(tool)}
+                    className={cn(
+                      "gap-1.5",
+                      selectedTool !== tool && "bg-[#333] text-[#aaa] hover:bg-[#444] hover:text-white"
+                    )}
+                  >
+                    <Icon className="size-4" />
+                    {label}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {label} tool
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
         </div>
-        <div className="timeline-zoom">
-          <button onClick={() => setScale(Math.max(0.5, scale - 0.25))}>−</button>
-          <span>{Math.round(scale * 100)}%</span>
-          <button onClick={() => setScale(Math.min(4, scale + 0.25))}>+</button>
+        <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="secondary"
+                size="icon-sm"
+                onClick={() => setScale(Math.max(0.5, scale - 0.25))}
+                className="bg-[#333] text-[#aaa] hover:bg-[#444] hover:text-white"
+              >
+                <Minus className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Zoom out</TooltipContent>
+          </Tooltip>
+          <span className="text-muted-foreground min-w-[40px] text-center text-xs">
+            {Math.round(scale * 100)}%
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="secondary"
+                size="icon-sm"
+                onClick={() => setScale(Math.min(4, scale + 0.25))}
+                className="bg-[#333] text-[#aaa] hover:bg-[#444] hover:text-white"
+              >
+                <Plus className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Zoom in</TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </div>

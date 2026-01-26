@@ -1,12 +1,26 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { Button } from "../../components/Button";
+import {
+  ArrowLeft,
+  SkipBack,
+  SkipForward,
+  Play,
+  Pause,
+  Scissors,
+  ZoomIn,
+  Gauge,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { useProject } from "../../hooks/useProject";
 import { Project } from "../../types/project";
-import "./styles.css";
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -166,45 +180,54 @@ export function EditorPage() {
 
   if (isLoading || !project) {
     return (
-      <div className="editor-loading">
+      <div className="flex h-full items-center justify-center bg-[#1a1a1a] text-white">
         <span>Loading project...</span>
       </div>
     );
   }
 
   return (
-    <div className="editor-page">
+    <div className="flex h-full flex-col bg-[#1a1a1a] text-white">
       {/* Header */}
-      <header className="editor-header">
-        <div className="header-left">
-          <button className="back-btn" onClick={() => navigate("/recorder")}>
-            ←
-          </button>
-          <span className="project-name">{project.name}</span>
-          {isDirty && <span className="unsaved-indicator">•</span>}
+      <header className="flex items-center justify-between border-b border-[#333] bg-[#252525] px-4 py-3">
+        <div className="flex items-center gap-3">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate("/recorder")}
+              >
+                <ArrowLeft className="size-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Back to recorder</TooltipContent>
+          </Tooltip>
+          <span className="text-sm text-[#999]">{project.name}</span>
+          {isDirty && <span className="text-xl leading-none text-amber-500">•</span>}
         </div>
-        <div className="header-right">
-          <Button variant="primary" onClick={() => setShowExportModal(true)}>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setShowExportModal(true)}>
             Export
           </Button>
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="editor-main">
+      <div className="flex min-h-0 flex-1">
         {/* Video Preview */}
-        <div className="preview-section">
-          <div className="video-container">
+        <div className="flex flex-1 flex-col gap-4 p-4">
+          <div className="flex flex-1 items-center justify-center overflow-hidden rounded-lg bg-black">
             {videoSrc ? (
               <video
                 ref={videoRef}
                 src={videoSrc}
-                className="preview-video"
+                className="max-h-full max-w-full"
               />
             ) : (
-              <div className="video-placeholder">
-                <span>Video Preview</span>
-                <span className="placeholder-info">
+              <div className="flex min-h-[300px] w-full flex-col items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#2a2a2a] text-[#666]">
+                <span className="text-base">Video Preview</span>
+                <span className="mt-2 text-xs text-[#555]">
                   {project.resolution.width}×{project.resolution.height}
                 </span>
               </div>
@@ -212,37 +235,69 @@ export function EditorPage() {
           </div>
           
           {/* Playback Controls */}
-          <div className="playback-controls">
-            <span className="time-display">{formatTime(currentTime)} / {formatTime(duration)}</span>
-            <div className="playback-buttons">
-              <button className="control-btn" onClick={skipBackward}>⏮</button>
-              <button className="control-btn play-btn" onClick={togglePlay}>
-                {isPlaying ? "⏸" : "▶"}
-              </button>
-              <button className="control-btn" onClick={skipForward}>⏭</button>
+          <div className="flex items-center justify-between rounded-lg bg-[#252525] p-2">
+            <span className="min-w-[140px] font-mono text-[13px] text-[#999]">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </span>
+            <div className="flex items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={skipBackward}>
+                    <SkipBack className="size-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Skip back 5s</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="secondary" size="icon" onClick={togglePlay}>
+                    {isPlaying ? (
+                      <Pause className="size-5" />
+                    ) : (
+                      <Play className="size-5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{isPlaying ? "Pause" : "Play"}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={skipForward}>
+                    <SkipForward className="size-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Skip forward 5s</TooltipContent>
+              </Tooltip>
             </div>
-            <div className="edit-buttons">
-              <button 
-                className={`control-btn ${selectedTool === "cut" ? "active" : ""}`}
-                onClick={() => setSelectedTool("cut")}
-                title="Cut tool (click on timeline to cut)"
-              >
-                ✂
-              </button>
-              <button 
-                className="control-btn"
-                onClick={handleAddZoom}
-                title="Add zoom effect at current time"
-              >
-                🔍
-              </button>
-              <button 
-                className="control-btn"
-                onClick={handleAddSpeed}
-                title="Add speed effect at current time"
-              >
-                ⚡
-              </button>
+            <div className="flex items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={selectedTool === "cut" ? "default" : "ghost"}
+                    size="icon"
+                    onClick={() => setSelectedTool("cut")}
+                  >
+                    <Scissors className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Cut tool (click on timeline to cut)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={handleAddZoom}>
+                    <ZoomIn className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Add zoom effect at current time</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={handleAddSpeed}>
+                    <Gauge className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Add speed effect at current time</TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -263,10 +318,11 @@ export function EditorPage() {
       />
 
       {/* Export Modal */}
-      {showExportModal && (
+      {project && (
         <ExportModal
           project={project}
-          onClose={() => setShowExportModal(false)}
+          open={showExportModal}
+          onOpenChange={setShowExportModal}
         />
       )}
     </div>

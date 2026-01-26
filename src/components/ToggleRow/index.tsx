@@ -1,4 +1,8 @@
-import "./styles.css";
+import { Camera, Mic, Volume2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 interface ToggleRowProps {
   icon: "camera" | "microphone" | "speaker";
@@ -7,24 +11,52 @@ interface ToggleRowProps {
   onToggle: () => void;
 }
 
-const iconPaths: Record<string, string> = {
-  camera: "M15 8v8H5V8h10m1-2H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4V7c0-.55-.45-1-1-1z",
-  microphone: "M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z",
-  speaker: "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z",
+const iconComponents = {
+  camera: Camera,
+  microphone: Mic,
+  speaker: Volume2,
 };
 
 export function ToggleRow({ icon, label, enabled, onToggle }: ToggleRowProps) {
+  const Icon = iconComponents[icon];
+
   return (
-    <div className={`toggle-row ${enabled ? "enabled" : ""}`} onClick={onToggle}>
-      <div className="toggle-icon">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d={iconPaths[icon]} />
-        </svg>
-      </div>
-      <span className="toggle-label">{label}</span>
-      <span className={`toggle-status ${enabled ? "on" : "off"}`}>
+    <div
+      className={cn(
+        "flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all",
+        "hover:bg-accent/50",
+        enabled
+          ? "border-primary bg-primary/5"
+          : "border-border bg-card"
+      )}
+      onClick={onToggle}
+    >
+      <Icon
+        className={cn(
+          "size-5",
+          enabled ? "text-primary" : "text-muted-foreground"
+        )}
+      />
+      <Label className="flex-1 cursor-pointer text-sm font-medium">
+        {label}
+      </Label>
+      <Badge
+        variant={enabled ? "default" : "secondary"}
+        className={cn(
+          "text-xs",
+          enabled
+            ? "bg-green-500/10 text-green-600 hover:bg-green-500/10"
+            : "bg-destructive/10 text-destructive hover:bg-destructive/10"
+        )}
+      >
         {enabled ? "On" : "Off"}
-      </span>
+      </Badge>
+      <Switch
+        checked={enabled}
+        onCheckedChange={onToggle}
+        onClick={(e) => e.stopPropagation()}
+        size="sm"
+      />
     </div>
   );
 }

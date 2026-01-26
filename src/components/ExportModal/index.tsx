@@ -1,13 +1,32 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Clapperboard, Monitor, Package, Timer } from "lucide-react";
 import { Project, ExportOptions as ExportOptionsType } from "../../types/project";
-import { Button } from "../Button";
-import "./styles.css";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 
 interface ExportModalProps {
   project: Project;
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 type ExportFormat = ExportOptionsType["format"];
@@ -15,7 +34,7 @@ type FrameRate = ExportOptionsType["frameRate"];
 type Compression = ExportOptionsType["compression"];
 type Resolution = ExportOptionsType["resolution"];
 
-export function ExportModal({ project, onClose }: ExportModalProps) {
+export function ExportModal({ project, open, onOpenChange }: ExportModalProps) {
   const [options, setOptions] = useState<ExportOptionsType>({
     format: "mp4",
     frameRate: 30,
@@ -52,7 +71,7 @@ export function ExportModal({ project, onClose }: ExportModalProps) {
       });
 
       unlisten();
-      onClose();
+      onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
     } finally {
@@ -71,122 +90,138 @@ export function ExportModal({ project, onClose }: ExportModalProps) {
   }
 
   return (
-    <div className="export-modal-overlay" onClick={onClose}>
-      <div className="export-modal" onClick={(e) => e.stopPropagation()}>
-        <header className="export-header">
-          <h2>Export</h2>
-        </header>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[580px]">
+        <DialogHeader>
+          <DialogTitle>Export</DialogTitle>
+        </DialogHeader>
 
-        <div className="export-content">
-          <div className="export-row">
+        <div className="flex flex-col gap-5 py-4">
+          {/* Format and Frame Rate Row */}
+          <div className="flex gap-6">
             {/* Format */}
-            <div className="export-section">
-              <label className="section-label">Format</label>
-              <div className="option-group compact">
+            <div className="flex flex-1 flex-col gap-2.5">
+              <Label className="text-muted-foreground text-xs">Format</Label>
+              <ToggleGroup
+                type="single"
+                value={options.format}
+                onValueChange={(value) => {
+                  if (value) setOptions({ ...options, format: value as ExportFormat });
+                }}
+                variant="outline"
+              >
                 {(["mp4", "gif"] as ExportFormat[]).map((format) => (
-                  <button
-                    key={format}
-                    className={`option-btn ${options.format === format ? "active" : ""}`}
-                    onClick={() => setOptions({ ...options, format })}
-                  >
+                  <ToggleGroupItem key={format} value={format} className="px-4">
                     {format.toUpperCase()}
-                  </button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
             </div>
 
             {/* Frame Rate */}
-            <div className="export-section">
-              <label className="section-label">Frame rate</label>
-              <select
-                className="export-select"
-                value={options.frameRate}
-                onChange={(e) =>
-                  setOptions({ ...options, frameRate: Number(e.target.value) as FrameRate })
+            <div className="flex flex-1 flex-col gap-2.5">
+              <Label className="text-muted-foreground text-xs">Frame rate</Label>
+              <Select
+                value={String(options.frameRate)}
+                onValueChange={(value) =>
+                  setOptions({ ...options, frameRate: Number(value) as FrameRate })
                 }
               >
-                <option value={24}>24 FPS</option>
-                <option value={30}>30 FPS</option>
-                <option value={60}>60 FPS</option>
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="24">24 FPS</SelectItem>
+                  <SelectItem value="30">30 FPS</SelectItem>
+                  <SelectItem value="60">60 FPS</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           {/* Compression */}
-          <div className="export-section">
-            <label className="section-label">Compression</label>
-            <div className="option-group">
+          <div className="flex flex-col gap-2.5">
+            <Label className="text-muted-foreground text-xs">Compression</Label>
+            <ToggleGroup
+              type="single"
+              value={options.compression}
+              onValueChange={(value) => {
+                if (value) setOptions({ ...options, compression: value as Compression });
+              }}
+              variant="outline"
+            >
               {(["minimal", "social", "web", "potato"] as Compression[]).map((comp) => (
-                <button
-                  key={comp}
-                  className={`option-btn ${options.compression === comp ? "active" : ""}`}
-                  onClick={() => setOptions({ ...options, compression: comp })}
-                >
+                <ToggleGroupItem key={comp} value={comp} className="px-4">
                   {comp.charAt(0).toUpperCase() + comp.slice(1)}
                   {comp === "social" && " Media"}
-                </button>
+                </ToggleGroupItem>
               ))}
-            </div>
+            </ToggleGroup>
           </div>
 
           {/* Resolution */}
-          <div className="export-section">
-            <label className="section-label">Resolution</label>
-            <div className="option-group">
+          <div className="flex flex-col gap-2.5">
+            <Label className="text-muted-foreground text-xs">Resolution</Label>
+            <ToggleGroup
+              type="single"
+              value={options.resolution}
+              onValueChange={(value) => {
+                if (value) setOptions({ ...options, resolution: value as Resolution });
+              }}
+              variant="outline"
+            >
               {(["720p", "1080p", "4k"] as Resolution[]).map((res) => (
-                <button
-                  key={res}
-                  className={`option-btn ${options.resolution === res ? "active" : ""}`}
-                  onClick={() => setOptions({ ...options, resolution: res })}
-                >
+                <ToggleGroupItem key={res} value={res} className="px-4">
                   {res}
-                </button>
+                </ToggleGroupItem>
               ))}
-            </div>
+            </ToggleGroup>
           </div>
         </div>
 
-        {/* Footer */}
-        <footer className="export-footer">
-          <div className="export-info">
-            <span className="info-item">
-              <span className="info-icon">🎬</span>
+        <DialogFooter className="flex-col gap-4 sm:flex-col">
+          {/* Info badges */}
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary" className="gap-1.5">
+              <Clapperboard className="size-3" />
               {formatDuration(project.duration)}
-            </span>
-            <span className="info-item">
-              <span className="info-icon">🖥</span>
+            </Badge>
+            <Badge variant="secondary" className="gap-1.5">
+              <Monitor className="size-3" />
               {formatResolution()}
-            </span>
-            <span className="info-item">
-              <span className="info-icon">📦</span>
+            </Badge>
+            <Badge variant="secondary" className="gap-1.5">
+              <Package className="size-3" />
               {estimatedSize}
-            </span>
-            <span className="info-item">
-              <span className="info-icon">⏱</span>
+            </Badge>
+            <Badge variant="secondary" className="gap-1.5">
+              <Timer className="size-3" />
               ~{estimatedTime}
-            </span>
+            </Badge>
           </div>
 
-          {error && <div className="export-error">{error}</div>}
+          {error && (
+            <p className="text-destructive text-sm">{error}</p>
+          )}
 
           {isExporting ? (
-            <div className="export-progress">
-              <div className="progress-bar">
-                <div
-                  className="progress-fill"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <span className="progress-text">{Math.round(progress)}%</span>
+            <div className="flex w-full items-center gap-3">
+              <Progress value={progress} className="flex-1" />
+              <span className="text-muted-foreground min-w-[40px] text-sm font-medium">
+                {Math.round(progress)}%
+              </span>
             </div>
           ) : (
-            <Button variant="primary" onClick={handleExport}>
-              Export
-            </Button>
+            <div className="flex w-full justify-end gap-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleExport}>Export</Button>
+            </div>
           )}
-        </footer>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

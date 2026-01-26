@@ -1,6 +1,15 @@
 import { useRef, useEffect, useState } from "react";
 import { writeFile, BaseDirectory, mkdir } from "@tauri-apps/plugin-fs";
-import "./styles.css";
+import { Camera } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface CameraPreviewProps {
   enabled: boolean;
@@ -173,40 +182,51 @@ export function CameraPreview({
 
   if (hasPermission === false) {
     return (
-      <div className="camera-preview camera-error">
-        <span className="error-icon">📷</span>
-        <span className="error-text">Camera access denied</span>
+      <div className={cn(
+        "relative flex h-[90px] w-[120px] flex-col items-center justify-center gap-1 overflow-hidden rounded-md border-2",
+        "border-destructive bg-destructive/10"
+      )}>
+        <Camera className="text-muted-foreground size-5 opacity-50" />
+        <span className="text-destructive text-center text-[10px]">
+          Camera access denied
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="camera-preview">
+    <div className="group relative h-[90px] w-[120px] overflow-hidden rounded-md border-2 border-border bg-[#1a1a1a]">
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        className="camera-video"
+        className="h-full w-full -scale-x-100 object-cover"
       />
       {devices.length > 1 && (
-        <select
-          className="camera-select"
-          value={selectedDevice}
-          onChange={(e) => setSelectedDevice(e.target.value)}
-        >
-          {devices.map((device) => (
-            <option key={device.deviceId} value={device.deviceId}>
-              {device.label || `Camera ${devices.indexOf(device) + 1}`}
-            </option>
-          ))}
-        </select>
+        <div className="absolute inset-x-1 bottom-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+            <SelectTrigger size="sm" className="h-6 border-0 bg-black/70 text-[9px] text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {devices.map((device, index) => (
+                <SelectItem key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Camera ${index + 1}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       )}
       {isRecording && (
-        <div className="recording-badge">
-          <div className="recording-dot" />
-          <span>REC</span>
-        </div>
+        <Badge
+          variant="destructive"
+          className="absolute top-1 right-1 gap-1 px-1.5 py-0.5 text-[9px]"
+        >
+          <span className="size-1.5 animate-pulse rounded-full bg-white" />
+          REC
+        </Badge>
       )}
     </div>
   );
