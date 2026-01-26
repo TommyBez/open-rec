@@ -1,12 +1,15 @@
 ---
 name: macos-recorder-editor
-overview: Build a macOS 15+ Tauri (v2) desktop app for screen+camera recording with mic+system audio, plus a lightweight timeline editor (cut/zoom/speed) and an export flow inspired by the provided Cap screenshots.
+overview: Build a macOS 15+ Tauri (v2) desktop app for screen+camera recording with mic+system audio (plus a floating pause/stop widget), a lightweight timeline editor (cut/zoom/speed), and an export flow inspired by the provided Cap screenshots.
 todos:
   - id: ui-shell
     content: Replace template UI with Recorder + Editor routes and Cap-inspired layout skeleton.
     status: pending
   - id: recording-engine
     content: Implement ScreenCaptureKit recording (source list, start/stop, system+mic audio) in Rust using `screencapturekit` (macos_15_0).
+    status: pending
+  - id: recording-widget
+    content: Add a floating always-on-top recording controls widget (timer + pause/resume/stop) shown while recording; wire to Tauri commands/events.
     status: pending
   - id: camera-capture
     content: Add camera preview + optional camera recording in the frontend using getUserMedia + MediaRecorder; persist camera.mp4 + sync offset.
@@ -60,6 +63,9 @@ pub fn run() {
 - **Recording engine (Rust)**: macOS **ScreenCaptureKit** via the Rust crate `screencapturekit` (feature `macos_15_0`).
   - Source selection: enumerate displays/windows via `SCShareableContent`, and optionally use `SCContentSharingPicker` (system UI).
   - Recording: use `SCRecordingOutput` (direct-to-file) to generate `screen.mp4` with H.264 + AAC, including system audio and mic when toggled.
+- **Recording controls widget (Frontend + Tauri window)**: a tiny, always-on-top “mini window” shown during recording.
+  - Controls: pause/resume + stop (and a timer).
+  - Implementation note: if ScreenCaptureKit doesn’t expose a reliable pause/resume for file recording, we’ll implement pause as “segment recording” (stop writing to the current file, resume into a new `screen_partN.mp4`) and stitch segments during export.
 - **Camera (Frontend)**: `getUserMedia()` for preview + `MediaRecorder` to record **video-only** `camera.mp4` when enabled.
   - Store a small **sync offset** in project metadata (record the start timestamps of each stream; allow a simple “camera offset” tweak in editor if needed).
 - **Project model (JSON)**: non-destructive “edit decision list” (EDL) stored alongside assets.
@@ -76,6 +82,8 @@ flowchart LR
   UI[Frontend_React] -->|invoke| Cmd[tauri_commands]
   Cmd -->|ScreenCaptureKit| Rec[recording_engine]
   Rec --> Screen[screen_mp4]
+  UI --> Widget[recording_widget]
+  Widget -->|pause_resume_stop| Cmd
   UI -->|MediaRecorder| Cam[camera_mp4]
   UI --> Edit[editor_preview]
   Edit -->|export_request| Cmd
@@ -89,6 +97,10 @@ flowchart LR
   - Capture source controls: segmented `Screen` / `Window`, plus dropdown list.
   - Toggles: `Camera`, `Microphone`, `System audio`.
   - Primary CTA: **Start Recording**.
+- **Recording controls widget** (tiny floating window, appears after **Start Recording**):
+  - Always-on-top, minimal chrome (no title bar), draggable.
+  - Shows elapsed time and state (Recording / Paused).
+  - Buttons: **Pause/Resume** and **Stop**.
 - **Editor view**:
   - Left: video preview + playback controls.
   - Bottom: timeline with clip + zoom slider.
@@ -109,6 +121,7 @@ flowchart LR
 - Expose Tauri commands (examples):
   - `list_capture_sources()` → displays + windows
   - `start_screen_recording(options)` → returns `projectId` + paths
+  - `pause_recording(projectId)` / `resume_recording(projectId)`
   - `stop_screen_recording(projectId)`
   - `export_project(projectId, exportOptions)` → emits progress events
 
@@ -141,6 +154,7 @@ flowchart LR
   - Screen + system + mic
   - Window capture (verify correct window)
   - Camera-only and Screen+Camera (verify both files saved)
+  - Pause/resume from the floating widget (verify output duration and A/V continuity)
 - **Editing**:
   - Cut removes ranges
   - Zoom applies only to selected slice
