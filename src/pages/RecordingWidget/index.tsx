@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Pause, Play, Square } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -113,65 +112,103 @@ export function RecordingWidget() {
 
   return (
     <div
-      className="flex h-full cursor-move select-none items-center justify-center rounded-xl bg-[#1e1e1e]/95 px-3 py-2 backdrop-blur-xl"
+      className="studio-grain relative flex h-full cursor-move select-none items-center justify-center overflow-hidden rounded-xl bg-background"
       data-tauri-drag-region
     >
-      <div className="flex items-center gap-3">
-        {/* Recording indicator */}
-        <div className="flex size-3 items-center justify-center">
-          <div
-            className={cn(
-              "size-2.5 rounded-full",
-              state === "recording"
-                ? "animate-pulse bg-red-500"
-                : "bg-amber-500"
+      {/* Atmospheric background - red glow when recording, amber when paused */}
+      <div 
+        className={cn(
+          "pointer-events-none absolute inset-0 transition-all duration-500",
+          state === "recording"
+            ? "bg-[radial-gradient(ellipse_at_center,oklch(0.25_0.12_25)_0%,transparent_70%)] opacity-60"
+            : "bg-[radial-gradient(ellipse_at_center,oklch(0.25_0.10_75)_0%,transparent_70%)] opacity-40"
+        )}
+      />
+      
+      {/* Main panel */}
+      <div className="studio-panel relative z-10 flex items-center gap-3 rounded-lg px-3 py-2">
+        {/* Live indicator */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex size-3 items-center justify-center">
+            <div
+              className={cn(
+                "size-2.5 rounded-full transition-all duration-300",
+                state === "recording"
+                  ? "animate-pulse bg-primary shadow-[0_0_8px_oklch(0.62_0.24_25/0.8)]"
+                  : "bg-accent"
+              )}
+            />
+            {/* Outer glow ring for recording state */}
+            {state === "recording" && (
+              <div className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
             )}
-          />
+          </div>
         </div>
 
-        {/* Timer */}
-        <div className="flex min-w-[60px] flex-col items-start">
-          <span className="font-mono text-base font-semibold tracking-wide text-white">
+        {/* Timer display */}
+        <div className="flex min-w-[65px] flex-col items-start">
+          <span 
+            className={cn(
+              "font-mono text-base font-semibold tabular-nums tracking-wide transition-colors duration-300",
+              state === "recording" ? "text-foreground" : "text-muted-foreground"
+            )}
+          >
             {formatTime(elapsedTime)}
           </span>
-          <span className="text-[10px] font-medium uppercase tracking-wide text-[#888]">
-            {state === "recording" ? "Recording" : "Paused"}
+          <span 
+            className={cn(
+              "text-[9px] font-semibold uppercase tracking-widest transition-colors duration-300",
+              state === "recording" 
+                ? "text-primary" 
+                : "text-accent"
+            )}
+          >
+            {state === "recording" ? "Live" : "Paused"}
           </span>
         </div>
 
+        {/* Divider */}
+        <div className="h-6 w-px bg-border/50" />
+
         {/* Controls */}
-        <div className="ml-2 flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
+          {/* Pause/Resume button */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
+              <button
                 onClick={togglePause}
-                className="text-white hover:bg-white/20"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-md transition-all duration-200",
+                  state === "recording"
+                    ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    : "bg-accent/20 text-accent hover:bg-accent/30"
+                )}
               >
                 {state === "recording" ? (
-                  <Pause className="size-4" />
+                  <Pause className="size-4" strokeWidth={2} />
                 ) : (
-                  <Play className="size-4" />
+                  <Play className="size-4" strokeWidth={2} />
                 )}
-              </Button>
+              </button>
             </TooltipTrigger>
-            <TooltipContent>
+            <TooltipContent side="bottom" className="text-xs">
               {state === "recording" ? "Pause" : "Resume"}
             </TooltipContent>
           </Tooltip>
           
+          {/* Stop button - prominent red styling */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="destructive"
-                size="icon-sm"
+              <button
                 onClick={stopRecording}
+                className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-[0_0_12px_oklch(0.62_0.24_25/0.4)] transition-all duration-200 hover:bg-primary/90 hover:shadow-[0_0_16px_oklch(0.62_0.24_25/0.6)] active:scale-95"
               >
-                <Square className="size-4" />
-              </Button>
+                <Square className="size-3.5" strokeWidth={2.5} fill="currentColor" />
+              </button>
             </TooltipTrigger>
-            <TooltipContent>Stop Recording</TooltipContent>
+            <TooltipContent side="bottom" className="text-xs">
+              Stop Recording
+            </TooltipContent>
           </Tooltip>
         </div>
       </div>

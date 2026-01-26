@@ -10,6 +10,8 @@ import {
   Scissors,
   ZoomIn,
   Gauge,
+  Film,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +23,7 @@ import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { useProject } from "../../hooks/useProject";
 import { Project } from "../../types/project";
+import { cn } from "@/lib/utils";
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -178,144 +181,184 @@ export function EditorPage() {
     return `${mins}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(2, "0")}`;
   }
 
+  // Loading state with studio aesthetic
   if (isLoading || !project) {
     return (
-      <div className="flex h-full items-center justify-center bg-[#1a1a1a] text-white">
-        <span>Loading project...</span>
+      <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3">
+          <div className="size-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
+          <p className="text-sm text-muted-foreground">Loading project...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#1a1a1a] text-white">
+    <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background text-foreground">
+      {/* Atmospheric background gradient */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
+
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-[#333] bg-[#252525] px-4 py-3">
+      <header className="relative z-10 flex items-center justify-between border-b border-border/50 bg-card/30 px-4 py-3 backdrop-blur-sm animate-fade-up">
         <div className="flex items-center gap-3">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
+              <button
                 onClick={() => navigate("/recorder")}
+                className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
-                <ArrowLeft className="size-5" />
-              </Button>
+                <ArrowLeft className="size-5" strokeWidth={1.75} />
+              </button>
             </TooltipTrigger>
             <TooltipContent>Back to recorder</TooltipContent>
           </Tooltip>
-          <span className="text-sm text-[#999]">{project.name}</span>
-          {isDirty && <span className="text-xl leading-none text-amber-500">•</span>}
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
+              <Film className="size-4 text-primary" strokeWidth={1.75} />
+            </div>
+            <span className="text-sm font-medium text-foreground/80">{project.name}</span>
+            {isDirty && (
+              <span className="text-xl leading-none text-accent">•</span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => setShowExportModal(true)}>
+          <Button 
+            onClick={() => setShowExportModal(true)}
+            className="gap-2 bg-primary font-medium text-primary-foreground shadow-lg transition-all hover:bg-primary/90"
+          >
+            <Download className="size-4" strokeWidth={1.75} />
             Export
           </Button>
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="flex min-h-0 flex-1">
+      <div className="relative z-10 flex min-h-0 flex-1">
         {/* Video Preview */}
-        <div className="flex flex-1 flex-col gap-4 p-4">
-          <div className="flex flex-1 items-center justify-center overflow-hidden rounded-lg bg-black">
+        <div className="flex flex-1 flex-col gap-4 p-4 animate-fade-up-delay-1">
+          <div className="studio-panel flex flex-1 items-center justify-center overflow-hidden rounded-xl">
             {videoSrc ? (
               <video
                 ref={videoRef}
                 src={videoSrc}
-                className="max-h-full max-w-full"
+                className="max-h-full max-w-full rounded-lg"
               />
             ) : (
-              <div className="flex min-h-[300px] w-full flex-col items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#2a2a2a] text-[#666]">
-                <span className="text-base">Video Preview</span>
-                <span className="mt-2 text-xs text-[#555]">
-                  {project.resolution.width}×{project.resolution.height}
-                </span>
+              <div className="flex min-h-[300px] w-full flex-col items-center justify-center gap-3 text-muted-foreground">
+                <div className="flex size-16 items-center justify-center rounded-2xl border border-border/50 bg-card/50">
+                  <Film className="size-7 text-muted-foreground/50" strokeWidth={1.5} />
+                </div>
+                <div className="text-center">
+                  <span className="text-sm">Video Preview</span>
+                  <p className="mt-1 text-xs text-muted-foreground/60">
+                    {project.resolution.width}×{project.resolution.height}
+                  </p>
+                </div>
               </div>
             )}
           </div>
           
           {/* Playback Controls */}
-          <div className="flex items-center justify-between rounded-lg bg-[#252525] p-2">
-            <span className="min-w-[140px] font-mono text-[13px] text-[#999]">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </span>
+          <div className="studio-panel flex items-center justify-between rounded-xl px-4 py-3 animate-fade-up-delay-2">
+            {/* Timecode */}
             <div className="flex items-center gap-2">
+              <span className="min-w-[140px] font-mono text-sm text-muted-foreground">
+                {formatTime(currentTime)}
+              </span>
+              <span className="text-muted-foreground/40">/</span>
+              <span className="font-mono text-sm text-muted-foreground/60">
+                {formatTime(duration)}
+              </span>
+            </div>
+
+            {/* Transport Controls */}
+            <div className="flex items-center gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={skipBackward}>
-                    <SkipBack className="size-5" />
-                  </Button>
+                  <button 
+                    onClick={skipBackward}
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <SkipBack className="size-5" strokeWidth={1.75} />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>Skip back 5s</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="secondary" size="icon" onClick={togglePlay}>
-                    {isPlaying ? (
-                      <Pause className="size-5" />
-                    ) : (
-                      <Play className="size-5" />
+                  <button 
+                    onClick={togglePlay}
+                    className={cn(
+                      "flex size-12 items-center justify-center rounded-xl transition-all",
+                      isPlaying 
+                        ? "bg-primary/15 text-primary" 
+                        : "bg-primary text-primary-foreground shadow-lg hover:bg-primary/90"
                     )}
-                  </Button>
+                  >
+                    {isPlaying ? (
+                      <Pause className="size-5" strokeWidth={1.75} />
+                    ) : (
+                      <Play className="size-5 ml-0.5" strokeWidth={1.75} />
+                    )}
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>{isPlaying ? "Pause" : "Play"}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={skipForward}>
-                    <SkipForward className="size-5" />
-                  </Button>
+                  <button 
+                    onClick={skipForward}
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <SkipForward className="size-5" strokeWidth={1.75} />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>Skip forward 5s</TooltipContent>
               </Tooltip>
             </div>
-            <div className="flex items-center gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={selectedTool === "cut" ? "default" : "ghost"}
-                    size="icon"
-                    onClick={() => setSelectedTool("cut")}
-                  >
-                    <Scissors className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Cut tool (click on timeline to cut)</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={handleAddZoom}>
-                    <ZoomIn className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Add zoom effect at current time</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={handleAddSpeed}>
-                    <Gauge className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Add speed effect at current time</TooltipContent>
-              </Tooltip>
+
+            {/* Tool Buttons */}
+            <div className="flex items-center gap-1">
+              <ToolButton
+                active={selectedTool === "cut"}
+                onClick={() => setSelectedTool("cut")}
+                icon={<Scissors className="size-4" strokeWidth={1.75} />}
+                tooltip="Cut tool (click on timeline)"
+              />
+              <ToolButton
+                active={false}
+                onClick={handleAddZoom}
+                icon={<ZoomIn className="size-4" strokeWidth={1.75} />}
+                tooltip="Add zoom effect"
+              />
+              <ToolButton
+                active={false}
+                onClick={handleAddSpeed}
+                icon={<Gauge className="size-4" strokeWidth={1.75} />}
+                tooltip="Add speed effect"
+              />
             </div>
           </div>
         </div>
       </div>
 
       {/* Timeline */}
-      <Timeline
-        duration={duration}
-        currentTime={currentTime}
-        segments={project.edits.segments}
-        zoom={project.edits.zoom}
-        speed={project.edits.speed}
-        onSeek={handleTimelineClick}
-        selectedTool={selectedTool}
-        onToolChange={setSelectedTool}
-        onToggleSegment={toggleSegment}
-        onDeleteZoom={deleteZoom}
-      />
+      <div className="relative z-10 animate-fade-up-delay-3">
+        <Timeline
+          duration={duration}
+          currentTime={currentTime}
+          segments={project.edits.segments}
+          zoom={project.edits.zoom}
+          speed={project.edits.speed}
+          onSeek={handleTimelineClick}
+          selectedTool={selectedTool}
+          onToolChange={setSelectedTool}
+          onToggleSegment={toggleSegment}
+          onDeleteZoom={deleteZoom}
+        />
+      </div>
 
       {/* Export Modal */}
       {project && (
@@ -326,6 +369,41 @@ export function EditorPage() {
         />
       )}
     </div>
+  );
+}
+
+/* ============================================
+   Sub-components for the Studio Aesthetic
+   ============================================ */
+
+function ToolButton({
+  active,
+  onClick,
+  icon,
+  tooltip,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  tooltip: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={onClick}
+          className={cn(
+            "flex size-9 items-center justify-center rounded-lg transition-all",
+            active
+              ? "bg-primary/15 text-primary"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          )}
+        >
+          {icon}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
 
