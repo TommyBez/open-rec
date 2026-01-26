@@ -189,18 +189,50 @@ pub fn stop_recording(
     let session = state_guard.sessions.get_mut(project_id)
         .ok_or("Recording session not found")?;
     
+    let video_path = session.screen_video_path.clone();
+    
     if let Some(ref stream) = session.stream {
+        // First stop the capture to signal we're done
+        stream.stop_capture()
+            .map_err(|e| format!("Failed to stop capture: {:?}", e))?;
+        
+        // Then remove the recording output - this should trigger file finalization
         if let Some(ref recording_output) = session.recording_output {
             stream.remove_recording_output(recording_output)
                 .map_err(|e| format!("Failed to remove recording output: {:?}", e))?;
         }
-        stream.stop_capture()
-            .map_err(|e| format!("Failed to stop capture: {:?}", e))?;
     }
     
     session.state = RecordingState::Stopped;
     session.stream = None;
     session.recording_output = None;
+    
+    // Drop the lock before waiting
+    drop(state_guard);
+    
+    // Wait for the file to be finalized (moov atom written)
+    // This is necessary because SCRecordingOutput writes the moov atom asynchronously
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        
+        // Check if file exists and has content
+        if let Ok(metadata) = std::fs::metadata(&video_path) {
+            let size = metadata.len();
+            
+            // Check if file seems complete (has moov atom - file > 1KB and growing stopped)
+            if size > 1024 {
+                // Give it one more moment to ensure moov is written
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                
+                // Verify size didn't change (file is done being written)
+                if let Ok(metadata2) = std::fs::metadata(&video_path) {
+                    if metadata2.len() == size {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
     
     Ok(())
 }

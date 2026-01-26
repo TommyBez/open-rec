@@ -58,6 +58,12 @@ fn stop_screen_recording(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<(), String> {
+    // Get session info before stopping
+    let capture_camera = {
+        let state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+        state_guard.sessions.get(&project_id).map(|s| s.options.capture_camera).unwrap_or(false)
+    };
+    
     do_stop_recording(&state, &project_id)?;
     
     // Get the recordings directory from state
@@ -71,10 +77,17 @@ fn stop_screen_recording(
     let project_dir = recordings_dir.join(&project_id);
     let screen_video_path = project_dir.join("screen.mp4");
     
+    // Determine camera path - use .webm if camera was enabled
+    let camera_video_path = if capture_camera {
+        Some(project_dir.join("camera.webm"))
+    } else {
+        None
+    };
+    
     let project = Project::new(
         project_id.clone(),
         screen_video_path,
-        None, // camera path
+        camera_video_path,
         60.0, // placeholder duration
         1920,
         1080,

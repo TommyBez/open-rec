@@ -88,21 +88,53 @@ pub fn build_ffmpeg_args(
     options: &ExportOptions,
     output_path: &PathBuf,
 ) -> Vec<String> {
+    // Check if camera video exists
+    let camera_path = project.camera_video_path.as_ref().and_then(|p| {
+        let path = std::path::Path::new(p);
+        if path.exists() { Some(p.clone()) } else { None }
+    });
+    
     let mut args = Vec::new();
     
-    // Input file
+    // Input file - screen recording
     args.push("-i".to_string());
     args.push(project.screen_video_path.clone());
     
-    // Build filter complex for edits
-    let filter = build_filter_complex(project, options);
-    if !filter.is_empty() {
-        args.push("-filter_complex".to_string());
-        args.push(filter);
+    // Input file - camera recording (if exists)
+    if let Some(ref cam_path) = camera_path {
+        args.push("-i".to_string());
+        args.push(cam_path.clone());
     }
     
     match options.format {
         ExportFormat::Mp4 => {
+            // Build filter complex for camera overlay and edits
+            if camera_path.is_some() {
+                // Overlay camera in bottom-right corner (picture-in-picture)
+                // Camera is scaled to 1/4 of screen width, positioned with 20px margin
+                let overlay_filter = format!(
+                    "[1:v]scale=iw/4:-1[cam];[0:v][cam]overlay=W-w-20:H-h-20"
+                );
+                
+                // Combine with any edit filters
+                let edit_filter = build_filter_complex(project, options);
+                let full_filter = if edit_filter.is_empty() {
+                    overlay_filter
+                } else {
+                    format!("{};{}", overlay_filter, edit_filter)
+                };
+                
+                args.push("-filter_complex".to_string());
+                args.push(full_filter);
+            } else {
+                // No camera, just apply edit filters if any
+                let filter = build_filter_complex(project, options);
+                if !filter.is_empty() {
+                    args.push("-filter_complex".to_string());
+                    args.push(filter);
+                }
+            }
+            
             // Video codec
             args.push("-c:v".to_string());
             args.push("libx264".to_string());
@@ -127,22 +159,34 @@ pub fn build_ffmpeg_args(
             args.push("-r".to_string());
             args.push(options.frame_rate.to_string());
             
-            // Resolution
-            args.push("-vf".to_string());
-            args.push(format!("scale=-2:{}", options.resolution.height()));
+            // Resolution (only if no filter_complex with camera overlay)
+            if camera_path.is_none() {
+                args.push("-vf".to_string());
+                args.push(format!("scale=-2:{}", options.resolution.height()));
+            }
             
             // Pixel format for compatibility
             args.push("-pix_fmt".to_string());
             args.push("yuv420p".to_string());
         }
         ExportFormat::Gif => {
-            // Generate palette for better quality
-            args.push("-vf".to_string());
-            args.push(format!(
-                "fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
-                options.frame_rate.min(30), // GIFs don't benefit from >30fps
-                options.resolution.height().min(720) // Cap GIF resolution
-            ));
+            // For GIF, camera overlay with palette generation
+            if camera_path.is_some() {
+                args.push("-filter_complex".to_string());
+                args.push(format!(
+                    "[1:v]scale=iw/4:-1[cam];[0:v][cam]overlay=W-w-20:H-h-20,fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+                    options.frame_rate.min(30),
+                    options.resolution.height().min(720)
+                ));
+            } else {
+                // Generate palette for better quality
+                args.push("-vf".to_string());
+                args.push(format!(
+                    "fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+                    options.frame_rate.min(30), // GIFs don't benefit from >30fps
+                    options.resolution.height().min(720) // Cap GIF resolution
+                ));
+            }
         }
     }
     
