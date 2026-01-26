@@ -21,9 +21,48 @@ pub enum SourceType {
     Window,
 }
 
+/// Check if screen recording permission is granted
+#[cfg(target_os = "macos")]
+pub fn check_screen_recording_permission() -> bool {
+    // CGPreflightScreenCaptureAccess returns true if permission is granted
+    unsafe {
+        extern "C" {
+            fn CGPreflightScreenCaptureAccess() -> bool;
+        }
+        CGPreflightScreenCaptureAccess()
+    }
+}
+
+/// Request screen recording permission (shows system dialog)
+#[cfg(target_os = "macos")]
+pub fn request_screen_recording_permission() -> bool {
+    // CGRequestScreenCaptureAccess prompts the user if not already granted
+    unsafe {
+        extern "C" {
+            fn CGRequestScreenCaptureAccess() -> bool;
+        }
+        CGRequestScreenCaptureAccess()
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn check_screen_recording_permission() -> bool {
+    false
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn request_screen_recording_permission() -> bool {
+    false
+}
+
 /// List available capture sources
 #[cfg(target_os = "macos")]
 pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, String> {
+    // Check permission first - if not granted, return empty list without triggering prompt
+    if !check_screen_recording_permission() {
+        return Ok(vec![]);
+    }
+    
     let content = SCShareableContent::get().map_err(|e| format!("Failed to get shareable content: {:?}", e))?;
 
     match source_type {

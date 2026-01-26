@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { Button } from "../../components/Button";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
@@ -32,6 +32,12 @@ export function EditorPage() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedTool, setSelectedTool] = useState<"cut" | "zoom" | "speed">("cut");
   const [isLoading, setIsLoading] = useState(true);
+
+  // Convert filesystem path to asset URL for video playback
+  const videoSrc = useMemo(() => {
+    if (!project?.screenVideoPath) return "";
+    return convertFileSrc(project.screenVideoPath);
+  }, [project?.screenVideoPath]);
 
   // Load project on mount
   useEffect(() => {
@@ -201,10 +207,10 @@ export function EditorPage() {
         {/* Video Preview */}
         <div className="preview-section">
           <div className="video-container">
-            {project.screenVideoPath ? (
+            {videoSrc ? (
               <video
                 ref={videoRef}
-                src={project.screenVideoPath}
+                src={videoSrc}
                 className="preview-video"
               />
             ) : (

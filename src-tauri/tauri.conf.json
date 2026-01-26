@@ -25,7 +25,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/**", "$APPDATA/recordings/**"]
+      }
     }
   },
   "bundle": {
@@ -48,8 +52,7 @@
   },
   "plugins": {
     "shell": {
-      "open": true,
-      "scope": []
+      "open": true
     }
   }
 }

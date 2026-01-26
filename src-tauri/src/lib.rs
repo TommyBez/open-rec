@@ -11,11 +11,24 @@ use tauri_plugin_shell::process::CommandEvent;
 use export::{build_ffmpeg_args, get_export_output_path, ExportOptions};
 use project::Project;
 use recording::{
+    check_screen_recording_permission, request_screen_recording_permission,
     pause_recording as do_pause_recording, resume_recording as do_resume_recording,
     start_recording as do_start_recording, stop_recording as do_stop_recording,
     CaptureSource, RecorderState, RecordingOptions, SharedRecorderState, SourceType,
     StartRecordingResult,
 };
+
+/// Check if screen recording permission is granted
+#[tauri::command]
+fn check_permission() -> bool {
+    check_screen_recording_permission()
+}
+
+/// Request screen recording permission
+#[tauri::command]
+fn request_permission() -> bool {
+    request_screen_recording_permission()
+}
 
 /// List available capture sources (displays or windows)
 #[tauri::command]
@@ -68,19 +81,24 @@ fn stop_screen_recording(
     );
     project::save_project(&recordings_dir, &project)?;
     
-    // Emit event to notify frontend
-    app.emit("recording-stopped", &project_id).ok();
-    
-    // Close recording widget window if it exists
-    if let Some(widget_window) = app.get_webview_window("recording-widget") {
-        widget_window.close().ok();
-    }
-    
-    // Navigate main window to editor
+    // First, show and prepare the main window BEFORE emitting events
     if let Some(main_window) = app.get_webview_window("main") {
         // Resize window for editor view
         main_window.set_size(tauri::LogicalSize::new(1200, 800)).ok();
         main_window.center().ok();
+        main_window.show().ok();
+        main_window.set_focus().ok();
+    }
+    
+    // Small delay to ensure the window is ready to receive events
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    
+    // Now emit event to notify frontend to navigate to editor
+    app.emit("recording-stopped", &project_id).ok();
+    
+    // Close recording widget window after main window is ready
+    if let Some(widget_window) = app.get_webview_window("recording-widget") {
+        widget_window.close().ok();
     }
     
     Ok(())
@@ -296,6 +314,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            check_permission,
+            request_permission,
             list_capture_sources,
             start_screen_recording,
             stop_screen_recording,

@@ -36,11 +36,41 @@ export function RecorderPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
 
-  // Load capture sources on mount and when source type changes
+  // Check permission on mount
   useEffect(() => {
-    loadSources();
-  }, [sourceType]);
+    checkPermission();
+  }, []);
+
+  // Load capture sources when permission is granted and source type changes
+  useEffect(() => {
+    if (hasPermission) {
+      loadSources();
+    }
+  }, [sourceType, hasPermission]);
+
+  async function checkPermission() {
+    try {
+      const granted = await invoke<boolean>("check_permission");
+      setHasPermission(granted);
+    } catch (error) {
+      console.error("Failed to check permission:", error);
+      setHasPermission(false);
+    }
+  }
+
+  async function requestPermission() {
+    try {
+      const granted = await invoke<boolean>("request_permission");
+      setHasPermission(granted);
+      if (granted) {
+        loadSources();
+      }
+    } catch (error) {
+      console.error("Failed to request permission:", error);
+    }
+  }
 
   // Listen for recording stopped event to navigate to editor
   useEffect(() => {
@@ -113,6 +143,51 @@ export function RecorderPage() {
       console.error("Failed to start recording:", error);
       setIsRecording(false);
     }
+  }
+
+  // Show permission request UI if permission not granted
+  if (hasPermission === false) {
+    return (
+      <div className="recorder-page">
+        <header className="recorder-header">
+          <div className="app-logo">
+            <div className="logo-icon" />
+            <span className="app-name">Open Rec</span>
+          </div>
+        </header>
+
+        <main className="recorder-content permission-request">
+          <div className="permission-icon">🔒</div>
+          <h2>Screen Recording Permission Required</h2>
+          <p>Open Rec needs permission to record your screen.</p>
+          <Button variant="primary" size="large" onClick={requestPermission}>
+            Grant Permission
+          </Button>
+          <p className="permission-hint">
+            If the system dialog doesn't appear, go to<br />
+            <strong>System Settings → Privacy & Security → Screen Recording</strong><br />
+            and enable Open Rec.
+          </p>
+        </main>
+      </div>
+    );
+  }
+
+  // Show loading state while checking permission
+  if (hasPermission === null) {
+    return (
+      <div className="recorder-page">
+        <header className="recorder-header">
+          <div className="app-logo">
+            <div className="logo-icon" />
+            <span className="app-name">Open Rec</span>
+          </div>
+        </header>
+        <main className="recorder-content">
+          <p>Checking permissions...</p>
+        </main>
+      </div>
+    );
   }
 
   return (

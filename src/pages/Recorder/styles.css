@@ -7,6 +7,42 @@
   padding: 16px;
 }
 
+/* Permission Request UI */
+.permission-request {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex: 1;
+  gap: 16px;
+}
+
+.permission-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.permission-request h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.permission-request p {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.permission-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 16px;
+  line-height: 1.6;
+}
+
 .recorder-header {
   display: flex;
   align-items: center;

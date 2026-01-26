@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getAllWindows } from "@tauri-apps/api/window";
 import "./styles.css";
 
 type RecordingState = "recording" | "paused";
@@ -74,23 +73,23 @@ export function RecordingWidget() {
   async function stopRecording() {
     if (!projectId) return;
     
+    const currentProjectId = projectId;
+    console.log("[RecordingWidget] Stopping recording, projectId:", currentProjectId);
+    
     try {
-      await invoke("stop_screen_recording", { projectId });
+      // Call backend to stop recording
+      // The backend will:
+      // 1. Stop the recording
+      // 2. Show the main window
+      // 3. Emit recording-stopped event (which main window listens for)
+      // 4. Close this widget window
+      await invoke("stop_screen_recording", { projectId: currentProjectId });
+      console.log("[RecordingWidget] Recording stopped successfully");
       
       // Clear stored project ID
       localStorage.removeItem("currentProjectId");
-      
-      // Show the main window
-      const windows = await getAllWindows();
-      const mainWindow = windows.find((w) => w.label === "main");
-      if (mainWindow) {
-        await mainWindow.show();
-        await mainWindow.setFocus();
-      }
-      
-      // The widget window will be closed by the backend
     } catch (error) {
-      console.error("Failed to stop recording:", error);
+      console.error("[RecordingWidget] Failed to stop recording:", error);
     }
   }
 
