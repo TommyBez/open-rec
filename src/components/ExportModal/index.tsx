@@ -10,19 +10,13 @@ interface ExportModalProps {
   onClose: () => void;
 }
 
-type ExportTarget = "file" | "clipboard" | "link";
 type ExportFormat = ExportOptionsType["format"];
 type FrameRate = ExportOptionsType["frameRate"];
 type Compression = ExportOptionsType["compression"];
 type Resolution = ExportOptionsType["resolution"];
 
-interface ExportOptions extends ExportOptionsType {
-  target: ExportTarget;
-}
-
 export function ExportModal({ project, onClose }: ExportModalProps) {
-  const [options, setOptions] = useState<ExportOptions>({
-    target: "file",
+  const [options, setOptions] = useState<ExportOptionsType>({
     format: "mp4",
     frameRate: 30,
     compression: "social",
@@ -84,32 +78,6 @@ export function ExportModal({ project, onClose }: ExportModalProps) {
         </header>
 
         <div className="export-content">
-          {/* Export Target */}
-          <div className="export-section">
-            <label className="section-label">Export to</label>
-            <div className="option-group">
-              {(["file", "clipboard", "link"] as ExportTarget[]).map((target) => (
-                <button
-                  key={target}
-                  className={`option-btn ${options.target === target ? "active" : ""}`}
-                  onClick={() => setOptions({ ...options, target })}
-                  disabled={target !== "file"} // Only file supported in v1
-                >
-                  <span className="option-icon">
-                    {target === "file" && "📄"}
-                    {target === "clipboard" && "📋"}
-                    {target === "link" && "🔗"}
-                  </span>
-                  <span className="option-label">
-                    {target === "file" && "File"}
-                    {target === "clipboard" && "Clipboard"}
-                    {target === "link" && "Shareable link"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="export-row">
             {/* Format */}
             <div className="export-section">
@@ -213,7 +181,7 @@ export function ExportModal({ project, onClose }: ExportModalProps) {
             </div>
           ) : (
             <Button variant="primary" onClick={handleExport}>
-              Export to 📄
+              Export
             </Button>
           )}
         </footer>
@@ -222,7 +190,7 @@ export function ExportModal({ project, onClose }: ExportModalProps) {
   );
 }
 
-function calculateEstimatedSize(duration: number, options: ExportOptions): string {
+function calculateEstimatedSize(duration: number, options: ExportOptionsType): string {
   // Rough estimates based on compression preset
   const bitrates: Record<Compression, number> = {
     minimal: 20, // Mbps
@@ -240,7 +208,7 @@ function calculateEstimatedSize(duration: number, options: ExportOptions): strin
   return `${sizeMB.toFixed(2)} MB`;
 }
 
-function calculateEstimatedTime(duration: number, options: ExportOptions): string {
+function calculateEstimatedTime(duration: number, options: ExportOptionsType): string {
   // Rough estimate: export time is roughly 0.5-2x the video duration
   const multipliers: Record<Resolution, number> = {
     "720p": 0.3,

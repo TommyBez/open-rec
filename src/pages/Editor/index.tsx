@@ -23,7 +23,6 @@ export function EditorPage() {
     addZoom,
     deleteZoom,
     addSpeed,
-    setGlobalSpeed,
   } = useProject(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
@@ -184,18 +183,7 @@ export function EditorPage() {
           <span className="project-name">{project.name}</span>
           {isDirty && <span className="unsaved-indicator">•</span>}
         </div>
-        <div className="header-center">
-          <select className="aspect-ratio-select">
-            <option value="auto">Auto</option>
-            <option value="16:9">16:9</option>
-            <option value="9:16">9:16</option>
-            <option value="1:1">1:1</option>
-            <option value="4:3">4:3</option>
-          </select>
-          <button className="crop-btn">Crop</button>
-        </div>
         <div className="header-right">
-          <button className="presets-btn">Presets</button>
           <Button variant="primary" onClick={() => setShowExportModal(true)}>
             Export
           </Button>
@@ -258,70 +246,6 @@ export function EditorPage() {
             </div>
           </div>
         </div>
-
-        {/* Sidebar */}
-        <aside className="editor-sidebar">
-          <div className="sidebar-tabs">
-            <button className="sidebar-tab active">🖼</button>
-            <button className="sidebar-tab">📹</button>
-            <button className="sidebar-tab">🔊</button>
-            <button className="sidebar-tab">✨</button>
-          </div>
-          
-          <div className="sidebar-content">
-            <div className="sidebar-section">
-              <h3>Background Image</h3>
-              <div className="bg-type-options">
-                <button className="bg-option active">Wallpaper</button>
-                <button className="bg-option">Image</button>
-                <button className="bg-option">Color</button>
-                <button className="bg-option">Gradient</button>
-              </div>
-              <div className="bg-presets">
-                <button className="preset-tag active">macOS</button>
-                <button className="preset-tag">Dark</button>
-                <button className="preset-tag">Blue</button>
-                <button className="preset-tag">Purple</button>
-                <button className="preset-tag">Orange</button>
-              </div>
-              <div className="bg-thumbnails">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
-                  <div key={i} className="bg-thumbnail" />
-                ))}
-              </div>
-            </div>
-
-            <div className="sidebar-section">
-              <h3>Background Blur</h3>
-              <input type="range" className="slider" min="0" max="100" defaultValue="0" />
-            </div>
-
-            <div className="sidebar-section">
-              <h3>Padding</h3>
-              <input type="range" className="slider" min="0" max="100" defaultValue="0" />
-            </div>
-
-            <div className="sidebar-section">
-              <h3>Rounded Corners</h3>
-              <input type="range" className="slider" min="0" max="50" defaultValue="0" />
-            </div>
-
-            <div className="sidebar-section">
-              <h3>Playback Speed</h3>
-              <div className="speed-options">
-                {[0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => (
-                  <button
-                    key={speed}
-                    className="speed-btn"
-                    onClick={() => setGlobalSpeed(speed)}
-                  >
-                    {speed}x
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </aside>
       </div>
 
       {/* Timeline */}
