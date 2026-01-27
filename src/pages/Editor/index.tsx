@@ -42,6 +42,7 @@ export function EditorPage() {
     cutAt,
     deleteSegment,
     addZoom,
+    updateZoom,
     deleteZoom,
     addSpeed,
   } = useProject(null);
@@ -50,8 +51,9 @@ export function EditorPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [selectedTool, setSelectedTool] = useState<"cut" | "zoom" | "speed">("cut");
+  const [selectedTool, setSelectedTool] = useState<"cut" | "zoom" | "speed" | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
+  const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Convert filesystem path to asset URL for video playback
@@ -293,36 +295,62 @@ export function EditorPage() {
   }
 
   function handleTimelineClick(time: number) {
-    if (selectedTool === "cut" && project) {
-      cutAt(time);
-    } else {
+    if (!project) {
       seek(time);
+      return;
+    }
+    
+    switch (selectedTool) {
+      case "cut":
+        cutAt(time);
+        break;
+      case "zoom": {
+        const end = Math.min(time + 5, duration);
+        addZoom(time, end, 1.5);
+        break;
+      }
+      case "speed": {
+        const end = Math.min(time + 5, duration);
+        addSpeed(time, end, 2.0);
+        break;
+      }
+      default:
+        // Selection mode - just seek
+        seek(time);
     }
   }
 
-  function handleAddZoom() {
-    if (!project) return;
-    const start = currentTime;
-    const end = Math.min(currentTime + 5, duration);
-    addZoom(start, end, 1.5);
+  // Toggle tool selection (click same tool to deselect)
+  function handleToolToggle(tool: "cut" | "zoom" | "speed") {
+    setSelectedTool(selectedTool === tool ? null : tool);
   }
 
-  function handleAddSpeed() {
-    if (!project) return;
-    const start = currentTime;
-    const end = Math.min(currentTime + 5, duration);
-    addSpeed(start, end, 2.0);
-  }
-
-  function handleDeleteSelectedSegment() {
-    if (selectedSegmentId && project && project.edits.segments.length > 1) {
+  function handleDeleteSelected() {
+    if (selectedZoomId) {
+      deleteZoom(selectedZoomId);
+      setSelectedZoomId(null);
+    } else if (selectedSegmentId && project && project.edits.segments.length > 1) {
       deleteSegment(selectedSegmentId);
       setSelectedSegmentId(null);
     }
   }
 
-  // Check if we can delete the selected segment
+  // Handle segment selection (deselects zoom when selecting segment)
+  function handleSelectSegment(segmentId: string | null) {
+    setSelectedSegmentId(segmentId);
+    if (segmentId) setSelectedZoomId(null);
+  }
+
+  // Handle zoom selection (deselects segment when selecting zoom)
+  function handleSelectZoom(zoomId: string | null) {
+    setSelectedZoomId(zoomId);
+    if (zoomId) setSelectedSegmentId(null);
+  }
+
+  // Check if we can delete
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
+  const canDeleteZoom = selectedZoomId !== null;
+  const canDelete = canDeleteSegment || canDeleteZoom;
 
   function formatTime(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -493,35 +521,35 @@ export function EditorPage() {
             <div className="flex items-center gap-1">
               <ToolButton
                 active={selectedTool === "cut"}
-                onClick={() => setSelectedTool("cut")}
+                onClick={() => handleToolToggle("cut")}
                 icon={<Scissors className="size-4" strokeWidth={1.75} />}
-                tooltip="Cut tool (click on timeline)"
+                tooltip={selectedTool === "cut" ? "Deactivate cut tool" : "Cut tool (click on timeline)"}
               />
               <ToolButton
-                active={false}
-                onClick={handleAddZoom}
+                active={selectedTool === "zoom"}
+                onClick={() => handleToolToggle("zoom")}
                 icon={<ZoomIn className="size-4" strokeWidth={1.75} />}
-                tooltip="Add zoom effect"
+                tooltip={selectedTool === "zoom" ? "Deactivate zoom tool" : "Zoom tool (click on timeline)"}
               />
               <ToolButton
-                active={false}
-                onClick={handleAddSpeed}
+                active={selectedTool === "speed"}
+                onClick={() => handleToolToggle("speed")}
                 icon={<Gauge className="size-4" strokeWidth={1.75} />}
-                tooltip="Add speed effect"
+                tooltip={selectedTool === "speed" ? "Deactivate speed tool" : "Speed tool (click on timeline)"}
               />
               
               {/* Separator */}
               <div className="mx-1 h-5 w-px bg-border/50" />
               
-              {/* Delete selected segment */}
+              {/* Delete selected item */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={handleDeleteSelectedSegment}
-                    disabled={!canDeleteSegment}
+                    onClick={handleDeleteSelected}
+                    disabled={!canDelete}
                     className={cn(
                       "flex size-9 items-center justify-center rounded-lg transition-all",
-                      canDeleteSegment
+                      canDelete
                         ? "text-destructive hover:bg-destructive/10"
                         : "text-muted-foreground/30 cursor-not-allowed"
                     )}
@@ -530,7 +558,11 @@ export function EditorPage() {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {canDeleteSegment ? "Delete selected segment" : "Select a segment to delete"}
+                  {canDeleteZoom 
+                    ? "Delete selected zoom" 
+                    : canDeleteSegment 
+                    ? "Delete selected segment" 
+                    : "Select an item to delete"}
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -548,10 +580,11 @@ export function EditorPage() {
           speed={project.edits.speed}
           onSeek={handleTimelineClick}
           selectedTool={selectedTool}
-          onToolChange={setSelectedTool}
           selectedSegmentId={selectedSegmentId}
-          onSelectSegment={setSelectedSegmentId}
-          onDeleteZoom={deleteZoom}
+          onSelectSegment={handleSelectSegment}
+          selectedZoomId={selectedZoomId}
+          onSelectZoom={handleSelectZoom}
+          onUpdateZoom={updateZoom}
         />
       </div>
 

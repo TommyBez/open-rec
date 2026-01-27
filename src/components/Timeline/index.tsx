@@ -1,11 +1,6 @@
-import { useRef, useEffect, useState, useMemo } from "react";
-import { Scissors, ZoomIn, Gauge, Trash2, Plus, Minus, Film, Timer } from "lucide-react";
+import { useRef, useEffect, useState, useMemo, useCallback } from "react";
+import { ZoomIn, Film, Timer } from "lucide-react";
 import type { Segment, ZoomEffect, SpeedEffect } from "../../types/project";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface TimelineProps {
@@ -15,18 +10,15 @@ interface TimelineProps {
   zoom: ZoomEffect[];
   speed?: SpeedEffect[];
   onSeek: (time: number) => void;
-  selectedTool: "cut" | "zoom" | "speed";
-  onToolChange: (tool: "cut" | "zoom" | "speed") => void;
+  selectedTool: "cut" | "zoom" | "speed" | null;
   selectedSegmentId: string | null;
   onSelectSegment: (segmentId: string | null) => void;
-  onDeleteZoom?: (zoomId: string) => void;
+  selectedZoomId: string | null;
+  onSelectZoom: (zoomId: string | null) => void;
+  onUpdateZoom?: (zoomId: string, updates: Partial<ZoomEffect>) => void;
 }
 
-const toolConfig = {
-  cut: { icon: Scissors, label: "Cut" },
-  zoom: { icon: ZoomIn, label: "Zoom" },
-  speed: { icon: Gauge, label: "Speed" },
-} as const;
+type DragMode = "move" | "resize-start" | "resize-end" | null;
 
 export function Timeline({
   duration,
@@ -36,14 +28,20 @@ export function Timeline({
   speed = [],
   onSeek,
   selectedTool,
-  onToolChange,
   selectedSegmentId,
   onSelectSegment,
-  onDeleteZoom,
+  selectedZoomId,
+  onSelectZoom,
+  onUpdateZoom,
 }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // Zoom drag state
+  const [zoomDragMode, setZoomDragMode] = useState<DragMode>(null);
+  const [draggingZoomId, setDraggingZoomId] = useState<string | null>(null);
+  const dragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
+  const hasDraggedRef = useRef(false);
 
   // Calculate display positions for segments (shifted left to fill gaps)
   const { segmentDisplayInfo, editedDuration, sourceToDisplayTime, displayToSourceTime } = useMemo(() => {
@@ -153,8 +151,9 @@ export function Timeline({
     const sourceTime = displayToSourceTime(displayTime);
     
     onSeek(sourceTime);
-    // Deselect segment when clicking on timeline background
+    // Deselect all when clicking on timeline background
     onSelectSegment(null);
+    onSelectZoom(null);
   }
 
   function handleMouseDown(e: React.MouseEvent) {
@@ -173,37 +172,122 @@ export function Timeline({
   }
 
   function handleSegmentClick(e: React.MouseEvent, segmentId: string) {
-    // If cut tool is selected, let the click propagate to perform the cut
-    if (selectedTool === "cut") {
-      return; // Don't stop propagation, let timeline handle the cut
+    // If any tool is selected, let the click propagate to perform the action
+    if (selectedTool !== null) {
+      return; // Don't stop propagation, let timeline handle the action
     }
     e.stopPropagation();
-    // Toggle selection - clicking the same segment deselects it
+    // Selection mode: toggle selection - clicking the same segment deselects it
     onSelectSegment(selectedSegmentId === segmentId ? null : segmentId);
   }
 
   function handleSegmentMouseDown(e: React.MouseEvent) {
-    // If cut tool is selected, let the mousedown propagate to perform the cut
-    if (selectedTool === "cut") {
+    // If any tool is selected, let the mousedown propagate to perform the action
+    if (selectedTool !== null) {
       return; // Don't stop propagation
     }
     e.stopPropagation();
   }
 
-  function handleZoomDelete(e: React.MouseEvent, zoomId: string) {
+  // Zoom segment click handler (selection)
+  function handleZoomClick(e: React.MouseEvent, zoomId: string) {
     e.stopPropagation();
-    if (onDeleteZoom) {
-      onDeleteZoom(zoomId);
+    // Only select if we didn't just drag (dragging deselects on end)
+    if (hasDraggedRef.current) {
+      hasDraggedRef.current = false;
+      return;
     }
+    // Select the zoom
+    onSelectZoom(zoomId);
+    // Deselect segment when selecting zoom
+    onSelectSegment(null);
   }
+
+  // Zoom segment mouse down for drag/resize
+  function handleZoomMouseDown(e: React.MouseEvent, zoomId: string, mode: DragMode) {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    const zoomEffect = zoom.find(z => z.id === zoomId);
+    if (!zoomEffect || !timelineRef.current) return;
+    
+    hasDraggedRef.current = false; // Reset drag flag
+    setDraggingZoomId(zoomId);
+    setZoomDragMode(mode);
+    dragStartRef.current = {
+      x: e.clientX,
+      startTime: zoomEffect.startTime,
+      endTime: zoomEffect.endTime,
+    };
+  }
+
+  // Handle zoom drag/resize move
+  const handleZoomDragMove = useCallback((e: MouseEvent) => {
+    if (!draggingZoomId || !zoomDragMode || !dragStartRef.current || !timelineRef.current || !onUpdateZoom) return;
+    
+    const rect = timelineRef.current.getBoundingClientRect();
+    const deltaX = e.clientX - dragStartRef.current.x;
+    
+    // Mark that we actually dragged (mouse moved significantly)
+    if (Math.abs(deltaX) > 2) {
+      hasDraggedRef.current = true;
+    }
+    
+    const deltaTime = (deltaX / rect.width) * timelineDuration;
+    
+    const { startTime: origStart, endTime: origEnd } = dragStartRef.current;
+    const effectDuration = origEnd - origStart;
+    const minDuration = 0.5; // Minimum 0.5 seconds
+    
+    let newStart = origStart;
+    let newEnd = origEnd;
+    
+    switch (zoomDragMode) {
+      case "move":
+        newStart = Math.max(0, Math.min(duration - effectDuration, origStart + deltaTime));
+        newEnd = newStart + effectDuration;
+        break;
+      case "resize-start":
+        newStart = Math.max(0, Math.min(origEnd - minDuration, origStart + deltaTime));
+        break;
+      case "resize-end":
+        newEnd = Math.max(origStart + minDuration, Math.min(duration, origEnd + deltaTime));
+        break;
+    }
+    
+    onUpdateZoom(draggingZoomId, { startTime: newStart, endTime: newEnd });
+  }, [draggingZoomId, zoomDragMode, timelineDuration, duration, onUpdateZoom]);
+
+  // Handle zoom drag end
+  const handleZoomDragEnd = useCallback(() => {
+    // If we actually dragged/resized, deselect the zoom
+    if (hasDraggedRef.current) {
+      onSelectZoom(null);
+    }
+    setDraggingZoomId(null);
+    setZoomDragMode(null);
+    dragStartRef.current = null;
+  }, [onSelectZoom]);
 
   useEffect(() => {
     function handleGlobalMouseUp() {
       setIsDragging(false);
+      handleZoomDragEnd();
     }
+    
+    function handleGlobalMouseMove(e: MouseEvent) {
+      if (draggingZoomId && zoomDragMode) {
+        handleZoomDragMove(e);
+      }
+    }
+    
     window.addEventListener("mouseup", handleGlobalMouseUp);
-    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
-  }, []);
+    window.addEventListener("mousemove", handleGlobalMouseMove);
+    return () => {
+      window.removeEventListener("mouseup", handleGlobalMouseUp);
+      window.removeEventListener("mousemove", handleGlobalMouseMove);
+    };
+  }, [draggingZoomId, zoomDragMode, handleZoomDragMove, handleZoomDragEnd]);
 
   // Convert source time to display time for playhead position
   const displayTime = sourceToDisplayTime(currentTime);
@@ -236,7 +320,10 @@ export function Timeline({
         {/* Content column - this is the interactive area */}
         <div
           ref={timelineRef}
-          className="relative flex flex-1 cursor-pointer flex-col gap-2"
+          className={cn(
+            "relative flex flex-1 flex-col gap-2",
+            selectedTool ? "cursor-crosshair" : "cursor-pointer"
+          )}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -251,14 +338,24 @@ export function Timeline({
               // Use clamped duration (ensures segment doesn't exceed video bounds)
               const segmentDuration = displayInfo.clampedEnd - displayInfo.clampedStart;
               
+              // Determine cursor and title based on selected tool
+              const cursorClass = selectedTool ? "cursor-crosshair" : "cursor-pointer";
+              const titleText = selectedTool === "cut" 
+                ? "Click to cut here" 
+                : selectedTool === "zoom"
+                ? "Click to add zoom effect"
+                : selectedTool === "speed"
+                ? "Click to add speed effect"
+                : "Click to select segment";
+              
               return (
                 <div
                   key={segment.id}
                   className={cn(
-                    "group/segment absolute flex h-full cursor-pointer items-center justify-between rounded-md px-3 transition-all",
+                    "group/segment absolute flex h-full items-center justify-between rounded-md px-3 transition-all",
                     "bg-gradient-to-r from-primary/80 to-primary/60 border border-primary/30",
                     isSelected && "ring-2 ring-white ring-offset-1 ring-offset-background",
-                    selectedTool === "cut" && "cursor-crosshair"
+                    cursorClass
                   )}
                   style={{
                     left: `${(displayInfo.displayStart / timelineDuration) * 100}%`,
@@ -266,7 +363,7 @@ export function Timeline({
                   }}
                   onMouseDown={handleSegmentMouseDown}
                   onClick={(e) => handleSegmentClick(e, segment.id)}
-                  title={selectedTool === "cut" ? "Click to cut here" : "Click to select segment"}
+                  title={titleText}
                 >
                   <span className="text-[11px] font-medium text-primary-foreground">Clip</span>
                   <span className="font-mono text-[10px] text-primary-foreground/70">
@@ -284,23 +381,47 @@ export function Timeline({
                 // Convert zoom effect times to display positions
                 const displayStart = sourceToDisplayTime(effect.startTime);
                 const displayEnd = sourceToDisplayTime(effect.endTime);
+                const isSelected = selectedZoomId === effect.id;
+                const isDraggingThis = draggingZoomId === effect.id;
+                
                 return (
                   <div
                     key={effect.id}
-                    className="group/zoom absolute flex h-full cursor-grab items-center justify-between rounded-md border border-violet-500/30 bg-gradient-to-r from-violet-600/80 to-violet-700/60 px-3"
+                    className={cn(
+                      "group/zoom absolute flex h-full items-center justify-between rounded-md border px-3 transition-all select-none",
+                      "bg-gradient-to-r from-violet-600/80 to-violet-700/60",
+                      isSelected 
+                        ? "border-white ring-2 ring-white ring-offset-1 ring-offset-background" 
+                        : "border-violet-500/30",
+                      isDraggingThis && "opacity-80"
+                    )}
                     style={{
                       left: `${(displayStart / timelineDuration) * 100}%`,
                       width: `${((displayEnd - displayStart) / timelineDuration) * 100}%`,
                     }}
+                    onClick={(e) => handleZoomClick(e, effect.id)}
                   >
-                    <span className="text-[11px] font-medium text-white">Zoom</span>
-                    <span className="font-mono text-[10px] text-white/70">{effect.scale}x</span>
-                    <button
-                      className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded opacity-0 transition-opacity hover:bg-white/10 group-hover/zoom:opacity-100"
-                      onClick={(e) => handleZoomDelete(e, effect.id)}
-                    >
-                      <Trash2 className="size-3 text-white/70" />
-                    </button>
+                    {/* Left resize handle */}
+                    <div
+                      className="absolute left-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
+                      onMouseDown={(e) => handleZoomMouseDown(e, effect.id, "resize-start")}
+                    />
+                    
+                    {/* Center drag area */}
+                    <div
+                      className="absolute inset-x-2 inset-y-0 cursor-grab active:cursor-grabbing"
+                      onMouseDown={(e) => handleZoomMouseDown(e, effect.id, "move")}
+                    />
+                    
+                    {/* Right resize handle */}
+                    <div
+                      className="absolute right-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
+                      onMouseDown={(e) => handleZoomMouseDown(e, effect.id, "resize-end")}
+                    />
+                    
+                    {/* Content (non-interactive, pointer-events-none) */}
+                    <span className="pointer-events-none text-[11px] font-medium text-white">Zoom</span>
+                    <span className="pointer-events-none font-mono text-[10px] text-white/70">{effect.scale}x</span>
                   </div>
                 );
               })
@@ -355,62 +476,6 @@ export function Timeline({
         </div>
       </div>
 
-      {/* Timeline toolbar */}
-      <div className="flex items-center justify-between pt-1">
-        <div className="flex gap-1">
-          {(Object.keys(toolConfig) as Array<keyof typeof toolConfig>).map((tool) => {
-            const { icon: Icon, label } = toolConfig[tool];
-            return (
-              <Tooltip key={tool}>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => onToolChange(tool)}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
-                      selectedTool === tool
-                        ? "bg-primary/15 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <Icon className="size-4" strokeWidth={1.75} />
-                    {label}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {label} tool
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setScale(Math.max(0.5, scale - 0.25))}
-                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Minus className="size-4" strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Zoom out</TooltipContent>
-          </Tooltip>
-          <span className="min-w-[45px] text-center text-xs text-muted-foreground/60">
-            {Math.round(scale * 100)}%
-          </span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setScale(Math.min(4, scale + 0.25))}
-                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Plus className="size-4" strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Zoom in</TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
     </div>
   );
 }
