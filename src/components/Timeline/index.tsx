@@ -42,6 +42,10 @@ export function Timeline({
   const [draggingZoomId, setDraggingZoomId] = useState<string | null>(null);
   const dragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
   const hasDraggedRef = useRef(false);
+  
+  // Optimistic local state for smooth dragging (avoids parent re-renders during drag)
+  const [localZoomOverride, setLocalZoomOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
+  const rafIdRef = useRef<number | null>(null);
 
   // Calculate display positions for segments (shifted left to fill gaps)
   const { segmentDisplayInfo, editedDuration, sourceToDisplayTime, displayToSourceTime } = useMemo(() => {
@@ -221,53 +225,81 @@ export function Timeline({
     };
   }
 
-  // Handle zoom drag/resize move
+  // Handle zoom drag/resize move - uses RAF and local state for smooth dragging
   const handleZoomDragMove = useCallback((e: MouseEvent) => {
-    if (!draggingZoomId || !zoomDragMode || !dragStartRef.current || !timelineRef.current || !onUpdateZoom) return;
+    if (!draggingZoomId || !zoomDragMode || !dragStartRef.current || !timelineRef.current) return;
     
-    const rect = timelineRef.current.getBoundingClientRect();
-    const deltaX = e.clientX - dragStartRef.current.x;
-    
-    // Mark that we actually dragged (mouse moved significantly)
-    if (Math.abs(deltaX) > 2) {
-      hasDraggedRef.current = true;
+    // Cancel any pending RAF to avoid stacking
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
     }
     
-    const deltaTime = (deltaX / rect.width) * timelineDuration;
+    const clientX = e.clientX;
     
-    const { startTime: origStart, endTime: origEnd } = dragStartRef.current;
-    const effectDuration = origEnd - origStart;
-    const minDuration = 0.5; // Minimum 0.5 seconds
-    
-    let newStart = origStart;
-    let newEnd = origEnd;
-    
-    switch (zoomDragMode) {
-      case "move":
-        newStart = Math.max(0, Math.min(duration - effectDuration, origStart + deltaTime));
-        newEnd = newStart + effectDuration;
-        break;
-      case "resize-start":
-        newStart = Math.max(0, Math.min(origEnd - minDuration, origStart + deltaTime));
-        break;
-      case "resize-end":
-        newEnd = Math.max(origStart + minDuration, Math.min(duration, origEnd + deltaTime));
-        break;
-    }
-    
-    onUpdateZoom(draggingZoomId, { startTime: newStart, endTime: newEnd });
-  }, [draggingZoomId, zoomDragMode, timelineDuration, duration, onUpdateZoom]);
+    rafIdRef.current = requestAnimationFrame(() => {
+      if (!dragStartRef.current || !timelineRef.current) return;
+      
+      const rect = timelineRef.current.getBoundingClientRect();
+      const deltaX = clientX - dragStartRef.current.x;
+      
+      // Mark that we actually dragged (mouse moved significantly)
+      if (Math.abs(deltaX) > 2) {
+        hasDraggedRef.current = true;
+      }
+      
+      const deltaTime = (deltaX / rect.width) * timelineDuration;
+      
+      const { startTime: origStart, endTime: origEnd } = dragStartRef.current;
+      const effectDuration = origEnd - origStart;
+      const minDuration = 0.5; // Minimum 0.5 seconds
+      
+      let newStart = origStart;
+      let newEnd = origEnd;
+      
+      switch (zoomDragMode) {
+        case "move":
+          newStart = Math.max(0, Math.min(duration - effectDuration, origStart + deltaTime));
+          newEnd = newStart + effectDuration;
+          break;
+        case "resize-start":
+          newStart = Math.max(0, Math.min(origEnd - minDuration, origStart + deltaTime));
+          break;
+        case "resize-end":
+          newEnd = Math.max(origStart + minDuration, Math.min(duration, origEnd + deltaTime));
+          break;
+      }
+      
+      // Update local state for immediate visual feedback (no parent re-render)
+      setLocalZoomOverride({ id: draggingZoomId, startTime: newStart, endTime: newEnd });
+    });
+  }, [draggingZoomId, zoomDragMode, timelineDuration, duration]);
 
-  // Handle zoom drag end
+  // Handle zoom drag end - commit local state to parent
   const handleZoomDragEnd = useCallback(() => {
+    // Cancel any pending RAF
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    
+    // Commit local override to parent state
+    if (localZoomOverride && onUpdateZoom) {
+      onUpdateZoom(localZoomOverride.id, { 
+        startTime: localZoomOverride.startTime, 
+        endTime: localZoomOverride.endTime 
+      });
+    }
+    
     // If we actually dragged/resized, deselect the zoom
     if (hasDraggedRef.current) {
       onSelectZoom(null);
     }
+    
+    setLocalZoomOverride(null);
     setDraggingZoomId(null);
     setZoomDragMode(null);
     dragStartRef.current = null;
-  }, [onSelectZoom]);
+  }, [onSelectZoom, localZoomOverride, onUpdateZoom]);
 
   useEffect(() => {
     function handleGlobalMouseUp() {
@@ -286,6 +318,10 @@ export function Timeline({
     return () => {
       window.removeEventListener("mouseup", handleGlobalMouseUp);
       window.removeEventListener("mousemove", handleGlobalMouseMove);
+      // Clean up any pending RAF on unmount
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
     };
   }, [draggingZoomId, zoomDragMode, handleZoomDragMove, handleZoomDragEnd]);
 
@@ -378,26 +414,36 @@ export function Timeline({
           <div className="relative h-10 w-full overflow-hidden rounded-lg bg-muted/30">
             {zoom.length > 0 ? (
               zoom.map((effect) => {
-                // Convert zoom effect times to display positions
-                const displayStart = sourceToDisplayTime(effect.startTime);
-                const displayEnd = sourceToDisplayTime(effect.endTime);
-                const isSelected = selectedZoomId === effect.id;
                 const isDraggingThis = draggingZoomId === effect.id;
+                
+                // Use local override for the element being dragged (smooth visual feedback)
+                const effectTimes = isDraggingThis && localZoomOverride
+                  ? { startTime: localZoomOverride.startTime, endTime: localZoomOverride.endTime }
+                  : { startTime: effect.startTime, endTime: effect.endTime };
+                
+                // Convert zoom effect times to display positions
+                const displayStart = sourceToDisplayTime(effectTimes.startTime);
+                const displayEnd = sourceToDisplayTime(effectTimes.endTime);
+                const isSelected = selectedZoomId === effect.id;
                 
                 return (
                   <div
                     key={effect.id}
                     className={cn(
-                      "group/zoom absolute flex h-full items-center justify-between rounded-md border px-3 transition-all select-none",
+                      "group/zoom absolute flex h-full items-center justify-between rounded-md border px-3 select-none",
                       "bg-gradient-to-r from-violet-600/80 to-violet-700/60",
+                      // Only apply transitions when NOT dragging for instant visual feedback
+                      !isDraggingThis && "transition-all",
                       isSelected 
                         ? "border-white ring-2 ring-white ring-offset-1 ring-offset-background" 
                         : "border-violet-500/30",
-                      isDraggingThis && "opacity-80"
+                      isDraggingThis && "opacity-90"
                     )}
                     style={{
                       left: `${(displayStart / timelineDuration) * 100}%`,
                       width: `${((displayEnd - displayStart) / timelineDuration) * 100}%`,
+                      // Use transform for GPU-accelerated positioning during drag
+                      willChange: isDraggingThis ? 'left, width' : 'auto',
                     }}
                     onClick={(e) => handleZoomClick(e, effect.id)}
                   >
