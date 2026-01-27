@@ -114,38 +114,105 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [updateProject]);
 
-  // Add a zoom effect
+  // Add a zoom effect (automatically adjusts end time to avoid overlapping existing zooms)
   const addZoom = useCallback((startTime: number, endTime: number, scale: number = 1.5) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        zoom: [
-          ...p.edits.zoom,
-          {
-            id: generateId(),
-            startTime,
-            endTime,
-            scale,
-            x: 0,
-            y: 0,
-          },
-        ],
-      },
-    }));
+    updateProject((p) => {
+      // Find the earliest zoom segment that starts after our start time
+      // to prevent overlap
+      let adjustedEndTime = endTime;
+      const minDuration = 0.5; // Minimum zoom duration
+      
+      for (const existingZoom of p.edits.zoom) {
+        // If this zoom starts after our start and before our end, we'd overlap
+        if (existingZoom.startTime > startTime && existingZoom.startTime < adjustedEndTime) {
+          adjustedEndTime = existingZoom.startTime;
+        }
+        // If our start is inside an existing zoom, don't create (return unchanged)
+        if (startTime >= existingZoom.startTime && startTime < existingZoom.endTime) {
+          return p; // Start is inside existing zoom, abort
+        }
+      }
+      
+      // Ensure minimum duration
+      if (adjustedEndTime - startTime < minDuration) {
+        return p; // Not enough room, abort
+      }
+      
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          zoom: [
+            ...p.edits.zoom,
+            {
+              id: generateId(),
+              startTime,
+              endTime: adjustedEndTime,
+              scale,
+              x: 0,
+              y: 0,
+            },
+          ],
+        },
+      };
+    });
   }, [updateProject]);
 
-  // Update a zoom effect
+  // Update a zoom effect (prevents overlapping with other zooms)
   const updateZoom = useCallback((zoomId: string, updates: Partial<ZoomEffect>) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        zoom: p.edits.zoom.map((z) =>
-          z.id === zoomId ? { ...z, ...updates } : z
-        ),
-      },
-    }));
+    updateProject((p) => {
+      const currentZoom = p.edits.zoom.find(z => z.id === zoomId);
+      if (!currentZoom) return p;
+      
+      let newStartTime = updates.startTime ?? currentZoom.startTime;
+      let newEndTime = updates.endTime ?? currentZoom.endTime;
+      const minDuration = 0.5;
+      
+      // Check against all other zoom segments for overlaps
+      for (const otherZoom of p.edits.zoom) {
+        if (otherZoom.id === zoomId) continue;
+        
+        // Prevent start from going into another zoom
+        if (newStartTime >= otherZoom.startTime && newStartTime < otherZoom.endTime) {
+          newStartTime = otherZoom.endTime;
+        }
+        
+        // Prevent end from going into another zoom
+        if (newEndTime > otherZoom.startTime && newEndTime <= otherZoom.endTime) {
+          newEndTime = otherZoom.startTime;
+        }
+        
+        // Prevent encompassing another zoom entirely
+        if (newStartTime < otherZoom.startTime && newEndTime > otherZoom.endTime) {
+          // Decide based on which side we're moving
+          if (updates.startTime !== undefined && updates.endTime === undefined) {
+            // Moving start, clamp to not pass the other zoom's end
+            newStartTime = Math.max(newStartTime, otherZoom.endTime);
+          } else if (updates.endTime !== undefined && updates.startTime === undefined) {
+            // Moving end, clamp to not pass the other zoom's start
+            newEndTime = Math.min(newEndTime, otherZoom.startTime);
+          } else {
+            // Moving whole segment - clamp end to other's start if we'd encompass it
+            newEndTime = Math.min(newEndTime, otherZoom.startTime);
+          }
+        }
+      }
+      
+      // Ensure minimum duration
+      if (newEndTime - newStartTime < minDuration) {
+        return p; // Would result in too small segment, abort
+      }
+      
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          zoom: p.edits.zoom.map((z) =>
+            z.id === zoomId ? { ...z, ...updates, startTime: newStartTime, endTime: newEndTime } : z
+          ),
+        },
+      };
+    });
   }, [updateProject]);
 
   // Delete a zoom effect

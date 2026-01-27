@@ -388,7 +388,7 @@ export function Timeline({
                 <div
                   key={segment.id}
                   className={cn(
-                    "group/segment absolute flex h-full items-center justify-between rounded-md px-3 transition-all",
+                    "group/segment absolute flex h-full items-center justify-between overflow-hidden rounded-md px-3 transition-all",
                     "bg-gradient-to-r from-primary/80 to-primary/60 border border-primary/30",
                     isSelected && "ring-2 ring-white ring-offset-1 ring-offset-background",
                     cursorClass
@@ -401,8 +401,8 @@ export function Timeline({
                   onClick={(e) => handleSegmentClick(e, segment.id)}
                   title={titleText}
                 >
-                  <span className="text-[11px] font-medium text-primary-foreground">Clip</span>
-                  <span className="font-mono text-[10px] text-primary-foreground/70">
+                  <span className="min-w-0 truncate text-[11px] font-medium text-primary-foreground">Clip</span>
+                  <span className="min-w-0 shrink-0 font-mono text-[10px] text-primary-foreground/70">
                     {Math.round(segmentDuration)}s
                   </span>
                 </div>
@@ -430,7 +430,7 @@ export function Timeline({
                   <div
                     key={effect.id}
                     className={cn(
-                      "group/zoom absolute flex h-full items-center justify-between rounded-md border px-3 select-none",
+                      "group/zoom absolute flex h-full items-center justify-between overflow-hidden rounded-md border px-3 select-none",
                       "bg-gradient-to-r from-violet-600/80 to-violet-700/60",
                       // Only apply transitions when NOT dragging for instant visual feedback
                       !isDraggingThis && "transition-all",
@@ -466,8 +466,8 @@ export function Timeline({
                     />
                     
                     {/* Content (non-interactive, pointer-events-none) */}
-                    <span className="pointer-events-none text-[11px] font-medium text-white">Zoom</span>
-                    <span className="pointer-events-none font-mono text-[10px] text-white/70">{effect.scale}x</span>
+                    <span className="pointer-events-none min-w-0 truncate text-[11px] font-medium text-white">Zoom</span>
+                    <span className="pointer-events-none min-w-0 shrink-0 font-mono text-[10px] text-white/70">{effect.scale}x</span>
                   </div>
                 );
               })
@@ -488,14 +488,14 @@ export function Timeline({
                 return (
                   <div
                     key={effect.id}
-                    className="absolute flex h-full cursor-grab items-center justify-between rounded-md border border-accent/30 bg-gradient-to-r from-accent/80 to-accent/60 px-3"
+                    className="absolute flex h-full cursor-grab items-center justify-between overflow-hidden rounded-md border border-accent/30 bg-gradient-to-r from-accent/80 to-accent/60 px-3"
                     style={{
                       left: `${(displayStart / timelineDuration) * 100}%`,
                       width: `${((displayEnd - displayStart) / timelineDuration) * 100}%`,
                     }}
                   >
-                    <span className="text-[11px] font-medium text-accent-foreground">Speed</span>
-                    <span className="font-mono text-[10px] text-accent-foreground/70">{effect.speed}x</span>
+                    <span className="min-w-0 truncate text-[11px] font-medium text-accent-foreground">Speed</span>
+                    <span className="min-w-0 shrink-0 font-mono text-[10px] text-accent-foreground/70">{effect.speed}x</span>
                   </div>
                 );
               })
