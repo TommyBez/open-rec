@@ -23,8 +23,9 @@ import {
 } from "@/components/ui/tooltip";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
+import { ZoomInspector } from "../../components/ZoomInspector";
 import { useProject } from "../../hooks/useProject";
-import { Project } from "../../types/project";
+import { Project, ZoomEffect } from "../../types/project";
 import { cn } from "@/lib/utils";
 
 export function EditorPage() {
@@ -55,6 +56,15 @@ export function EditorPage() {
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Draft state for live preview while editing zoom properties in the inspector
+  const [zoomDraft, setZoomDraft] = useState<{ scale: number; x: number; y: number } | null>(null);
+
+  // Derive the selected zoom effect from the project
+  const selectedZoom = useMemo(() => {
+    if (!project || !selectedZoomId) return null;
+    return project.edits.zoom.find((z) => z.id === selectedZoomId) ?? null;
+  }, [project, selectedZoomId]);
 
   // Find the active zoom effect at the current time (for preview)
   const activeZoom = useMemo(() => {
@@ -65,22 +75,29 @@ export function EditorPage() {
   }, [project, currentTime]);
 
   // Calculate video transform style for zoom preview
+  // Uses draft values when the active zoom is the one being edited in the inspector
   const videoZoomStyle = useMemo(() => {
     if (!activeZoom) {
       return { transform: 'scale(1)', transformOrigin: 'center center' };
     }
     
+    // Use draft values if we're editing the currently active zoom
+    const useDraft = zoomDraft && selectedZoomId === activeZoom.id;
+    const scale = useDraft ? zoomDraft.scale : activeZoom.scale;
+    const x = useDraft ? zoomDraft.x : activeZoom.x;
+    const y = useDraft ? zoomDraft.y : activeZoom.y;
+    
     // Calculate transform origin based on zoom x,y offset
     // x,y are pixel offsets from center, convert to percentage
-    // Positive x = shift right (origin moves left), positive y = shift down (origin moves up)
-    const originX = 50 - (activeZoom.x / (project?.resolution.width ?? 1920)) * 100;
-    const originY = 50 - (activeZoom.y / (project?.resolution.height ?? 1080)) * 100;
+    // Positive x = focus on right side (origin moves right), positive y = focus on bottom (origin moves down)
+    const originX = 50 + (x / (project?.resolution.width ?? 1920)) * 100;
+    const originY = 50 + (y / (project?.resolution.height ?? 1080)) * 100;
     
     return {
-      transform: `scale(${activeZoom.scale})`,
+      transform: `scale(${scale})`,
       transformOrigin: `${originX}% ${originY}%`,
     };
-  }, [activeZoom, project?.resolution]);
+  }, [activeZoom, selectedZoomId, zoomDraft, project?.resolution]);
 
   // Convert filesystem path to asset URL for video playback
   const videoSrc = useMemo(() => {
@@ -370,8 +387,27 @@ export function EditorPage() {
   // Handle zoom selection (deselects segment when selecting zoom)
   function handleSelectZoom(zoomId: string | null) {
     setSelectedZoomId(zoomId);
+    setZoomDraft(null); // Clear draft when selection changes
     if (zoomId) setSelectedSegmentId(null);
   }
+
+  // Handle zoom inspector draft changes (for live preview)
+  const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => {
+    setZoomDraft(draft);
+  }, []);
+
+  // Handle zoom inspector commits
+  const handleZoomCommit = useCallback((updates: Partial<ZoomEffect>) => {
+    if (selectedZoomId) {
+      updateZoom(selectedZoomId, updates);
+    }
+  }, [selectedZoomId, updateZoom]);
+
+  // Close the zoom inspector
+  const handleCloseZoomInspector = useCallback(() => {
+    setSelectedZoomId(null);
+    setZoomDraft(null);
+  }, []);
 
   // Check if we can delete
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
@@ -441,7 +477,7 @@ export function EditorPage() {
       {/* Main Content */}
       <div className="relative z-10 flex min-h-0 flex-1">
         {/* Video Preview */}
-        <div className="flex flex-1 flex-col gap-4 p-4 animate-fade-up-delay-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 animate-fade-up-delay-1">
           <div className="studio-panel flex flex-1 items-center justify-center overflow-hidden rounded-xl">
             {videoSrc ? (
               <div className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-lg">
@@ -604,6 +640,17 @@ export function EditorPage() {
             </div>
           </div>
         </div>
+
+        {/* Zoom Inspector Sidebar */}
+        {selectedZoom && (
+          <ZoomInspector
+            zoom={selectedZoom}
+            resolution={project.resolution}
+            onCommit={handleZoomCommit}
+            onClose={handleCloseZoomInspector}
+            onDraftChange={handleZoomDraftChange}
+          />
+        )}
       </div>
 
       {/* Timeline */}
