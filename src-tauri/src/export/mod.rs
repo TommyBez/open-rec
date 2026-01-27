@@ -250,7 +250,7 @@ pub fn build_ffmpeg_args(
 }
 
 /// Build ffmpeg filter complex for applying edits
-fn build_filter_complex(project: &Project, _options: &ExportOptions) -> String {
+fn build_filter_complex(project: &Project, options: &ExportOptions) -> String {
     let edits = &project.edits;
     let width = project.resolution.width;
     let height = project.resolution.height;
@@ -295,50 +295,96 @@ fn build_filter_complex(project: &Project, _options: &ExportOptions) -> String {
     // Note: Single segment case is now handled with -ss/-to input seeking in build_ffmpeg_args
     // This avoids filter_complex issues with files that have no audio stream
     
-    // Handle zoom effects
-    // Zoom is applied by: splitting stream, cropping+scaling one branch, overlaying with time enable
-    // This ensures zoom only applies during the specified time range
+    // Handle zoom effects with smooth transitions using zoompan filter
+    // zoompan evaluates z, x, y expressions per-frame, enabling smooth animated zoom
+    // Key: fps option must be set to match frame rate, d=1 for 1:1 frame mapping, s=WxH for output size
     if !edits.zoom.is_empty() {
-        for (i, zoom) in edits.zoom.iter().enumerate() {
+        // Transition duration in seconds (matches the 150ms CSS transition in the editor)
+        let transition_secs: f64 = 0.15;
+        
+        // Build a combined zoom expression for all zoom effects
+        // For each zoom: smoothly ramp from 1 to scale, hold, then ramp back to 1
+        // Since zooms don't overlap, we can combine them with nested conditionals
+        
+        let mut zoom_expr_parts: Vec<String> = Vec::new();
+        let mut x_offset_parts: Vec<String> = Vec::new();
+        let mut y_offset_parts: Vec<String> = Vec::new();
+        
+        for zoom in &edits.zoom {
+            let s = zoom.start_time;
+            let e = zoom.end_time;
             let scale = zoom.scale;
             
-            // Calculate crop dimensions (smaller = more zoom)
-            // iw/scale x ih/scale is the crop region
-            let crop_w = format!("iw/{}", scale);
-            let crop_h = format!("ih/{}", scale);
+            // Ensure transition doesn't exceed half the zoom duration
+            let trans = transition_secs.min((e - s) / 2.0);
             
-            // Calculate crop position (centered, with optional offset from zoom.x and zoom.y)
-            // Base center position + user offset (x,y can shift the zoom focus point)
-            let crop_x = format!("(iw-iw/{})/2+{}", scale, zoom.x);
-            let crop_y = format!("(ih-ih/{})/2+{}", scale, zoom.y);
+            // Build smooth envelope expression using 'it' (input time in seconds)
+            // This creates: 0 outside range, smooth ramp up, hold at 1, smooth ramp down
+            // envelope = contribution factor from 0 to 1
+            // Using gte/lte for boundary conditions and clip() to ensure value stays in [0,1]
+            // Ramp-up: (it - s) / t from 0 to 1
+            // Ramp-down: 1 - (it - (e - t)) / t from 1 to 0
+            let envelope = format!(
+                "if(lt(it,{s}),0,if(lte(it,{s_t}),clip((it-{s})/{t},0,1),if(lt(it,{e_t}),1,if(lte(it,{e}),clip(1-(it-{e_t})/{t},0,1),0))))",
+                s = s,
+                s_t = s + trans,
+                e_t = e - trans,
+                e = e,
+                t = trans
+            );
             
-            // Labels for this zoom effect
-            let orig_label = format!("[zorig{}]", i);
-            let zoom_branch = format!("[zbranch{}]", i);
-            let zoomed_label = format!("[zoomed{}]", i);
-            let output_label = format!("[zout{}]", i);
+            // Contribution to zoom: (scale - 1) * envelope
+            // When envelope is 0, contribution is 0; when envelope is 1, contribution is (scale-1)
+            zoom_expr_parts.push(format!("(({}-1)*({}))", scale, envelope));
             
-            // Split the current video into two branches
-            filters.push(format!(
-                "{}split=2{}{}",
-                current_video_label, orig_label, zoom_branch
-            ));
-            
-            // Crop and scale the zoom branch back to original resolution
-            filters.push(format!(
-                "{}crop={}:{}:{}:{},scale={}:{}{}",
-                zoom_branch, crop_w, crop_h, crop_x, crop_y, width, height, zoomed_label
-            ));
-            
-            // Overlay the zoomed version on original, only during the zoom time range
-            // The enable expression activates the overlay only between start_time and end_time
-            filters.push(format!(
-                "{}{}overlay=0:0:enable='between(t,{},{})'{}",
-                orig_label, zoomed_label, zoom.start_time, zoom.end_time, output_label
-            ));
-            
-            current_video_label = output_label;
+            // Offset contributions (scaled by envelope)
+            x_offset_parts.push(format!("({}*({}))", zoom.x, envelope));
+            y_offset_parts.push(format!("({}*({}))", zoom.y, envelope));
         }
+        
+        // Combined zoom factor: 1 + sum of all contributions
+        // At any time, only one zoom's envelope is non-zero (they don't overlap)
+        let zoom_factor = format!("(1+{})", zoom_expr_parts.join("+"));
+        
+        // Combined offsets for x and y panning
+        let x_offset = if x_offset_parts.iter().all(|x| x.starts_with("(0*")) {
+            "0".to_string()
+        } else {
+            format!("({})", x_offset_parts.join("+"))
+        };
+        let y_offset = if y_offset_parts.iter().all(|y| y.starts_with("(0*")) {
+            "0".to_string()
+        } else {
+            format!("({})", y_offset_parts.join("+"))
+        };
+        
+        // zoompan x,y are the top-left coordinates of the visible region
+        // For centered zoom: x = (iw - iw/zoom) / 2, y = (ih - ih/zoom) / 2
+        // We use 'zoom' variable which references the current z value
+        let pan_x = format!("iw/2-(iw/zoom/2)+{}", x_offset);
+        let pan_y = format!("ih/2-(ih/zoom/2)+{}", y_offset);
+        
+        let output_label = "[zoomout]";
+        
+        // Build the zoompan filter with all required options:
+        // - fps: must match frame rate (use export option)
+        // - d=1: 1 output frame per input frame (essential for video, not slideshow)
+        // - s=WxH: output size matching project resolution
+        // - z: zoom expression using 'it' for time-based evaluation
+        // - x,y: pan expressions using 'zoom' to reference current zoom value
+        filters.push(format!(
+            "{}zoompan=fps={}:d=1:s={}x{}:z='{}':x='{}':y='{}'{}",
+            current_video_label,
+            options.frame_rate,
+            width,
+            height,
+            zoom_factor,
+            pan_x,
+            pan_y,
+            output_label
+        ));
+        
+        current_video_label = output_label.to_string();
     }
     
     // Handle speed effects

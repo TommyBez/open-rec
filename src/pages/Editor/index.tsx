@@ -56,6 +56,32 @@ export function EditorPage() {
   const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Find the active zoom effect at the current time (for preview)
+  const activeZoom = useMemo(() => {
+    if (!project) return null;
+    return project.edits.zoom.find(
+      (z) => currentTime >= z.startTime && currentTime < z.endTime
+    ) ?? null;
+  }, [project, currentTime]);
+
+  // Calculate video transform style for zoom preview
+  const videoZoomStyle = useMemo(() => {
+    if (!activeZoom) {
+      return { transform: 'scale(1)', transformOrigin: 'center center' };
+    }
+    
+    // Calculate transform origin based on zoom x,y offset
+    // x,y are pixel offsets from center, convert to percentage
+    // Positive x = shift right (origin moves left), positive y = shift down (origin moves up)
+    const originX = 50 - (activeZoom.x / (project?.resolution.width ?? 1920)) * 100;
+    const originY = 50 - (activeZoom.y / (project?.resolution.height ?? 1080)) * 100;
+    
+    return {
+      transform: `scale(${activeZoom.scale})`,
+      transformOrigin: `${originX}% ${originY}%`,
+    };
+  }, [activeZoom, project?.resolution]);
+
   // Convert filesystem path to asset URL for video playback
   const videoSrc = useMemo(() => {
     if (!project?.screenVideoPath) return "";
@@ -418,11 +444,21 @@ export function EditorPage() {
         <div className="flex flex-1 flex-col gap-4 p-4 animate-fade-up-delay-1">
           <div className="studio-panel flex flex-1 items-center justify-center overflow-hidden rounded-xl">
             {videoSrc ? (
-              <video
-                ref={videoRef}
-                src={videoSrc}
-                className="max-h-full max-w-full rounded-lg"
-              />
+              <div className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-lg">
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  className="max-h-full max-w-full transition-transform duration-150 ease-out"
+                  style={videoZoomStyle}
+                />
+                {/* Zoom indicator badge */}
+                {activeZoom && (
+                  <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-md bg-violet-600/90 px-2 py-1 text-xs font-medium text-white shadow-lg backdrop-blur-sm">
+                    <ZoomIn className="size-3" strokeWidth={2} />
+                    <span>{activeZoom.scale}x</span>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="flex min-h-[300px] w-full flex-col items-center justify-center gap-3 text-muted-foreground">
                 <div className="flex size-16 items-center justify-center rounded-2xl border border-border/50 bg-card/50">
