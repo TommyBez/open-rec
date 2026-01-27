@@ -173,7 +173,7 @@ export function ZoomInspector({
   );
 
   return (
-    <div className="flex w-64 flex-col border-l border-border/50 bg-card/30 backdrop-blur-sm animate-fade-up">
+    <div className="flex w-64 flex-col border-l border-border/50 bg-card/30 backdrop-blur-sm">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
         <div className="flex items-center gap-2">

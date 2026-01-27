@@ -21,6 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AnimatePresence, motion } from "motion/react";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { ZoomInspector } from "../../components/ZoomInspector";
@@ -642,15 +643,27 @@ export function EditorPage() {
         </div>
 
         {/* Zoom Inspector Sidebar */}
-        {selectedZoom && (
-          <ZoomInspector
-            zoom={selectedZoom}
-            resolution={project.resolution}
-            onCommit={handleZoomCommit}
-            onClose={handleCloseZoomInspector}
-            onDraftChange={handleZoomDraftChange}
-          />
-        )}
+        <AnimatePresence>
+          {selectedZoom ? (
+            <motion.aside
+              key="zoom-inspector"
+              className="shrink-0 overflow-hidden"
+              initial={{ width: 0, opacity: 0, x: 16 }}
+              animate={{ width: 256, opacity: 1, x: 0 }}
+              exit={{ width: 0, opacity: 0, x: 16 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              aria-label="Zoom settings"
+            >
+              <ZoomInspector
+                zoom={selectedZoom}
+                resolution={project.resolution}
+                onCommit={handleZoomCommit}
+                onClose={handleCloseZoomInspector}
+                onDraftChange={handleZoomDraftChange}
+              />
+            </motion.aside>
+          ) : null}
+        </AnimatePresence>
       </div>
 
       {/* Timeline */}
