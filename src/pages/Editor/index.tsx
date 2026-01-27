@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -67,13 +67,96 @@ export function EditorPage() {
     }
   }, [projectId]);
 
+  // Get enabled segments sorted by start time, with clamped times and display positions
+  const { enabledSegments, editedDuration, sourceToEditedTime } = useMemo(() => {
+    if (!project) return { enabledSegments: [], editedDuration: 0, sourceToEditedTime: () => 0 };
+    
+    const sorted = project.edits.segments
+      .filter((s) => s.enabled)
+      .sort((a, b) => a.startTime - b.startTime);
+    
+    // Calculate edited duration and time mapping (clamp to video duration)
+    let editedOffset = 0;
+    const segmentInfo: Array<{ seg: typeof sorted[0]; clampedStart: number; clampedEnd: number; editedStart: number }> = [];
+    
+    for (const seg of sorted) {
+      const clampedStart = Math.max(0, Math.min(seg.startTime, duration));
+      const clampedEnd = Math.max(0, Math.min(seg.endTime, duration));
+      const segDuration = Math.max(0, clampedEnd - clampedStart);
+      
+      if (segDuration > 0) {
+        segmentInfo.push({
+          seg,
+          clampedStart,
+          clampedEnd,
+          editedStart: editedOffset,
+        });
+        editedOffset += segDuration;
+      }
+    }
+    
+    // Function to convert source video time to edited timeline time
+    const sourceToEdited = (sourceTime: number): number => {
+      for (const info of segmentInfo) {
+        if (sourceTime >= info.clampedStart && sourceTime <= info.clampedEnd) {
+          return info.editedStart + (sourceTime - info.clampedStart);
+        }
+      }
+      // If after all segments, return total edited duration
+      return editedOffset;
+    };
+    
+    return {
+      enabledSegments: sorted,
+      editedDuration: editedOffset || duration,
+      sourceToEditedTime: sourceToEdited,
+    };
+  }, [project, duration]);
+
+  // Check if a time is within any enabled segment
+  const isTimeInSegment = useCallback((time: number) => {
+    return enabledSegments.some(
+      (seg) => time >= seg.startTime && time < seg.endTime
+    );
+  }, [enabledSegments]);
+
+  // Find the next segment start time after a given time
+  const findNextSegmentStart = useCallback((time: number) => {
+    for (const seg of enabledSegments) {
+      if (seg.startTime > time) {
+        return seg.startTime;
+      }
+    }
+    return null; // No more segments
+  }, [enabledSegments]);
+
   // Video time update handler
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const handleTimeUpdate = () => setCurrentTime(video.currentTime);
-    const handleLoadedMetadata = () => setDuration(video.duration);
+    const handleLoadedMetadata = () => {
+      const actualDuration = video.duration;
+      setDuration(actualDuration);
+      
+      // Sync project duration and clamp segments if actual video duration differs
+      if (project && Math.abs(project.duration - actualDuration) > 0.1) {
+        // Update project with correct duration and clamp segment times
+        setProject({
+          ...project,
+          duration: actualDuration,
+          edits: {
+            ...project.edits,
+            segments: project.edits.segments.map(seg => ({
+              ...seg,
+              startTime: Math.max(0, Math.min(seg.startTime, actualDuration)),
+              endTime: Math.max(0, Math.min(seg.endTime, actualDuration)),
+            })).filter(seg => seg.endTime > seg.startTime), // Remove zero-duration segments
+          },
+        });
+      }
+    };
     const handleEnded = () => setIsPlaying(false);
 
     video.addEventListener("timeupdate", handleTimeUpdate);
@@ -86,6 +169,34 @@ export function EditorPage() {
       video.removeEventListener("ended", handleEnded);
     };
   }, [project]);
+
+  // Segment-aware playback: skip gaps between segments
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isPlaying || enabledSegments.length === 0) return;
+
+    const checkAndSkip = () => {
+      const time = video.currentTime;
+      
+      // Check if we're in a gap (not within any enabled segment)
+      if (!isTimeInSegment(time)) {
+        const nextStart = findNextSegmentStart(time);
+        if (nextStart !== null) {
+          // Skip to the next segment
+          video.currentTime = nextStart;
+        } else {
+          // No more segments, stop playback
+          video.pause();
+          setIsPlaying(false);
+        }
+      }
+    };
+
+    // Check frequently during playback
+    const interval = setInterval(checkAndSkip, 50);
+    
+    return () => clearInterval(interval);
+  }, [isPlaying, enabledSegments, isTimeInSegment, findNextSegmentStart]);
 
   // Auto-save when project changes
   useEffect(() => {
@@ -147,6 +258,16 @@ export function EditorPage() {
     if (isPlaying) {
       video.pause();
     } else {
+      // If starting playback from a gap, jump to the next segment first
+      if (!isTimeInSegment(video.currentTime)) {
+        const nextStart = findNextSegmentStart(video.currentTime);
+        if (nextStart !== null) {
+          video.currentTime = nextStart;
+        } else if (enabledSegments.length > 0) {
+          // No segments ahead, go to start of first segment
+          video.currentTime = enabledSegments[0].startTime;
+        }
+      }
       video.play();
     }
     setIsPlaying(!isPlaying);
@@ -295,11 +416,11 @@ export function EditorPage() {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <span className="min-w-[140px] font-mono text-sm text-muted-foreground">
-                  {formatTime(currentTime)}
+                  {formatTime(sourceToEditedTime(currentTime))}
                 </span>
                 <span className="text-muted-foreground/40">/</span>
                 <span className="font-mono text-sm text-muted-foreground/60">
-                  {formatTime(duration)}
+                  {formatTime(editedDuration)}
                 </span>
               </div>
               {/* Undo button */}
@@ -438,8 +559,10 @@ export function EditorPage() {
       {project && (
         <ExportModal
           project={project}
+          editedDuration={editedDuration}
           open={showExportModal}
           onOpenChange={setShowExportModal}
+          onSaveProject={saveProject}
         />
       )}
     </div>

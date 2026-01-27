@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo } from "react";
 import { Scissors, ZoomIn, Gauge, Trash2, Plus, Minus, Film, Timer } from "lucide-react";
 import type { Segment, ZoomEffect, SpeedEffect } from "../../types/project";
 import {
@@ -45,10 +45,93 @@ export function Timeline({
   const [scale, setScale] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Generate time markers
+  // Calculate display positions for segments (shifted left to fill gaps)
+  const { segmentDisplayInfo, editedDuration, sourceToDisplayTime, displayToSourceTime } = useMemo(() => {
+    // Sort segments by start time
+    const sortedSegments = [...segments]
+      .filter((s) => s.enabled)
+      .sort((a, b) => a.startTime - b.startTime);
+    
+    // Calculate display positions (contiguous, no gaps)
+    // Clamp segment times to video duration to handle invalid data
+    let displayOffset = 0;
+    const displayInfo = new Map<string, { displayStart: number; displayEnd: number; segment: Segment; clampedStart: number; clampedEnd: number }>();
+    
+    for (const seg of sortedSegments) {
+      // Clamp segment times to valid range [0, duration]
+      const clampedStart = Math.max(0, Math.min(seg.startTime, duration));
+      const clampedEnd = Math.max(0, Math.min(seg.endTime, duration));
+      const segDuration = Math.max(0, clampedEnd - clampedStart);
+      
+      if (segDuration > 0) {
+        displayInfo.set(seg.id, {
+          displayStart: displayOffset,
+          displayEnd: displayOffset + segDuration,
+          segment: seg,
+          clampedStart,
+          clampedEnd,
+        });
+        displayOffset += segDuration;
+      }
+    }
+    
+    // Total edited duration (use video duration if no valid segments)
+    const totalEditedDuration = displayOffset > 0 ? displayOffset : duration;
+    
+    // Function to convert source time to display time
+    const sourceToDisplay = (sourceTime: number): number => {
+      let displayTime = 0;
+      for (const seg of sortedSegments) {
+        const info = displayInfo.get(seg.id);
+        if (!info) continue;
+        
+        if (sourceTime >= info.clampedStart && sourceTime <= info.clampedEnd) {
+          // Time is within this segment
+          return info.displayStart + (sourceTime - info.clampedStart);
+        } else if (sourceTime > info.clampedEnd) {
+          // Time is after this segment, accumulate its duration
+          displayTime = info.displayEnd;
+        }
+      }
+      return displayTime;
+    };
+    
+    // Function to convert display time back to source time
+    const displayToSource = (displayTime: number): number => {
+      for (const seg of sortedSegments) {
+        const info = displayInfo.get(seg.id);
+        if (!info) continue;
+        
+        if (displayTime >= info.displayStart && displayTime <= info.displayEnd) {
+          // Display time is within this segment's display range
+          const offsetInSegment = displayTime - info.displayStart;
+          return info.clampedStart + offsetInSegment;
+        }
+      }
+      // If beyond all segments, return the end of the last segment (clamped to duration)
+      if (sortedSegments.length > 0) {
+        const lastSeg = sortedSegments[sortedSegments.length - 1];
+        const lastInfo = displayInfo.get(lastSeg.id);
+        if (lastInfo) return lastInfo.clampedEnd;
+      }
+      return Math.min(displayTime, duration); // Fallback, clamped to duration
+    };
+    
+    return {
+      segmentDisplayInfo: displayInfo,
+      editedDuration: totalEditedDuration,
+      sourceToDisplayTime: sourceToDisplay,
+      displayToSourceTime: displayToSource,
+    };
+  }, [segments, duration]);
+
+  // Use edited duration for timeline display
+  const timelineDuration = editedDuration;
+
+  // Generate time markers based on edited duration
   const markers: { time: number; label: string }[] = [];
-  const interval = duration > 300 ? 60 : duration > 60 ? 30 : 10;
-  for (let t = 0; t <= duration; t += interval) {
+  const interval = timelineDuration > 300 ? 60 : timelineDuration > 60 ? 30 : 10;
+  for (let t = 0; t <= timelineDuration; t += interval) {
     const mins = Math.floor(t / 60);
     const secs = t % 60;
     markers.push({
@@ -61,9 +144,15 @@ export function Timeline({
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const percentage = x / rect.width;
-    const newTime = percentage * duration;
-    onSeek(Math.max(0, Math.min(duration, newTime)));
+    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    
+    // Calculate display time from click position
+    const displayTime = percentage * timelineDuration;
+    
+    // Convert display time to source time for seeking/cutting
+    const sourceTime = displayToSourceTime(displayTime);
+    
+    onSeek(sourceTime);
     // Deselect segment when clicking on timeline background
     onSelectSegment(null);
   }
@@ -84,9 +173,21 @@ export function Timeline({
   }
 
   function handleSegmentClick(e: React.MouseEvent, segmentId: string) {
+    // If cut tool is selected, let the click propagate to perform the cut
+    if (selectedTool === "cut") {
+      return; // Don't stop propagation, let timeline handle the cut
+    }
     e.stopPropagation();
     // Toggle selection - clicking the same segment deselects it
     onSelectSegment(selectedSegmentId === segmentId ? null : segmentId);
+  }
+
+  function handleSegmentMouseDown(e: React.MouseEvent) {
+    // If cut tool is selected, let the mousedown propagate to perform the cut
+    if (selectedTool === "cut") {
+      return; // Don't stop propagation
+    }
+    e.stopPropagation();
   }
 
   function handleZoomDelete(e: React.MouseEvent, zoomId: string) {
@@ -104,36 +205,51 @@ export function Timeline({
     return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
   }, []);
 
-  const playheadPosition = duration > 0 ? (currentTime / duration) * 100 : 0;
+  // Convert source time to display time for playhead position
+  const displayTime = sourceToDisplayTime(currentTime);
+  const playheadPosition = timelineDuration > 0 ? (displayTime / timelineDuration) * 100 : 0;
 
   return (
     <div className="flex flex-col gap-2 border-t border-border/50 bg-card/30 px-4 pb-4 pt-3 backdrop-blur-sm">
-      {/* Time markers */}
-      <div className="relative mb-1 h-5">
+      {/* Time markers - aligned with track content (w-16 label + gap-2 = 72px) */}
+      <div className="relative mb-1 ml-[72px] h-5">
         {markers.map((marker) => (
           <div
             key={marker.time}
             className="absolute -translate-x-1/2"
-            style={{ left: `${(marker.time / duration) * 100}%` }}
+            style={{ left: `${(marker.time / timelineDuration) * 100}%` }}
           >
             <span className="font-mono text-[10px] text-muted-foreground/50">{marker.label}</span>
           </div>
         ))}
       </div>
 
-      {/* Timeline tracks */}
-      <div
-        ref={timelineRef}
-        className="relative flex min-h-[120px] cursor-pointer flex-col gap-2"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-      >
-        {/* Clip track */}
-        <TrackRow label="Clips" icon={<Film className="size-3.5" strokeWidth={1.75} />}>
-          <div className="relative h-full w-full overflow-hidden rounded-lg bg-gradient-to-r from-primary/10 to-primary/5">
-            {segments.map((segment) => {
+      {/* Timeline tracks - two column layout */}
+      <div className="flex gap-2">
+        {/* Labels column */}
+        <div className="flex w-16 shrink-0 flex-col gap-2">
+          <TrackLabel icon={<Film className="size-3.5" strokeWidth={1.75} />} label="Clips" />
+          <TrackLabel icon={<ZoomIn className="size-3.5" strokeWidth={1.75} />} label="Zoom" />
+          <TrackLabel icon={<Timer className="size-3.5" strokeWidth={1.75} />} label="Speed" />
+        </div>
+
+        {/* Content column - this is the interactive area */}
+        <div
+          ref={timelineRef}
+          className="relative flex flex-1 cursor-pointer flex-col gap-2"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+        >
+          {/* Clip track */}
+          <div className="relative h-10 w-full overflow-hidden rounded-lg bg-gradient-to-r from-primary/10 to-primary/5">
+            {segments.filter((s) => s.enabled).map((segment) => {
               const isSelected = selectedSegmentId === segment.id;
+              const displayInfo = segmentDisplayInfo.get(segment.id);
+              if (!displayInfo) return null;
+              
+              // Use clamped duration (ensures segment doesn't exceed video bounds)
+              const segmentDuration = displayInfo.clampedEnd - displayInfo.clampedStart;
               
               return (
                 <div
@@ -142,94 +258,100 @@ export function Timeline({
                     "group/segment absolute flex h-full cursor-pointer items-center justify-between rounded-md px-3 transition-all",
                     "bg-gradient-to-r from-primary/80 to-primary/60 border border-primary/30",
                     isSelected && "ring-2 ring-white ring-offset-1 ring-offset-background",
-                    !segment.enabled && "opacity-40"
+                    selectedTool === "cut" && "cursor-crosshair"
                   )}
                   style={{
-                    left: `${(segment.startTime / duration) * 100}%`,
-                    width: `${((segment.endTime - segment.startTime) / duration) * 100}%`,
+                    left: `${(displayInfo.displayStart / timelineDuration) * 100}%`,
+                    width: `${(segmentDuration / timelineDuration) * 100}%`,
                   }}
-                  onMouseDown={(e) => e.stopPropagation()}
+                  onMouseDown={handleSegmentMouseDown}
                   onClick={(e) => handleSegmentClick(e, segment.id)}
-                  title="Click to select segment"
+                  title={selectedTool === "cut" ? "Click to cut here" : "Click to select segment"}
                 >
                   <span className="text-[11px] font-medium text-primary-foreground">Clip</span>
                   <span className="font-mono text-[10px] text-primary-foreground/70">
-                    {Math.round(segment.endTime - segment.startTime)}s
+                    {Math.round(segmentDuration)}s
                   </span>
                 </div>
               );
             })}
           </div>
-        </TrackRow>
 
-        {/* Zoom track */}
-        <TrackRow label="Zoom" icon={<ZoomIn className="size-3.5" strokeWidth={1.75} />}>
-          <div className="relative h-full w-full overflow-hidden rounded-lg bg-muted/30">
+          {/* Zoom track */}
+          <div className="relative h-10 w-full overflow-hidden rounded-lg bg-muted/30">
             {zoom.length > 0 ? (
-              zoom.map((effect) => (
-                <div
-                  key={effect.id}
-                  className="group/zoom absolute flex h-full cursor-grab items-center justify-between rounded-md border border-violet-500/30 bg-gradient-to-r from-violet-600/80 to-violet-700/60 px-3"
-                  style={{
-                    left: `${(effect.startTime / duration) * 100}%`,
-                    width: `${((effect.endTime - effect.startTime) / duration) * 100}%`,
-                  }}
-                >
-                  <span className="text-[11px] font-medium text-white">Zoom</span>
-                  <span className="font-mono text-[10px] text-white/70">{effect.scale}x</span>
-                  <button
-                    className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded opacity-0 transition-opacity hover:bg-white/10 group-hover/zoom:opacity-100"
-                    onClick={(e) => handleZoomDelete(e, effect.id)}
+              zoom.map((effect) => {
+                // Convert zoom effect times to display positions
+                const displayStart = sourceToDisplayTime(effect.startTime);
+                const displayEnd = sourceToDisplayTime(effect.endTime);
+                return (
+                  <div
+                    key={effect.id}
+                    className="group/zoom absolute flex h-full cursor-grab items-center justify-between rounded-md border border-violet-500/30 bg-gradient-to-r from-violet-600/80 to-violet-700/60 px-3"
+                    style={{
+                      left: `${(displayStart / timelineDuration) * 100}%`,
+                      width: `${((displayEnd - displayStart) / timelineDuration) * 100}%`,
+                    }}
                   >
-                    <Trash2 className="size-3 text-white/70" />
-                  </button>
-                </div>
-              ))
+                    <span className="text-[11px] font-medium text-white">Zoom</span>
+                    <span className="font-mono text-[10px] text-white/70">{effect.scale}x</span>
+                    <button
+                      className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded opacity-0 transition-opacity hover:bg-white/10 group-hover/zoom:opacity-100"
+                      onClick={(e) => handleZoomDelete(e, effect.id)}
+                    >
+                      <Trash2 className="size-3 text-white/70" />
+                    </button>
+                  </div>
+                );
+              })
             ) : (
               <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground/40">
                 <span>No zoom effects</span>
               </div>
             )}
           </div>
-        </TrackRow>
 
-        {/* Speed track */}
-        <TrackRow label="Speed" icon={<Timer className="size-3.5" strokeWidth={1.75} />}>
-          <div className="relative h-full w-full overflow-hidden rounded-lg bg-muted/30">
+          {/* Speed track */}
+          <div className="relative h-10 w-full overflow-hidden rounded-lg bg-muted/30">
             {speed.length > 0 ? (
-              speed.map((effect) => (
-                <div
-                  key={effect.id}
-                  className="absolute flex h-full cursor-grab items-center justify-between rounded-md border border-accent/30 bg-gradient-to-r from-accent/80 to-accent/60 px-3"
-                  style={{
-                    left: `${(effect.startTime / duration) * 100}%`,
-                    width: `${((effect.endTime - effect.startTime) / duration) * 100}%`,
-                  }}
-                >
-                  <span className="text-[11px] font-medium text-accent-foreground">Speed</span>
-                  <span className="font-mono text-[10px] text-accent-foreground/70">{effect.speed}x</span>
-                </div>
-              ))
+              speed.map((effect) => {
+                // Convert speed effect times to display positions
+                const displayStart = sourceToDisplayTime(effect.startTime);
+                const displayEnd = sourceToDisplayTime(effect.endTime);
+                return (
+                  <div
+                    key={effect.id}
+                    className="absolute flex h-full cursor-grab items-center justify-between rounded-md border border-accent/30 bg-gradient-to-r from-accent/80 to-accent/60 px-3"
+                    style={{
+                      left: `${(displayStart / timelineDuration) * 100}%`,
+                      width: `${((displayEnd - displayStart) / timelineDuration) * 100}%`,
+                    }}
+                  >
+                    <span className="text-[11px] font-medium text-accent-foreground">Speed</span>
+                    <span className="font-mono text-[10px] text-accent-foreground/70">{effect.speed}x</span>
+                  </div>
+                );
+              })
             ) : (
               <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground/40">
                 <span>No speed effects</span>
               </div>
             )}
           </div>
-        </TrackRow>
 
-        {/* Playhead */}
-        <div
-          className="pointer-events-none absolute inset-y-0 z-10"
-          style={{ left: `${playheadPosition}%` }}
-        >
-          {/* Playhead head - triangle */}
-          <div 
-            className="absolute -top-1 left-1/2 size-3 -translate-x-1/2 bg-primary shadow-[0_0_8px_oklch(0.62_0.24_25_/_0.6)]" 
-            style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)' }}
-          />
-          {/* Playhead line */}
-          <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-primary shadow-[0_0_6px_oklch(0.62_0.24_25_/_0.5)]" />
+          {/* Playhead */}
+          <div
+            className="pointer-events-none absolute inset-y-0 z-10"
+            style={{ left: `${playheadPosition}%` }}
+          >
+            {/* Playhead head - triangle */}
+            <div 
+              className="absolute -top-1 left-1/2 size-3 -translate-x-1/2 bg-primary shadow-[0_0_8px_oklch(0.62_0.24_25_/_0.6)]" 
+              style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)' }}
+            />
+            {/* Playhead line */}
+            <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-primary shadow-[0_0_6px_oklch(0.62_0.24_25_/_0.5)]" />
+          </div>
         </div>
       </div>
 
@@ -294,27 +416,20 @@ export function Timeline({
 }
 
 /* ============================================
-   Sub-component: Track Row
+   Sub-component: Track Label
    ============================================ */
 
-function TrackRow({
+function TrackLabel({
   label,
   icon,
-  children,
 }: {
   label: string;
   icon: React.ReactNode;
-  children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-10 items-stretch gap-2">
-      {/* Track label */}
-      <div className="flex w-16 shrink-0 items-center gap-1.5 text-muted-foreground/60">
-        {icon}
-        <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
-      </div>
-      {/* Track content */}
-      <div className="flex-1">{children}</div>
+    <div className="flex h-10 items-center gap-1.5 text-muted-foreground/60">
+      {icon}
+      <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
     </div>
   );
 }

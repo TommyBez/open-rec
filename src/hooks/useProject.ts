@@ -103,35 +103,15 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [updateProject]);
 
-  // Delete a segment and shift subsequent segments left
+  // Delete a segment (keeps source video time references intact)
   const deleteSegment = useCallback((segmentId: string) => {
-    updateProject((p) => {
-      const segmentIndex = p.edits.segments.findIndex((s) => s.id === segmentId);
-      if (segmentIndex === -1) return p;
-      
-      const deletedSegment = p.edits.segments[segmentIndex];
-      const deletedDuration = deletedSegment.endTime - deletedSegment.startTime;
-      
-      // Filter out the deleted segment and shift subsequent ones left
-      const newSegments = p.edits.segments
-        .filter((s) => s.id !== segmentId)
-        .map((s) => {
-          // Shift segments that start after the deleted segment
-          if (s.startTime >= deletedSegment.endTime) {
-            return {
-              ...s,
-              startTime: s.startTime - deletedDuration,
-              endTime: s.endTime - deletedDuration,
-            };
-          }
-          return s;
-        });
-      
-      return {
-        ...p,
-        edits: { ...p.edits, segments: newSegments },
-      };
-    });
+    updateProject((p) => ({
+      ...p,
+      edits: {
+        ...p.edits,
+        segments: p.edits.segments.filter((s) => s.id !== segmentId),
+      },
+    }));
   }, [updateProject]);
 
   // Add a zoom effect

@@ -96,6 +96,25 @@ pub fn build_ffmpeg_args(
     
     let mut args = Vec::new();
     
+    // Check for single segment case - use input seeking instead of filter_complex
+    // This handles files with or without audio gracefully
+    let enabled_segments: Vec<_> = project.edits.segments.iter()
+        .filter(|s| s.enabled)
+        .collect();
+    
+    let use_input_seeking = camera_path.is_none() 
+        && enabled_segments.len() == 1 
+        && (enabled_segments[0].start_time > 0.0 || enabled_segments[0].end_time < project.duration);
+    
+    if use_input_seeking {
+        // Use -ss and -to for seeking (more efficient and handles missing audio)
+        let seg = &enabled_segments[0];
+        args.push("-ss".to_string());
+        args.push(format!("{}", seg.start_time));
+        args.push("-to".to_string());
+        args.push(format!("{}", seg.end_time));
+    }
+    
     // Input file - screen recording
     args.push("-i".to_string());
     args.push(project.screen_video_path.clone());
@@ -108,7 +127,9 @@ pub fn build_ffmpeg_args(
     
     match options.format {
         ExportFormat::Mp4 => {
-            // Build filter complex for camera overlay and edits
+            // Build filter complex for camera overlay and edits (multi-segment only now)
+            let mut has_filter_complex = false;
+            
             if camera_path.is_some() {
                 // Overlay camera in bottom-right corner (picture-in-picture)
                 // Camera is scaled to 1/4 of screen width, positioned with 20px margin
@@ -126,12 +147,33 @@ pub fn build_ffmpeg_args(
                 
                 args.push("-filter_complex".to_string());
                 args.push(full_filter);
-            } else {
-                // No camera, just apply edit filters if any
+                has_filter_complex = true;
+            } else if !use_input_seeking {
+                // No camera and not using input seeking - apply multi-segment edit filters if any
                 let filter = build_filter_complex(project, options);
                 if !filter.is_empty() {
-                    args.push("-filter_complex".to_string());
-                    args.push(filter);
+                    // Check if filter has segment edits (produces [outv] - video only)
+                    let has_segment_edits = filter.contains("[outv]");
+                    
+                    if has_segment_edits {
+                        // Add scaling to the filter chain before final output
+                        // Video-only filter chain (audio is stripped for multi-segment to avoid issues with video-only files)
+                        let filter_with_scale = format!(
+                            "{};[outv]scale=-2:{}[vout]",
+                            filter,
+                            options.resolution.height()
+                        );
+                        args.push("-filter_complex".to_string());
+                        args.push(filter_with_scale);
+                        // Map only video output (no audio for multi-segment concat)
+                        args.push("-map".to_string());
+                        args.push("[vout]".to_string());
+                        args.push("-an".to_string()); // No audio for multi-segment
+                    } else {
+                        args.push("-filter_complex".to_string());
+                        args.push(filter);
+                    }
+                    has_filter_complex = true;
                 }
             }
             
@@ -159,8 +201,8 @@ pub fn build_ffmpeg_args(
             args.push("-r".to_string());
             args.push(options.frame_rate.to_string());
             
-            // Resolution (only if no filter_complex with camera overlay)
-            if camera_path.is_none() {
+            // Resolution - only use -vf if no filter_complex was used
+            if !has_filter_complex {
                 args.push("-vf".to_string());
                 args.push(format!("scale=-2:{}", options.resolution.height()));
             }
@@ -211,34 +253,27 @@ fn build_filter_complex(project: &Project, _options: &ExportOptions) -> String {
     
     if enabled_segments.len() > 1 {
         // Multiple segments need concat
+        // Note: For video-only files, we only do video concat (no audio)
         let mut segment_filters = Vec::new();
         for (i, seg) in enabled_segments.iter().enumerate() {
+            // Only video filters - audio handled separately to support video-only files
             segment_filters.push(format!(
-                "[0:v]trim=start={}:end={},setpts=PTS-STARTPTS[v{}];[0:a]atrim=start={}:end={},asetpts=PTS-STARTPTS[a{}]",
-                seg.start_time, seg.end_time, i,
+                "[0:v]trim=start={}:end={},setpts=PTS-STARTPTS[v{}]",
                 seg.start_time, seg.end_time, i
             ));
         }
         
-        // Concat all segments
+        // Concat video streams only
         let v_streams: String = (0..enabled_segments.len()).map(|i| format!("[v{}]", i)).collect();
-        let a_streams: String = (0..enabled_segments.len()).map(|i| format!("[a{}]", i)).collect();
         segment_filters.push(format!(
-            "{}{}concat=n={}:v=1:a=1[outv][outa]",
-            v_streams, a_streams, enabled_segments.len()
+            "{}concat=n={}:v=1:a=0[outv]",
+            v_streams, enabled_segments.len()
         ));
         
         filters.push(segment_filters.join(";"));
-    } else if enabled_segments.len() == 1 {
-        let seg = enabled_segments[0];
-        if seg.start_time > 0.0 || seg.end_time < project.duration {
-            filters.push(format!(
-                "[0:v]trim=start={}:end={},setpts=PTS-STARTPTS[outv];[0:a]atrim=start={}:end={},asetpts=PTS-STARTPTS[outa]",
-                seg.start_time, seg.end_time,
-                seg.start_time, seg.end_time
-            ));
-        }
     }
+    // Note: Single segment case is now handled with -ss/-to input seeking in build_ffmpeg_args
+    // This avoids filter_complex issues with files that have no audio stream
     
     // Handle zoom effects
     for zoom in &edits.zoom {

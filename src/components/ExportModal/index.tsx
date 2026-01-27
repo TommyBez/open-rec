@@ -25,8 +25,10 @@ import { Label } from "@/components/ui/label";
 
 interface ExportModalProps {
   project: Project;
+  editedDuration?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSaveProject?: () => Promise<void>;
 }
 
 type ExportFormat = ExportOptionsType["format"];
@@ -34,7 +36,7 @@ type FrameRate = ExportOptionsType["frameRate"];
 type Compression = ExportOptionsType["compression"];
 type Resolution = ExportOptionsType["resolution"];
 
-export function ExportModal({ project, open, onOpenChange }: ExportModalProps) {
+export function ExportModal({ project, editedDuration, open, onOpenChange, onSaveProject }: ExportModalProps) {
   const [options, setOptions] = useState<ExportOptionsType>({
     format: "mp4",
     frameRate: 30,
@@ -45,9 +47,12 @@ export function ExportModal({ project, open, onOpenChange }: ExportModalProps) {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Calculate estimated file size and time
-  const estimatedSize = calculateEstimatedSize(project.duration, options);
-  const estimatedTime = calculateEstimatedTime(project.duration, options);
+  // Use edited duration if provided, otherwise fall back to project duration
+  const displayDuration = editedDuration ?? project.duration;
+
+  // Calculate estimated file size and time based on edited duration
+  const estimatedSize = calculateEstimatedSize(displayDuration, options);
+  const estimatedTime = calculateEstimatedTime(displayDuration, options);
 
   async function handleExport() {
     setIsExporting(true);
@@ -55,6 +60,11 @@ export function ExportModal({ project, open, onOpenChange }: ExportModalProps) {
     setError(null);
 
     try {
+      // Save project first to ensure latest changes are persisted
+      if (onSaveProject) {
+        await onSaveProject();
+      }
+
       // Listen for progress updates
       const unlisten = await listen<number>("export-progress", (event) => {
         setProgress(event.payload);
@@ -184,7 +194,7 @@ export function ExportModal({ project, open, onOpenChange }: ExportModalProps) {
           <div className="flex flex-wrap gap-2">
             <Badge variant="secondary" className="gap-1.5">
               <Clapperboard className="size-3" />
-              {formatDuration(project.duration)}
+              {formatDuration(displayDuration)}
             </Badge>
             <Badge variant="secondary" className="gap-1.5">
               <Monitor className="size-3" />
