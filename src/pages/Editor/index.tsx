@@ -151,6 +151,55 @@ export function EditorPage() {
       .filter((s) => s.enabled)
       .sort((a, b) => a.startTime - b.startTime);
     
+    // Get active speed effects (those that actually change speed)
+    const speedEffects = project.edits.speed.filter(
+      (s) => Math.abs(s.speed - 1.0) > 0.01
+    );
+    
+    // Helper to get speed at a given time
+    const getSpeedAt = (time: number): number => {
+      for (const effect of speedEffects) {
+        if (time >= effect.startTime && time < effect.endTime) {
+          return effect.speed;
+        }
+      }
+      return 1.0;
+    };
+    
+    // Helper to calculate speed-adjusted duration for a time range
+    const getAdjustedDuration = (start: number, end: number): number => {
+      if (speedEffects.length === 0) {
+        return end - start;
+      }
+      
+      // Build time segments with their speeds
+      const breakpoints = new Set<number>();
+      breakpoints.add(start);
+      breakpoints.add(end);
+      
+      for (const effect of speedEffects) {
+        if (effect.startTime > start && effect.startTime < end) {
+          breakpoints.add(effect.startTime);
+        }
+        if (effect.endTime > start && effect.endTime < end) {
+          breakpoints.add(effect.endTime);
+        }
+      }
+      
+      const sortedPoints = Array.from(breakpoints).sort((a, b) => a - b);
+      let totalAdjusted = 0;
+      
+      for (let i = 0; i < sortedPoints.length - 1; i++) {
+        const segStart = sortedPoints[i];
+        const segEnd = sortedPoints[i + 1];
+        const speed = getSpeedAt(segStart);
+        // Duration is divided by speed (2x speed = half duration)
+        totalAdjusted += (segEnd - segStart) / speed;
+      }
+      
+      return totalAdjusted;
+    };
+    
     // Calculate edited duration and time mapping (clamp to video duration)
     let editedOffset = 0;
     const segmentInfo: Array<{ seg: typeof sorted[0]; clampedStart: number; clampedEnd: number; editedStart: number }> = [];
@@ -167,7 +216,8 @@ export function EditorPage() {
           clampedEnd,
           editedStart: editedOffset,
         });
-        editedOffset += segDuration;
+        // Use speed-adjusted duration
+        editedOffset += getAdjustedDuration(clampedStart, clampedEnd);
       }
     }
     
