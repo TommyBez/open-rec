@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -26,7 +26,9 @@ import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { ZoomInspector } from "../../components/ZoomInspector";
 import { SpeedInspector } from "../../components/SpeedInspector";
+import { ToolButton } from "../../components/ToolButton";
 import { useProject } from "../../hooks/useProject";
+import { useEditorStore } from "../../stores";
 import { Project, ZoomEffect, SpeedEffect } from "../../types/project";
 import { cn } from "@/lib/utils";
 
@@ -52,21 +54,31 @@ export function EditorPage() {
     deleteSpeed,
   } = useProject(null);
   
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [selectedTool, setSelectedTool] = useState<"cut" | "zoom" | "speed" | null>(null);
-  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
-  const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
-  const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Draft state for live preview while editing zoom properties in the inspector
-  const [zoomDraft, setZoomDraft] = useState<{ scale: number; x: number; y: number } | null>(null);
-  
-  // Draft state for live preview while editing speed properties in the inspector
-  const [speedDraft, setSpeedDraft] = useState<{ speed: number } | null>(null);
+  // Use zustand store for UI state
+  const {
+    isPlaying,
+    currentTime,
+    duration,
+    selectedTool,
+    selectedSegmentId,
+    selectedZoomId,
+    selectedSpeedId,
+    zoomDraft,
+    speedDraft,
+    showExportModal,
+    isLoading,
+    setIsPlaying,
+    setCurrentTime,
+    setDuration,
+    toggleTool,
+    selectSegment,
+    selectZoom,
+    selectSpeed,
+    setZoomDraft,
+    setSpeedDraft,
+    setShowExportModal,
+    setIsLoading,
+  } = useEditorStore();
 
   // Derive the selected zoom effect from the project
   const selectedZoom = useMemo(() => {
@@ -291,7 +303,7 @@ export function EditorPage() {
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
       video.removeEventListener("ended", handleEnded);
     };
-  }, [project]);
+  }, [project, setDuration, setIsPlaying, setProject]);
 
   // Track the current speed segment to detect boundary crossings
   const currentSpeedSegmentRef = useRef<string | null>(null);
@@ -339,7 +351,7 @@ export function EditorPage() {
     return () => {
       cancelAnimationFrame(rafId);
     };
-  }, [isPlaying, project]);
+  }, [isPlaying, project, setCurrentTime]);
 
   // Update video playback rate based on active speed effect
   // Only update when the rate actually changes to avoid stuttering at high speeds
@@ -380,7 +392,7 @@ export function EditorPage() {
     const interval = setInterval(checkAndSkip, 50);
     
     return () => clearInterval(interval);
-  }, [isPlaying, enabledSegments, isTimeInSegment, findNextSegmentStart]);
+  }, [isPlaying, enabledSegments, isTimeInSegment, findNextSegmentStart, setIsPlaying]);
 
   // Auto-save when project changes
   useEffect(() => {
@@ -502,62 +514,28 @@ export function EditorPage() {
     }
   }
 
-  // Toggle tool selection (click same tool to deselect)
-  function handleToolToggle(tool: "cut" | "zoom" | "speed") {
-    setSelectedTool(selectedTool === tool ? null : tool);
-  }
-
   function handleDeleteSelected() {
     if (selectedZoomId) {
       deleteZoom(selectedZoomId);
-      setSelectedZoomId(null);
+      selectZoom(null);
     } else if (selectedSpeedId) {
       deleteSpeed(selectedSpeedId);
-      setSelectedSpeedId(null);
+      selectSpeed(null);
     } else if (selectedSegmentId && project && project.edits.segments.length > 1) {
       deleteSegment(selectedSegmentId);
-      setSelectedSegmentId(null);
-    }
-  }
-
-  // Handle segment selection (deselects zoom and speed when selecting segment)
-  function handleSelectSegment(segmentId: string | null) {
-    setSelectedSegmentId(segmentId);
-    if (segmentId) {
-      setSelectedZoomId(null);
-      setSelectedSpeedId(null);
-    }
-  }
-
-  // Handle zoom selection (deselects segment and speed when selecting zoom)
-  function handleSelectZoom(zoomId: string | null) {
-    setSelectedZoomId(zoomId);
-    setZoomDraft(null); // Clear draft when selection changes
-    if (zoomId) {
-      setSelectedSegmentId(null);
-      setSelectedSpeedId(null);
-    }
-  }
-
-  // Handle speed selection (deselects segment and zoom when selecting speed)
-  function handleSelectSpeed(speedId: string | null) {
-    setSelectedSpeedId(speedId);
-    setSpeedDraft(null); // Clear draft when selection changes
-    if (speedId) {
-      setSelectedSegmentId(null);
-      setSelectedZoomId(null);
+      selectSegment(null);
     }
   }
 
   // Handle zoom inspector draft changes (for live preview)
   const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => {
     setZoomDraft(draft);
-  }, []);
+  }, [setZoomDraft]);
 
   // Handle speed inspector draft changes (for live preview)
   const handleSpeedDraftChange = useCallback((draft: { speed: number }) => {
     setSpeedDraft(draft);
-  }, []);
+  }, [setSpeedDraft]);
 
   // Handle zoom inspector commits
   const handleZoomCommit = useCallback((updates: Partial<ZoomEffect>) => {
@@ -575,15 +553,15 @@ export function EditorPage() {
 
   // Close the zoom inspector
   const handleCloseZoomInspector = useCallback(() => {
-    setSelectedZoomId(null);
+    selectZoom(null);
     setZoomDraft(null);
-  }, []);
+  }, [selectZoom, setZoomDraft]);
 
   // Close the speed inspector
   const handleCloseSpeedInspector = useCallback(() => {
-    setSelectedSpeedId(null);
+    selectSpeed(null);
     setSpeedDraft(null);
-  }, []);
+  }, [selectSpeed, setSpeedDraft]);
 
   // Check if we can delete
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
@@ -778,19 +756,19 @@ export function EditorPage() {
             <div className="flex items-center gap-1">
               <ToolButton
                 active={selectedTool === "cut"}
-                onClick={() => handleToolToggle("cut")}
+                onClick={() => toggleTool("cut")}
                 icon={<Scissors className="size-4" strokeWidth={1.75} />}
                 tooltip={selectedTool === "cut" ? "Deactivate cut tool" : "Cut tool (click on timeline)"}
               />
               <ToolButton
                 active={selectedTool === "zoom"}
-                onClick={() => handleToolToggle("zoom")}
+                onClick={() => toggleTool("zoom")}
                 icon={<ZoomIn className="size-4" strokeWidth={1.75} />}
                 tooltip={selectedTool === "zoom" ? "Deactivate zoom tool" : "Zoom tool (click on timeline)"}
               />
               <ToolButton
                 active={selectedTool === "speed"}
-                onClick={() => handleToolToggle("speed")}
+                onClick={() => toggleTool("speed")}
                 icon={<Gauge className="size-4" strokeWidth={1.75} />}
                 tooltip={selectedTool === "speed" ? "Deactivate speed tool" : "Speed tool (click on timeline)"}
               />
@@ -885,12 +863,12 @@ export function EditorPage() {
           onSeek={handleTimelineClick}
           selectedTool={selectedTool}
           selectedSegmentId={selectedSegmentId}
-          onSelectSegment={handleSelectSegment}
+          onSelectSegment={selectSegment}
           selectedZoomId={selectedZoomId}
-          onSelectZoom={handleSelectZoom}
+          onSelectZoom={selectZoom}
           onUpdateZoom={updateZoom}
           selectedSpeedId={selectedSpeedId}
-          onSelectSpeed={handleSelectSpeed}
+          onSelectSpeed={selectSpeed}
           onUpdateSpeed={updateSpeed}
         />
       </div>
@@ -906,41 +884,6 @@ export function EditorPage() {
         />
       )}
     </div>
-  );
-}
-
-/* ============================================
-   Sub-components for the Studio Aesthetic
-   ============================================ */
-
-function ToolButton({
-  active,
-  onClick,
-  icon,
-  tooltip,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  tooltip: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          onClick={onClick}
-          className={cn(
-            "flex size-9 items-center justify-center rounded-lg transition-all",
-            active
-              ? "bg-primary/15 text-primary"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          )}
-        >
-          {icon}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
   );
 }
 
