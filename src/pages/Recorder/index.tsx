@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Monitor, AppWindow, Lock } from "lucide-react";
+import { Monitor, AppWindow, Lock, FolderOpen } from "lucide-react";
 import { SourceSelector } from "../../components/SourceSelector";
 import { ToggleRow } from "../../components/ToggleRow";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,11 @@ import { SourceTypeButton } from "../../components/SourceTypeButton";
 import { RecordButton } from "../../components/RecordButton";
 import { useRecordingStore } from "../../stores";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export interface CaptureSource {
   id: string;
@@ -241,7 +246,21 @@ export function RecorderPage() {
       {/* Header */}
       <header className="relative z-10 mb-6 flex items-center justify-between animate-fade-up">
         <BrandLogo />
-        <StatusIndicator ready={!!selectedSource} />
+        <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => navigate("/videos")}
+                className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="My Recordings"
+              >
+                <FolderOpen className="size-5" strokeWidth={1.75} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>My Recordings</TooltipContent>
+          </Tooltip>
+          <StatusIndicator ready={!!selectedSource} />
+        </div>
       </header>
 
       <main className="relative z-10 flex flex-1 flex-col gap-4">
