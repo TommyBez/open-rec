@@ -52,10 +52,8 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
   const [outputPath, setOutputPath] = useState<string | null>(null);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
 
-  // Use edited duration if provided, otherwise fall back to project duration
   const displayDuration = editedDuration ?? project.duration;
 
-  // Clean up listeners when modal closes or component unmounts
   useEffect(() => {
     return () => {
       unlistenRefs.current.forEach(unlisten => unlisten());
@@ -63,7 +61,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
     };
   }, []);
 
-  // Reset state when modal opens
   useEffect(() => {
     if (open) {
       setExportStatus("idle");
@@ -74,7 +71,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
     }
   }, [open]);
 
-  // Calculate estimated file size and time based on edited duration
   const estimatedSize = calculateEstimatedSize(displayDuration, options);
   const estimatedTime = calculateEstimatedTime(displayDuration, options);
 
@@ -85,27 +81,22 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
     setError(null);
     setOutputPath(null);
 
-    // Clean up any existing listeners
     unlistenRefs.current.forEach(unlisten => unlisten());
     unlistenRefs.current = [];
 
     try {
-      // Save project first to ensure latest changes are persisted
       if (onSaveProject) {
         await onSaveProject();
       }
 
-      // Listen for progress updates (current time in seconds from ffmpeg)
       const unlistenProgress = await listen<number>("export-progress", (event) => {
         const currentTimeSeconds = event.payload;
         setCurrentTime(currentTimeSeconds);
-        // Calculate progress percentage based on edited duration
         const percentage = Math.min((currentTimeSeconds / displayDuration) * 100, 99);
         setProgress(percentage);
       });
       unlistenRefs.current.push(unlistenProgress);
 
-      // Listen for export completion
       const unlistenComplete = await listen<string>("export-complete", (event) => {
         setProgress(100);
         setExportStatus("complete");
@@ -113,7 +104,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
       });
       unlistenRefs.current.push(unlistenComplete);
 
-      // Listen for export errors
       const unlistenError = await listen<string>("export-error", (event) => {
         setExportStatus("error");
         setError(event.payload);
@@ -142,7 +132,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
-      // Prevent closing while export is in progress
       if (exportStatus === "exporting") {
         return;
       }
@@ -257,7 +246,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
         </div>
 
         <DialogFooter className="flex-col gap-4 sm:flex-col">
-          {/* Info badges - hide during/after export */}
           {exportStatus === "idle" && (
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary" className="gap-1.5">
@@ -279,7 +267,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
             </div>
           )}
 
-          {/* Export Progress Widget */}
           <AnimatePresence>
             {exportStatus === "exporting" && (
               <motion.div
@@ -289,10 +276,8 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
                 transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
                 className="studio-panel flex w-full flex-col gap-4 rounded-xl p-5"
               >
-                {/* Header row */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    {/* Pulsing dot indicator - using accent (amber) for active state */}
                     <motion.span
                       className="relative flex size-2.5"
                       initial={{ scale: 0 }}
@@ -304,8 +289,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
                     </motion.span>
                     <span className="text-sm font-medium text-foreground/80">Encoding</span>
                   </div>
-                  
-                  {/* Percentage - the hero element */}
                   <motion.span
                     key={Math.round(progress)}
                     initial={{ opacity: 0.5, scale: 0.95 }}
@@ -317,17 +300,13 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
                   </motion.span>
                 </div>
 
-                {/* Progress bar with shimmer */}
                 <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-                  {/* Progress fill - using accent color */}
                   <motion.div
                     className="absolute inset-y-0 left-0 rounded-full bg-accent glow-amber"
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
                   />
-                  
-                  {/* Shimmer overlay */}
                   <motion.div
                     className="absolute inset-0 rounded-full"
                     style={{
@@ -344,8 +323,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
                     }}
                   />
                 </div>
-
-                {/* Footer info */}
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-xs tabular-nums text-muted-foreground">
                     {formatDuration(currentTime)}
@@ -360,7 +337,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
             )}
           </AnimatePresence>
 
-          {/* Export Complete Widget */}
           <AnimatePresence>
             {exportStatus === "complete" && (
               <motion.div
@@ -395,7 +371,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
             )}
           </AnimatePresence>
 
-          {/* Export Error Widget */}
           <AnimatePresence>
             {exportStatus === "error" && (
               <motion.div
@@ -429,7 +404,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
             )}
           </AnimatePresence>
 
-          {/* Action buttons */}
           {exportStatus === "idle" && (
             <div className="flex w-full justify-end gap-2">
               <Button variant="outline" onClick={handleClose}>
