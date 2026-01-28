@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { ArrowLeft, Film, Download } from "lucide-react";
+import { ArrowLeft, Film, Download, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -12,6 +12,7 @@ interface EditorHeaderProps {
   isDirty: boolean;
   onBack: () => void;
   onExport: () => void;
+  onOpenVideos: () => void;
 }
 
 export const EditorHeader = memo(function EditorHeader({
@@ -19,6 +20,7 @@ export const EditorHeader = memo(function EditorHeader({
   isDirty,
   onBack,
   onExport,
+  onOpenVideos,
 }: EditorHeaderProps) {
   return (
     <header className="relative z-10 flex items-center justify-between border-b border-border/50 bg-card/30 px-4 py-3 backdrop-blur-sm animate-fade-up">
@@ -45,6 +47,18 @@ export const EditorHeader = memo(function EditorHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onOpenVideos}
+              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="My Recordings"
+            >
+              <FolderOpen className="size-5" strokeWidth={1.75} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>My Recordings</TooltipContent>
+        </Tooltip>
         <Button 
           onClick={onExport}
           className="gap-2 bg-primary font-medium text-primary-foreground shadow-lg transition-all hover:bg-primary/90"
