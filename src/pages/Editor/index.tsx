@@ -1,39 +1,39 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import {
-  ArrowLeft,
-  SkipBack,
-  SkipForward,
-  Play,
-  Pause,
-  Scissors,
-  ZoomIn,
-  Gauge,
-  Film,
-  Download,
-  Undo2,
-  Trash2,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { AnimatePresence, motion } from "motion/react";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { ZoomInspector } from "../../components/ZoomInspector";
 import { SpeedInspector } from "../../components/SpeedInspector";
 import { useProject } from "../../hooks/useProject";
+import { useEditorStore } from "../../stores";
 import { Project, ZoomEffect, SpeedEffect } from "../../types/project";
-import { cn } from "@/lib/utils";
+
+// Extracted components
+import { EditorHeader } from "./components/EditorHeader";
+import { VideoPreview } from "./components/VideoPreview";
+import { PlaybackControls } from "./components/PlaybackControls";
+import { useVideoPlayback } from "./hooks/useVideoPlayback";
+
+// Hoisted static JSX elements
+const atmosphericGradient = (
+  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
+);
+
+const loadingSpinner = (
+  <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background">
+    {atmosphericGradient}
+    <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3">
+      <div className="size-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
+      <p className="text-sm text-muted-foreground">Loading project...</p>
+    </div>
+  </div>
+);
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const videoRef = useRef<HTMLVideoElement>(null);
   
   const {
     project,
@@ -52,35 +52,42 @@ export function EditorPage() {
     deleteSpeed,
   } = useProject(null);
   
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [selectedTool, setSelectedTool] = useState<"cut" | "zoom" | "speed" | null>(null);
-  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
-  const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
-  const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Draft state for live preview while editing zoom properties in the inspector
-  const [zoomDraft, setZoomDraft] = useState<{ scale: number; x: number; y: number } | null>(null);
-  
-  // Draft state for live preview while editing speed properties in the inspector
-  const [speedDraft, setSpeedDraft] = useState<{ speed: number } | null>(null);
+  const {
+    isPlaying,
+    currentTime,
+    duration,
+    selectedTool,
+    selectedSegmentId,
+    selectedZoomId,
+    selectedSpeedId,
+    zoomDraft,
+    speedDraft,
+    showExportModal,
+    isLoading,
+    setIsPlaying,
+    setCurrentTime,
+    setDuration,
+    toggleTool,
+    selectSegment,
+    selectZoom,
+    selectSpeed,
+    setZoomDraft,
+    setSpeedDraft,
+    setShowExportModal,
+    setIsLoading,
+  } = useEditorStore();
 
-  // Derive the selected zoom effect from the project
+  // Derived state
   const selectedZoom = useMemo(() => {
     if (!project || !selectedZoomId) return null;
     return project.edits.zoom.find((z) => z.id === selectedZoomId) ?? null;
   }, [project, selectedZoomId]);
 
-  // Derive the selected speed effect from the project
   const selectedSpeed = useMemo(() => {
     if (!project || !selectedSpeedId) return null;
     return project.edits.speed.find((s) => s.id === selectedSpeedId) ?? null;
   }, [project, selectedSpeedId]);
 
-  // Find the active zoom effect at the current time (for preview)
   const activeZoom = useMemo(() => {
     if (!project) return null;
     return project.edits.zoom.find(
@@ -88,7 +95,6 @@ export function EditorPage() {
     ) ?? null;
   }, [project, currentTime]);
 
-  // Find the active speed effect at the current time (for preview)
   const activeSpeed = useMemo(() => {
     if (!project) return null;
     return project.edits.speed.find(
@@ -96,31 +102,22 @@ export function EditorPage() {
     ) ?? null;
   }, [project, currentTime]);
 
-  // Get the current playback rate based on active speed effect
-  // Uses draft value when editing the currently active speed
   const currentPlaybackRate = useMemo(() => {
     if (!activeSpeed) return 1;
-    // Use draft values if we're editing the currently active speed
     const useDraft = speedDraft && selectedSpeedId === activeSpeed.id;
     return useDraft ? speedDraft.speed : activeSpeed.speed;
   }, [activeSpeed, selectedSpeedId, speedDraft]);
 
-  // Calculate video transform style for zoom preview
-  // Uses draft values when the active zoom is the one being edited in the inspector
   const videoZoomStyle = useMemo(() => {
     if (!activeZoom) {
       return { transform: 'scale(1)', transformOrigin: 'center center' };
     }
     
-    // Use draft values if we're editing the currently active zoom
     const useDraft = zoomDraft && selectedZoomId === activeZoom.id;
     const scale = useDraft ? zoomDraft.scale : activeZoom.scale;
     const x = useDraft ? zoomDraft.x : activeZoom.x;
     const y = useDraft ? zoomDraft.y : activeZoom.y;
     
-    // Calculate transform origin based on zoom x,y offset
-    // x,y are pixel offsets from center, convert to percentage
-    // Positive x = focus on right side (origin moves right), positive y = focus on bottom (origin moves down)
     const originX = 50 + (x / (project?.resolution.width ?? 1920)) * 100;
     const originY = 50 + (y / (project?.resolution.height ?? 1080)) * 100;
     
@@ -130,20 +127,12 @@ export function EditorPage() {
     };
   }, [activeZoom, selectedZoomId, zoomDraft, project?.resolution]);
 
-  // Convert filesystem path to asset URL for video playback
   const videoSrc = useMemo(() => {
     if (!project?.screenVideoPath) return "";
     return convertFileSrc(project.screenVideoPath);
   }, [project?.screenVideoPath]);
 
-  // Load project on mount
-  useEffect(() => {
-    if (projectId) {
-      loadProject(projectId);
-    }
-  }, [projectId]);
-
-  // Get enabled segments sorted by start time, with clamped times and display positions
+  // Segments and duration calculation
   const { enabledSegments, editedDuration, sourceToEditedTime } = useMemo(() => {
     if (!project) return { enabledSegments: [], editedDuration: 0, sourceToEditedTime: () => 0 };
     
@@ -151,12 +140,10 @@ export function EditorPage() {
       .filter((s) => s.enabled)
       .sort((a, b) => a.startTime - b.startTime);
     
-    // Get active speed effects (those that actually change speed)
     const speedEffects = project.edits.speed.filter(
       (s) => Math.abs(s.speed - 1.0) > 0.01
     );
     
-    // Helper to get speed at a given time
     const getSpeedAt = (time: number): number => {
       for (const effect of speedEffects) {
         if (time >= effect.startTime && time < effect.endTime) {
@@ -166,24 +153,13 @@ export function EditorPage() {
       return 1.0;
     };
     
-    // Helper to calculate speed-adjusted duration for a time range
     const getAdjustedDuration = (start: number, end: number): number => {
-      if (speedEffects.length === 0) {
-        return end - start;
-      }
+      if (speedEffects.length === 0) return end - start;
       
-      // Build time segments with their speeds
-      const breakpoints = new Set<number>();
-      breakpoints.add(start);
-      breakpoints.add(end);
-      
+      const breakpoints = new Set<number>([start, end]);
       for (const effect of speedEffects) {
-        if (effect.startTime > start && effect.startTime < end) {
-          breakpoints.add(effect.startTime);
-        }
-        if (effect.endTime > start && effect.endTime < end) {
-          breakpoints.add(effect.endTime);
-        }
+        if (effect.startTime > start && effect.startTime < end) breakpoints.add(effect.startTime);
+        if (effect.endTime > start && effect.endTime < end) breakpoints.add(effect.endTime);
       }
       
       const sortedPoints = Array.from(breakpoints).sort((a, b) => a - b);
@@ -192,15 +168,12 @@ export function EditorPage() {
       for (let i = 0; i < sortedPoints.length - 1; i++) {
         const segStart = sortedPoints[i];
         const segEnd = sortedPoints[i + 1];
-        const speed = getSpeedAt(segStart);
-        // Duration is divided by speed (2x speed = half duration)
-        totalAdjusted += (segEnd - segStart) / speed;
+        totalAdjusted += (segEnd - segStart) / getSpeedAt(segStart);
       }
       
       return totalAdjusted;
     };
     
-    // Calculate edited duration and time mapping (clamp to video duration)
     let editedOffset = 0;
     const segmentInfo: Array<{ seg: typeof sorted[0]; clampedStart: number; clampedEnd: number; editedStart: number }> = [];
     
@@ -210,196 +183,57 @@ export function EditorPage() {
       const segDuration = Math.max(0, clampedEnd - clampedStart);
       
       if (segDuration > 0) {
-        segmentInfo.push({
-          seg,
-          clampedStart,
-          clampedEnd,
-          editedStart: editedOffset,
-        });
-        // Use speed-adjusted duration
+        segmentInfo.push({ seg, clampedStart, clampedEnd, editedStart: editedOffset });
         editedOffset += getAdjustedDuration(clampedStart, clampedEnd);
       }
     }
     
-    // Function to convert source video time to edited timeline time
     const sourceToEdited = (sourceTime: number): number => {
       for (const info of segmentInfo) {
         if (sourceTime >= info.clampedStart && sourceTime <= info.clampedEnd) {
           return info.editedStart + (sourceTime - info.clampedStart);
         }
       }
-      // If after all segments, return total edited duration
       return editedOffset;
     };
     
-    return {
-      enabledSegments: sorted,
-      editedDuration: editedOffset || duration,
-      sourceToEditedTime: sourceToEdited,
-    };
+    return { enabledSegments: sorted, editedDuration: editedOffset || duration, sourceToEditedTime: sourceToEdited };
   }, [project, duration]);
 
-  // Check if a time is within any enabled segment
-  const isTimeInSegment = useCallback((time: number) => {
-    return enabledSegments.some(
-      (seg) => time >= seg.startTime && time < seg.endTime
-    );
-  }, [enabledSegments]);
+  // Video playback hook
+  const { videoRef, seek, togglePlay, skipBackward, skipForward } = useVideoPlayback({
+    project,
+    isPlaying,
+    duration,
+    enabledSegments,
+    currentPlaybackRate,
+    setIsPlaying,
+    setCurrentTime,
+    setDuration,
+    setProject,
+  });
 
-  // Find the next segment start time after a given time
-  const findNextSegmentStart = useCallback((time: number) => {
-    for (const seg of enabledSegments) {
-      if (seg.startTime > time) {
-        return seg.startTime;
-      }
+  // Load project on mount
+  useEffect(() => {
+    if (projectId) {
+      loadProject(projectId);
     }
-    return null; // No more segments
-  }, [enabledSegments]);
+  }, [projectId]);
 
-  // Video metadata and ended handlers
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleLoadedMetadata = () => {
-      const actualDuration = video.duration;
-      setDuration(actualDuration);
-      
-      // Sync project duration and clamp segments if actual video duration differs
-      if (project && Math.abs(project.duration - actualDuration) > 0.1) {
-        // Update project with correct duration and clamp segment times
-        setProject({
-          ...project,
-          duration: actualDuration,
-          edits: {
-            ...project.edits,
-            segments: project.edits.segments.map(seg => ({
-              ...seg,
-              startTime: Math.max(0, Math.min(seg.startTime, actualDuration)),
-              endTime: Math.max(0, Math.min(seg.endTime, actualDuration)),
-            })).filter(seg => seg.endTime > seg.startTime), // Remove zero-duration segments
-          },
-        });
-      }
-    };
-    const handleEnded = () => setIsPlaying(false);
-
-    video.addEventListener("loadedmetadata", handleLoadedMetadata);
-    video.addEventListener("ended", handleEnded);
-
-    return () => {
-      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
-      video.removeEventListener("ended", handleEnded);
-    };
-  }, [project]);
-
-  // Track the current speed segment to detect boundary crossings
-  const currentSpeedSegmentRef = useRef<string | null>(null);
-
-  // Use requestAnimationFrame for smooth time updates during playback
-  // Throttle UI updates to reduce React overhead while checking speed boundaries every frame
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !isPlaying || !project) return;
-
-    let rafId: number;
-    let lastUIUpdateTime = 0;
-    // Update UI at ~30fps - video renders independently at full speed
-    const uiUpdateInterval = 1000 / 30;
-    
-    const updateTime = (timestamp: number) => {
-      const videoTime = video.currentTime;
-      
-      // Check if we've crossed into a different speed segment (check every frame for responsiveness)
-      const activeSpeedSegment = project.edits.speed.find(
-        (s) => videoTime >= s.startTime && videoTime < s.endTime
-      );
-      const newSegmentId = activeSpeedSegment?.id ?? null;
-      
-      // If segment changed, update playback rate immediately
-      if (newSegmentId !== currentSpeedSegmentRef.current) {
-        currentSpeedSegmentRef.current = newSegmentId;
-        const newRate = activeSpeedSegment?.speed ?? 1;
-        if (video.playbackRate !== newRate) {
-          video.playbackRate = newRate;
-        }
-      }
-      
-      // Throttle React state updates for UI (timeline scrubber, etc.)
-      if (timestamp - lastUIUpdateTime >= uiUpdateInterval) {
-        setCurrentTime(videoTime);
-        lastUIUpdateTime = timestamp;
-      }
-      
-      rafId = requestAnimationFrame(updateTime);
-    };
-    
-    rafId = requestAnimationFrame(updateTime);
-    
-    return () => {
-      cancelAnimationFrame(rafId);
-    };
-  }, [isPlaying, project]);
-
-  // Update video playback rate based on active speed effect
-  // Only update when the rate actually changes to avoid stuttering at high speeds
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    
-    // Only set playbackRate when it actually changes to avoid performance issues
-    // Repeatedly setting playbackRate (even to the same value) can cause lag at high speeds
-    if (video.playbackRate !== currentPlaybackRate) {
-      video.playbackRate = currentPlaybackRate;
-    }
-  }, [currentPlaybackRate]);
-
-  // Segment-aware playback: skip gaps between segments
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !isPlaying || enabledSegments.length === 0) return;
-
-    const checkAndSkip = () => {
-      const time = video.currentTime;
-      
-      // Check if we're in a gap (not within any enabled segment)
-      if (!isTimeInSegment(time)) {
-        const nextStart = findNextSegmentStart(time);
-        if (nextStart !== null) {
-          // Skip to the next segment
-          video.currentTime = nextStart;
-        } else {
-          // No more segments, stop playback
-          video.pause();
-          setIsPlaying(false);
-        }
-      }
-    };
-
-    // Check frequently during playback
-    const interval = setInterval(checkAndSkip, 50);
-    
-    return () => clearInterval(interval);
-  }, [isPlaying, enabledSegments, isTimeInSegment, findNextSegmentStart]);
-
-  // Auto-save when project changes
+  // Auto-save
   useEffect(() => {
     if (isDirty && project) {
-      const timeout = setTimeout(() => {
-        saveProject().catch(console.error);
-      }, 1000);
+      const timeout = setTimeout(() => saveProject().catch(console.error), 1000);
       return () => clearTimeout(timeout);
     }
   }, [isDirty, project, saveProject]);
 
-  // Keyboard shortcut for undo (⌘Z / Ctrl+Z)
+  // Keyboard shortcut for undo
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        if (canUndo) {
-          undo();
-        }
+        if (canUndo) undo();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -414,7 +248,6 @@ export function EditorPage() {
       setDuration(result.duration);
     } catch (error) {
       console.error("Failed to load project:", error);
-      // Use mock data for development
       const mockProject: Project = {
         id: id,
         name: `Recording ${id.slice(0, 8)}`,
@@ -435,402 +268,89 @@ export function EditorPage() {
     }
   }
 
-  function togglePlay() {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (isPlaying) {
-      video.pause();
-    } else {
-      // If starting playback from a gap, jump to the next segment first
-      if (!isTimeInSegment(video.currentTime)) {
-        const nextStart = findNextSegmentStart(video.currentTime);
-        if (nextStart !== null) {
-          video.currentTime = nextStart;
-        } else if (enabledSegments.length > 0) {
-          // No segments ahead, go to start of first segment
-          video.currentTime = enabledSegments[0].startTime;
-        }
-      }
-      video.play();
-    }
-    setIsPlaying(!isPlaying);
-  }
-
-  function seek(time: number) {
-    const video = videoRef.current;
-    if (!video) return;
-    video.currentTime = time;
-    setCurrentTime(time);
-  }
-
-  function skipBackward() {
-    const video = videoRef.current;
-    if (!video) return;
-    video.currentTime = Math.max(0, video.currentTime - 5);
-  }
-
-  function skipForward() {
-    const video = videoRef.current;
-    if (!video) return;
-    video.currentTime = Math.min(duration, video.currentTime + 5);
-  }
-
-  function handleTimelineClick(time: number) {
-    if (!project) {
-      seek(time);
-      return;
-    }
+  // Memoized handlers
+  const handleTimelineClick = useCallback((time: number) => {
+    if (!project) { seek(time); return; }
     
     switch (selectedTool) {
-      case "cut":
-        cutAt(time);
-        break;
-      case "zoom": {
-        const end = Math.min(time + 5, duration);
-        addZoom(time, end, 1.5);
-        break;
-      }
-      case "speed": {
-        const end = Math.min(time + 5, duration);
-        addSpeed(time, end, 2.0);
-        break;
-      }
-      default:
-        // Selection mode - just seek
-        seek(time);
+      case "cut": cutAt(time); break;
+      case "zoom": addZoom(time, Math.min(time + 5, duration), 1.5); break;
+      case "speed": addSpeed(time, Math.min(time + 5, duration), 2.0); break;
+      default: seek(time);
     }
-  }
+  }, [project, selectedTool, cutAt, addZoom, addSpeed, duration, seek]);
 
-  // Toggle tool selection (click same tool to deselect)
-  function handleToolToggle(tool: "cut" | "zoom" | "speed") {
-    setSelectedTool(selectedTool === tool ? null : tool);
-  }
-
-  function handleDeleteSelected() {
-    if (selectedZoomId) {
-      deleteZoom(selectedZoomId);
-      setSelectedZoomId(null);
-    } else if (selectedSpeedId) {
-      deleteSpeed(selectedSpeedId);
-      setSelectedSpeedId(null);
-    } else if (selectedSegmentId && project && project.edits.segments.length > 1) {
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedZoomId) { deleteZoom(selectedZoomId); selectZoom(null); }
+    else if (selectedSpeedId) { deleteSpeed(selectedSpeedId); selectSpeed(null); }
+    else if (selectedSegmentId && project && project.edits.segments.length > 1) {
       deleteSegment(selectedSegmentId);
-      setSelectedSegmentId(null);
+      selectSegment(null);
     }
-  }
+  }, [selectedZoomId, selectedSpeedId, selectedSegmentId, project, deleteZoom, deleteSpeed, deleteSegment, selectZoom, selectSpeed, selectSegment]);
 
-  // Handle segment selection (deselects zoom and speed when selecting segment)
-  function handleSelectSegment(segmentId: string | null) {
-    setSelectedSegmentId(segmentId);
-    if (segmentId) {
-      setSelectedZoomId(null);
-      setSelectedSpeedId(null);
-    }
-  }
+  const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => setZoomDraft(draft), [setZoomDraft]);
+  const handleSpeedDraftChange = useCallback((draft: { speed: number }) => setSpeedDraft(draft), [setSpeedDraft]);
+  const handleZoomCommit = useCallback((updates: Partial<ZoomEffect>) => { if (selectedZoomId) updateZoom(selectedZoomId, updates); }, [selectedZoomId, updateZoom]);
+  const handleSpeedCommit = useCallback((updates: Partial<SpeedEffect>) => { if (selectedSpeedId) updateSpeed(selectedSpeedId, updates); }, [selectedSpeedId, updateSpeed]);
+  const handleCloseZoomInspector = useCallback(() => { selectZoom(null); setZoomDraft(null); }, [selectZoom, setZoomDraft]);
+  const handleCloseSpeedInspector = useCallback(() => { selectSpeed(null); setSpeedDraft(null); }, [selectSpeed, setSpeedDraft]);
+  const handleBack = useCallback(() => navigate("/recorder"), [navigate]);
+  const handleExport = useCallback(() => setShowExportModal(true), [setShowExportModal]);
 
-  // Handle zoom selection (deselects segment and speed when selecting zoom)
-  function handleSelectZoom(zoomId: string | null) {
-    setSelectedZoomId(zoomId);
-    setZoomDraft(null); // Clear draft when selection changes
-    if (zoomId) {
-      setSelectedSegmentId(null);
-      setSelectedSpeedId(null);
-    }
-  }
-
-  // Handle speed selection (deselects segment and zoom when selecting speed)
-  function handleSelectSpeed(speedId: string | null) {
-    setSelectedSpeedId(speedId);
-    setSpeedDraft(null); // Clear draft when selection changes
-    if (speedId) {
-      setSelectedSegmentId(null);
-      setSelectedZoomId(null);
-    }
-  }
-
-  // Handle zoom inspector draft changes (for live preview)
-  const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => {
-    setZoomDraft(draft);
-  }, []);
-
-  // Handle speed inspector draft changes (for live preview)
-  const handleSpeedDraftChange = useCallback((draft: { speed: number }) => {
-    setSpeedDraft(draft);
-  }, []);
-
-  // Handle zoom inspector commits
-  const handleZoomCommit = useCallback((updates: Partial<ZoomEffect>) => {
-    if (selectedZoomId) {
-      updateZoom(selectedZoomId, updates);
-    }
-  }, [selectedZoomId, updateZoom]);
-
-  // Handle speed inspector commits
-  const handleSpeedCommit = useCallback((updates: Partial<SpeedEffect>) => {
-    if (selectedSpeedId) {
-      updateSpeed(selectedSpeedId, updates);
-    }
-  }, [selectedSpeedId, updateSpeed]);
-
-  // Close the zoom inspector
-  const handleCloseZoomInspector = useCallback(() => {
-    setSelectedZoomId(null);
-    setZoomDraft(null);
-  }, []);
-
-  // Close the speed inspector
-  const handleCloseSpeedInspector = useCallback(() => {
-    setSelectedSpeedId(null);
-    setSpeedDraft(null);
-  }, []);
-
-  // Check if we can delete
+  // Derived delete state
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
   const canDeleteZoom = selectedZoomId !== null;
   const canDeleteSpeed = selectedSpeedId !== null;
   const canDelete = canDeleteSegment || canDeleteZoom || canDeleteSpeed;
 
-  function formatTime(seconds: number): string {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 100);
-    return `${mins}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(2, "0")}`;
-  }
-
-  // Loading state with studio aesthetic
-  if (isLoading || !project) {
-    return (
-      <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3">
-          <div className="size-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
-          <p className="text-sm text-muted-foreground">Loading project...</p>
-        </div>
-      </div>
-    );
-  }
+  if (isLoading || !project) return loadingSpinner;
 
   return (
     <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background text-foreground">
-      {/* Atmospheric background gradient */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
+      {atmosphericGradient}
 
-      {/* Header */}
-      <header className="relative z-10 flex items-center justify-between border-b border-border/50 bg-card/30 px-4 py-3 backdrop-blur-sm animate-fade-up">
-        <div className="flex items-center gap-3">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => navigate("/recorder")}
-                className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <ArrowLeft className="size-5" strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Back to recorder</TooltipContent>
-          </Tooltip>
-          <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
-              <Film className="size-4 text-primary" strokeWidth={1.75} />
-            </div>
-            <span className="text-sm font-medium text-foreground/80">{project.name}</span>
-            {isDirty && (
-              <span className="text-xl leading-none text-accent">•</span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            onClick={() => setShowExportModal(true)}
-            className="gap-2 bg-primary font-medium text-primary-foreground shadow-lg transition-all hover:bg-primary/90"
-          >
-            <Download className="size-4" strokeWidth={1.75} />
-            Export
-          </Button>
-        </div>
-      </header>
+      <EditorHeader
+        projectName={project.name}
+        isDirty={isDirty}
+        onBack={handleBack}
+        onExport={handleExport}
+      />
 
-      {/* Main Content */}
       <div className="relative z-10 flex min-h-0 flex-1">
-        {/* Video Preview */}
         <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 animate-fade-up-delay-1">
-          <div className="studio-panel flex flex-1 items-center justify-center overflow-hidden rounded-xl">
-            {videoSrc ? (
-              <div className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-lg">
-                <video
-                  ref={videoRef}
-                  src={videoSrc}
-                  className="max-h-full max-w-full transition-transform duration-150 ease-out"
-                  style={videoZoomStyle}
-                />
-                {/* Effect indicator badges */}
-                <div className="absolute right-3 top-3 flex flex-col gap-1.5">
-                  {activeZoom && (
-                    <div className="flex items-center gap-1.5 rounded-md bg-violet-600/90 px-2 py-1 text-xs font-medium text-white shadow-lg backdrop-blur-sm">
-                      <ZoomIn className="size-3" strokeWidth={2} />
-                      <span>{activeZoom.scale}x</span>
-                    </div>
-                  )}
-                  {activeSpeed && (
-                    <div className="flex items-center gap-1.5 rounded-md bg-accent/90 px-2 py-1 text-xs font-medium text-accent-foreground shadow-lg backdrop-blur-sm">
-                      <Gauge className="size-3" strokeWidth={2} />
-                      <span>{currentPlaybackRate}x</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="flex min-h-[300px] w-full flex-col items-center justify-center gap-3 text-muted-foreground">
-                <div className="flex size-16 items-center justify-center rounded-2xl border border-border/50 bg-card/50">
-                  <Film className="size-7 text-muted-foreground/50" strokeWidth={1.5} />
-                </div>
-                <div className="text-center">
-                  <span className="text-sm">Video Preview</span>
-                  <p className="mt-1 text-xs text-muted-foreground/60">
-                    {project.resolution.width}×{project.resolution.height}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+          <VideoPreview
+            ref={videoRef}
+            videoSrc={videoSrc}
+            videoZoomStyle={videoZoomStyle}
+            activeZoom={activeZoom}
+            activeSpeed={activeSpeed}
+            currentPlaybackRate={currentPlaybackRate}
+            resolution={project.resolution}
+          />
           
-          {/* Playback Controls */}
-          <div className="studio-panel flex items-center justify-between rounded-xl px-4 py-3 animate-fade-up-delay-2">
-            {/* Timecode + Undo */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <span className="min-w-[140px] font-mono text-sm text-muted-foreground">
-                  {formatTime(sourceToEditedTime(currentTime))}
-                </span>
-                <span className="text-muted-foreground/40">/</span>
-                <span className="font-mono text-sm text-muted-foreground/60">
-                  {formatTime(editedDuration)}
-                </span>
-              </div>
-              {/* Undo button */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    onClick={undo}
-                    disabled={!canUndo}
-                    className={cn(
-                      "flex size-8 items-center justify-center rounded-lg transition-colors",
-                      canUndo 
-                        ? "text-muted-foreground hover:bg-muted hover:text-foreground" 
-                        : "text-muted-foreground/30 cursor-not-allowed"
-                    )}
-                  >
-                    <Undo2 className="size-4" strokeWidth={1.75} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Undo (⌘Z)</TooltipContent>
-              </Tooltip>
-            </div>
-
-            {/* Transport Controls */}
-            <div className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    onClick={skipBackward}
-                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <SkipBack className="size-5" strokeWidth={1.75} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Skip back 5s</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    onClick={togglePlay}
-                    className={cn(
-                      "flex size-12 items-center justify-center rounded-xl transition-all",
-                      isPlaying 
-                        ? "bg-primary/15 text-primary" 
-                        : "bg-primary text-primary-foreground shadow-lg hover:bg-primary/90"
-                    )}
-                  >
-                    {isPlaying ? (
-                      <Pause className="size-5" strokeWidth={1.75} />
-                    ) : (
-                      <Play className="size-5 ml-0.5" strokeWidth={1.75} />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>{isPlaying ? "Pause" : "Play"}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    onClick={skipForward}
-                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <SkipForward className="size-5" strokeWidth={1.75} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Skip forward 5s</TooltipContent>
-              </Tooltip>
-            </div>
-
-            {/* Tool Buttons */}
-            <div className="flex items-center gap-1">
-              <ToolButton
-                active={selectedTool === "cut"}
-                onClick={() => handleToolToggle("cut")}
-                icon={<Scissors className="size-4" strokeWidth={1.75} />}
-                tooltip={selectedTool === "cut" ? "Deactivate cut tool" : "Cut tool (click on timeline)"}
-              />
-              <ToolButton
-                active={selectedTool === "zoom"}
-                onClick={() => handleToolToggle("zoom")}
-                icon={<ZoomIn className="size-4" strokeWidth={1.75} />}
-                tooltip={selectedTool === "zoom" ? "Deactivate zoom tool" : "Zoom tool (click on timeline)"}
-              />
-              <ToolButton
-                active={selectedTool === "speed"}
-                onClick={() => handleToolToggle("speed")}
-                icon={<Gauge className="size-4" strokeWidth={1.75} />}
-                tooltip={selectedTool === "speed" ? "Deactivate speed tool" : "Speed tool (click on timeline)"}
-              />
-              
-              {/* Separator */}
-              <div className="mx-1 h-5 w-px bg-border/50" />
-              
-              {/* Delete selected item */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={handleDeleteSelected}
-                    disabled={!canDelete}
-                    className={cn(
-                      "flex size-9 items-center justify-center rounded-lg transition-all",
-                      canDelete
-                        ? "text-destructive hover:bg-destructive/10"
-                        : "text-muted-foreground/30 cursor-not-allowed"
-                    )}
-                  >
-                    <Trash2 className="size-4" strokeWidth={1.75} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {canDeleteZoom 
-                    ? "Delete selected zoom" 
-                    : canDeleteSpeed
-                    ? "Delete selected speed"
-                    : canDeleteSegment 
-                    ? "Delete selected segment" 
-                    : "Select an item to delete"}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
+          <PlaybackControls
+            currentTime={sourceToEditedTime(currentTime)}
+            editedDuration={editedDuration}
+            isPlaying={isPlaying}
+            canUndo={canUndo}
+            canDelete={canDelete}
+            canDeleteZoom={canDeleteZoom}
+            canDeleteSpeed={canDeleteSpeed}
+            canDeleteSegment={!!canDeleteSegment}
+            selectedTool={selectedTool}
+            onTogglePlay={togglePlay}
+            onSkipBackward={skipBackward}
+            onSkipForward={skipForward}
+            onUndo={undo}
+            onDelete={handleDeleteSelected}
+            onToggleTool={toggleTool}
+          />
         </div>
 
         {/* Zoom Inspector Sidebar */}
         <AnimatePresence>
-          {selectedZoom ? (
+          {selectedZoom && (
             <motion.aside
               key="zoom-inspector"
               className="shrink-0 overflow-hidden"
@@ -848,12 +368,12 @@ export function EditorPage() {
                 onDraftChange={handleZoomDraftChange}
               />
             </motion.aside>
-          ) : null}
+          )}
         </AnimatePresence>
 
         {/* Speed Inspector Sidebar */}
         <AnimatePresence>
-          {selectedSpeed ? (
+          {selectedSpeed && (
             <motion.aside
               key="speed-inspector"
               className="shrink-0 overflow-hidden"
@@ -870,11 +390,10 @@ export function EditorPage() {
                 onDraftChange={handleSpeedDraftChange}
               />
             </motion.aside>
-          ) : null}
+          )}
         </AnimatePresence>
       </div>
 
-      {/* Timeline */}
       <div className="relative z-10 animate-fade-up-delay-3">
         <Timeline
           duration={duration}
@@ -885,64 +404,23 @@ export function EditorPage() {
           onSeek={handleTimelineClick}
           selectedTool={selectedTool}
           selectedSegmentId={selectedSegmentId}
-          onSelectSegment={handleSelectSegment}
+          onSelectSegment={selectSegment}
           selectedZoomId={selectedZoomId}
-          onSelectZoom={handleSelectZoom}
+          onSelectZoom={selectZoom}
           onUpdateZoom={updateZoom}
           selectedSpeedId={selectedSpeedId}
-          onSelectSpeed={handleSelectSpeed}
+          onSelectSpeed={selectSpeed}
           onUpdateSpeed={updateSpeed}
         />
       </div>
 
-      {/* Export Modal */}
-      {project && (
-        <ExportModal
-          project={project}
-          editedDuration={editedDuration}
-          open={showExportModal}
-          onOpenChange={setShowExportModal}
-          onSaveProject={saveProject}
-        />
-      )}
+      <ExportModal
+        project={project}
+        editedDuration={editedDuration}
+        open={showExportModal}
+        onOpenChange={setShowExportModal}
+        onSaveProject={saveProject}
+      />
     </div>
   );
 }
-
-/* ============================================
-   Sub-components for the Studio Aesthetic
-   ============================================ */
-
-function ToolButton({
-  active,
-  onClick,
-  icon,
-  tooltip,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  tooltip: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          onClick={onClick}
-          className={cn(
-            "flex size-9 items-center justify-center rounded-lg transition-all",
-            active
-              ? "bg-primary/15 text-primary"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          )}
-        >
-          {icon}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-// Re-export types for backwards compatibility
-export type { Project, Segment, ZoomEffect, SpeedEffect } from "../../types/project";

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -8,6 +8,11 @@ import { SourceSelector } from "../../components/SourceSelector";
 import { ToggleRow } from "../../components/ToggleRow";
 import { Button } from "@/components/ui/button";
 import { CameraPreview } from "../../components/CameraPreview";
+import { BrandLogo } from "../../components/BrandLogo";
+import { StatusIndicator } from "../../components/StatusIndicator";
+import { SourceTypeButton } from "../../components/SourceTypeButton";
+import { RecordButton } from "../../components/RecordButton";
+import { useRecordingStore } from "../../stores";
 import { cn } from "@/lib/utils";
 
 export interface CaptureSource {
@@ -27,17 +32,35 @@ export interface RecordingOptions {
 
 export function RecorderPage() {
   const navigate = useNavigate();
-  const [sourceType, setSourceType] = useState<"display" | "window">("display");
-  const [sources, setSources] = useState<CaptureSource[]>([]);
-  const [selectedSource, setSelectedSource] = useState<CaptureSource | null>(null);
-  const [captureCamera, setCaptureCamera] = useState(false);
-  const [captureMicrophone, setCaptureMicrophone] = useState(false);
-  const [captureSystemAudio, setCaptureSystemAudio] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
-  const [cameraReady, setCameraReady] = useState(false);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  
+  // Use zustand store for state management
+  const {
+    state: recordingState,
+    projectId,
+    sourceType,
+    selectedSource,
+    sources,
+    isLoadingSources,
+    captureCamera,
+    captureMicrophone,
+    captureSystemAudio,
+    hasPermission,
+    cameraReady,
+    setSourceType,
+    setSelectedSource,
+    setSources,
+    setIsLoadingSources,
+    setCaptureCamera,
+    setCaptureMicrophone,
+    setCaptureSystemAudio,
+    setHasPermission,
+    setCameraReady,
+    startRecording,
+    setProjectId,
+    setRecordingState,
+  } = useRecordingStore();
+
+  const isRecording = recordingState === "recording" || recordingState === "paused";
 
   // Check permission on mount
   useEffect(() => {
@@ -76,7 +99,7 @@ export function RecorderPage() {
   // Listen for recording stopped event to navigate to editor
   useEffect(() => {
     const unlisten = listen<string>("recording-stopped", (event) => {
-      setIsRecording(false);
+      setRecordingState("idle");
       // Navigate to editor with the project ID
       navigate(`/editor/${event.payload}`);
     });
@@ -84,10 +107,10 @@ export function RecorderPage() {
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [navigate]);
+  }, [navigate, setRecordingState]);
 
   async function loadSources() {
-    setIsLoading(true);
+    setIsLoadingSources(true);
     try {
       const result = await invoke<CaptureSource[]>("list_capture_sources", {
         sourceType,
@@ -111,14 +134,14 @@ export function RecorderPage() {
         setSelectedSource(mockSources[0]);
       }
     } finally {
-      setIsLoading(false);
+      setIsLoadingSources(false);
     }
   }
 
-  async function startRecording() {
+  async function handleStartRecording() {
     if (!selectedSource) return;
     
-    setIsRecording(true);
+    startRecording("");  // Temporarily set recording state
     try {
       const options: RecordingOptions = {
         sourceId: selectedSource.id,
@@ -131,7 +154,7 @@ export function RecorderPage() {
       const result = await invoke<{ projectId: string }>("start_screen_recording", { options });
       
       // Store project ID for camera recording and in localStorage for widget
-      setCurrentProjectId(result.projectId);
+      setProjectId(result.projectId);
       localStorage.setItem("currentProjectId", result.projectId);
       
       // Open the recording widget window
@@ -142,7 +165,7 @@ export function RecorderPage() {
       await mainWindow.hide();
     } catch (error) {
       console.error("Failed to start recording:", error);
-      setIsRecording(false);
+      setRecordingState("idle");
     }
   }
 
@@ -246,7 +269,7 @@ export function RecorderPage() {
             sources={sources}
             selectedSource={selectedSource}
             onSelect={setSelectedSource}
-            isLoading={isLoading}
+            isLoading={isLoadingSources}
           />
         </div>
 
@@ -256,7 +279,7 @@ export function RecorderPage() {
             <CameraPreview
               enabled={captureCamera}
               isRecording={isRecording}
-              projectId={currentProjectId}
+              projectId={projectId}
               onCameraReady={setCameraReady}
             />
           </div>
@@ -298,110 +321,11 @@ export function RecorderPage() {
         {/* Record Button */}
         <div className="animate-fade-up-delay-4">
           <RecordButton
-            onClick={startRecording}
+            onClick={handleStartRecording}
             disabled={!selectedSource || isRecording}
           />
         </div>
       </main>
     </div>
-  );
-}
-
-/* ============================================
-   Sub-components for the Studio Aesthetic
-   ============================================ */
-
-function BrandLogo() {
-  return (
-    <div className="flex items-center gap-3">
-      {/* Custom logo mark - stylized "rec" indicator */}
-      <div className="relative flex size-10 items-center justify-center">
-        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5" />
-        <div className="relative size-4 rounded-full bg-primary shadow-lg" style={{ boxShadow: '0 0 12px oklch(0.62 0.24 25 / 0.5)' }} />
-        <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/10" />
-      </div>
-      <div className="flex flex-col">
-        <span className="text-base font-semibold tracking-tight text-foreground">
-          Open Rec
-        </span>
-        <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/50">
-          Studio
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function StatusIndicator({ ready }: { ready: boolean }) {
-  return (
-    <div className={cn(
-      "flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-300",
-      ready 
-        ? "bg-primary/10 text-primary" 
-        : "bg-muted/50 text-muted-foreground"
-    )}>
-      <div className={cn(
-        "size-2 rounded-full transition-all duration-300",
-        ready 
-          ? "bg-primary animate-pulse shadow-[0_0_8px_oklch(0.62_0.24_25_/_0.6)]" 
-          : "bg-muted-foreground/50"
-      )} />
-      {ready ? "Ready" : "Select Source"}
-    </div>
-  );
-}
-
-function SourceTypeButton({ 
-  active, 
-  onClick, 
-  icon, 
-  label 
-}: { 
-  active: boolean; 
-  onClick: () => void; 
-  icon: React.ReactNode; 
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
-        active
-          ? "bg-card text-foreground shadow-md"
-          : "text-muted-foreground hover:text-foreground/80"
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function RecordButton({ 
-  onClick, 
-  disabled 
-}: { 
-  onClick: () => void; 
-  disabled: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "group flex w-full items-center justify-center gap-3 rounded-xl px-6 py-4 font-semibold transition-all duration-200",
-        disabled
-          ? "cursor-not-allowed bg-muted text-muted-foreground opacity-50"
-          : "bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 active:scale-[0.98]"
-      )}
-    >
-      {/* Record indicator dot */}
-      <div className={cn(
-        "size-2.5 rounded-full transition-colors",
-        disabled ? "bg-muted-foreground/50" : "bg-white"
-      )} />
-      <span className="text-sm tracking-tight">Start Recording</span>
-    </button>
   );
 }

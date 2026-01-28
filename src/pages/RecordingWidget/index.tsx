@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Pause, Play, Square } from "lucide-react";
@@ -7,30 +7,40 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useRecordingStore, RecordingState } from "../../stores";
 import { cn } from "@/lib/utils";
 
-type RecordingState = "recording" | "paused";
-
 export function RecordingWidget() {
-  const [state, setState] = useState<RecordingState>("recording");
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const {
+    state,
+    elapsedTime,
+    projectId,
+    setRecordingState,
+    incrementElapsedTime,
+    setProjectId,
+    resetRecording,
+  } = useRecordingStore();
+  
   const intervalRef = useRef<number | null>(null);
 
-  // Get project ID from localStorage on mount
+  // Get project ID from localStorage on mount (fallback for when store is reset)
   useEffect(() => {
     const storedProjectId = localStorage.getItem("currentProjectId");
-    if (storedProjectId) {
+    if (storedProjectId && !projectId) {
       setProjectId(storedProjectId);
     }
-  }, []);
+    // Set initial recording state if not already set
+    if (state === "idle") {
+      setRecordingState("recording");
+    }
+  }, [projectId, setProjectId, state, setRecordingState]);
 
   // Listen for recording state updates from backend
   useEffect(() => {
     const unlistenState = listen<{ state: RecordingState; projectId: string }>(
       "recording-state-changed",
       (event) => {
-        setState(event.payload.state);
+        setRecordingState(event.payload.state);
         if (event.payload.projectId) {
           setProjectId(event.payload.projectId);
         }
@@ -40,13 +50,13 @@ export function RecordingWidget() {
     return () => {
       unlistenState.then((fn) => fn());
     };
-  }, []);
+  }, [setRecordingState, setProjectId]);
 
   // Timer for elapsed time
   useEffect(() => {
     if (state === "recording") {
       intervalRef.current = window.setInterval(() => {
-        setElapsedTime((prev) => prev + 1);
+        incrementElapsedTime();
       }, 1000);
     } else {
       if (intervalRef.current) {
@@ -60,16 +70,16 @@ export function RecordingWidget() {
         clearInterval(intervalRef.current);
       }
     };
-  }, [state]);
+  }, [state, incrementElapsedTime]);
 
   async function togglePause() {
     try {
       if (state === "recording") {
         await invoke("pause_recording", { projectId });
-        setState("paused");
+        setRecordingState("paused");
       } else {
         await invoke("resume_recording", { projectId });
-        setState("recording");
+        setRecordingState("recording");
       }
     } catch (error) {
       console.error("Failed to toggle pause:", error);
@@ -94,6 +104,9 @@ export function RecordingWidget() {
       
       // Clear stored project ID
       localStorage.removeItem("currentProjectId");
+      
+      // Reset recording state in store
+      resetRecording();
     } catch (error) {
       console.error("[RecordingWidget] Failed to stop recording:", error);
     }
@@ -110,6 +123,8 @@ export function RecordingWidget() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
+  const isRecording = state === "recording";
+
   return (
     <div
       className="studio-grain relative flex h-full cursor-move select-none items-center justify-center overflow-hidden rounded-xl bg-background"
@@ -119,7 +134,7 @@ export function RecordingWidget() {
       <div 
         className={cn(
           "pointer-events-none absolute inset-0 transition-all duration-500",
-          state === "recording"
+          isRecording
             ? "bg-[radial-gradient(ellipse_at_center,oklch(0.25_0.12_25)_0%,transparent_70%)] opacity-60"
             : "bg-[radial-gradient(ellipse_at_center,oklch(0.25_0.10_75)_0%,transparent_70%)] opacity-40"
         )}
@@ -133,13 +148,13 @@ export function RecordingWidget() {
             <div
               className={cn(
                 "size-2.5 rounded-full transition-all duration-300",
-                state === "recording"
+                isRecording
                   ? "animate-pulse bg-primary shadow-[0_0_8px_oklch(0.62_0.24_25/0.8)]"
                   : "bg-accent"
               )}
             />
             {/* Outer glow ring for recording state */}
-            {state === "recording" && (
+            {isRecording && (
               <div className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
             )}
           </div>
@@ -150,7 +165,7 @@ export function RecordingWidget() {
           <span 
             className={cn(
               "font-mono text-base font-semibold tabular-nums tracking-wide transition-colors duration-300",
-              state === "recording" ? "text-foreground" : "text-muted-foreground"
+              isRecording ? "text-foreground" : "text-muted-foreground"
             )}
           >
             {formatTime(elapsedTime)}
@@ -158,12 +173,12 @@ export function RecordingWidget() {
           <span 
             className={cn(
               "text-[9px] font-semibold uppercase tracking-widest transition-colors duration-300",
-              state === "recording" 
+              isRecording 
                 ? "text-primary" 
                 : "text-accent"
             )}
           >
-            {state === "recording" ? "Live" : "Paused"}
+            {isRecording ? "Live" : "Paused"}
           </span>
         </div>
 
@@ -179,12 +194,12 @@ export function RecordingWidget() {
                 onClick={togglePause}
                 className={cn(
                   "flex size-8 items-center justify-center rounded-md transition-all duration-200",
-                  state === "recording"
+                  isRecording
                     ? "text-muted-foreground hover:bg-muted hover:text-foreground"
                     : "bg-accent/20 text-accent hover:bg-accent/30"
                 )}
               >
-                {state === "recording" ? (
+                {isRecording ? (
                   <Pause className="size-4" strokeWidth={2} />
                 ) : (
                   <Play className="size-4" strokeWidth={2} />
@@ -192,7 +207,7 @@ export function RecordingWidget() {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              {state === "recording" ? "Pause" : "Resume"}
+              {isRecording ? "Pause" : "Resume"}
             </TooltipContent>
           </Tooltip>
           
