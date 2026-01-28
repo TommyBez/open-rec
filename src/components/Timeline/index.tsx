@@ -217,9 +217,6 @@ export function Timeline({
     }
     // Select the zoom
     onSelectZoom(zoomId);
-    // Deselect segment and speed when selecting zoom
-    onSelectSegment(null);
-    onSelectSpeed(null);
   }
 
   // Zoom segment mouse down for drag/resize
@@ -250,9 +247,6 @@ export function Timeline({
     }
     // Select the speed
     onSelectSpeed(speedId);
-    // Deselect segment and zoom when selecting speed
-    onSelectSegment(null);
-    onSelectZoom(null);
   }
 
   // Speed segment mouse down for drag/resize
