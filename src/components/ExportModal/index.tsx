@@ -135,10 +135,24 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
     }
   }
 
-  function handleClose() {
-    // Clean up listeners
+  function cleanupListeners() {
     unlistenRefs.current.forEach(unlisten => unlisten());
     unlistenRefs.current = [];
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) {
+      // Prevent closing while export is in progress
+      if (exportStatus === "exporting") {
+        return;
+      }
+      cleanupListeners();
+    }
+    onOpenChange(nextOpen);
+  }
+
+  function handleClose() {
+    cleanupListeners();
     onOpenChange(false);
   }
 
@@ -153,7 +167,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[580px]">
         <DialogHeader>
           <DialogTitle>Export</DialogTitle>
