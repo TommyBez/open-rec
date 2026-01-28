@@ -156,8 +156,41 @@ pub fn build_ffmpeg_args(
                 // No camera and not using input seeking - apply edit filters
                 let filter = build_filter_complex(project, options);
                 if !filter.is_empty() {
-                    // Check if we have multi-segment concat (which uses trim and requires video-only output)
+                    // Check if we have multi-segment concat (clip segments or speed segments)
                     let has_multi_segment = enabled_segments.len() > 1;
+                    
+                    // Check if speed effects create multi-segment concat
+                    // This happens when speed effects don't cover the entire video
+                    let has_speed_concat = {
+                        let active_speed_effects: Vec<_> = project.edits.speed.iter()
+                            .filter(|s| (s.speed - 1.0).abs() > 0.01)
+                            .collect();
+                        
+                        if active_speed_effects.is_empty() {
+                            false
+                        } else {
+                            // Check if speed effects create multiple segments
+                            let mut segment_count = 0;
+                            let mut current_pos = 0.0;
+                            let video_duration = project.duration;
+                            
+                            let mut sorted_effects = active_speed_effects;
+                            sorted_effects.sort_by(|a, b| a.start_time.partial_cmp(&b.start_time).unwrap());
+                            
+                            for effect in &sorted_effects {
+                                if effect.start_time > current_pos {
+                                    segment_count += 1; // Gap before effect
+                                }
+                                segment_count += 1; // The effect itself
+                                current_pos = effect.end_time;
+                            }
+                            if current_pos < video_duration {
+                                segment_count += 1; // Gap after last effect
+                            }
+                            
+                            segment_count > 1
+                        }
+                    };
                     
                     // Add scaling to the filter chain before final output
                     let filter_with_scale = format!(
@@ -172,7 +205,7 @@ pub fn build_ffmpeg_args(
                     args.push("-map".to_string());
                     args.push("[vout]".to_string());
                     
-                    if has_multi_segment {
+                    if has_multi_segment || has_speed_concat {
                         // Multi-segment concat doesn't handle audio, strip it
                         args.push("-an".to_string());
                     } else {

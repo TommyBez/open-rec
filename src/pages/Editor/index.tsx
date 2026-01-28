@@ -88,6 +88,23 @@ export function EditorPage() {
     ) ?? null;
   }, [project, currentTime]);
 
+  // Find the active speed effect at the current time (for preview)
+  const activeSpeed = useMemo(() => {
+    if (!project) return null;
+    return project.edits.speed.find(
+      (s) => currentTime >= s.startTime && currentTime < s.endTime
+    ) ?? null;
+  }, [project, currentTime]);
+
+  // Get the current playback rate based on active speed effect
+  // Uses draft value when editing the currently active speed
+  const currentPlaybackRate = useMemo(() => {
+    if (!activeSpeed) return 1;
+    // Use draft values if we're editing the currently active speed
+    const useDraft = speedDraft && selectedSpeedId === activeSpeed.id;
+    return useDraft ? speedDraft.speed : activeSpeed.speed;
+  }, [activeSpeed, selectedSpeedId, speedDraft]);
+
   // Calculate video transform style for zoom preview
   // Uses draft values when the active zoom is the one being edited in the inspector
   const videoZoomStyle = useMemo(() => {
@@ -228,6 +245,14 @@ export function EditorPage() {
       video.removeEventListener("ended", handleEnded);
     };
   }, [project]);
+
+  // Update video playback rate based on active speed effect
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    video.playbackRate = currentPlaybackRate;
+  }, [currentPlaybackRate]);
 
   // Segment-aware playback: skip gaps between segments
   useEffect(() => {
@@ -539,13 +564,21 @@ export function EditorPage() {
                   className="max-h-full max-w-full transition-transform duration-150 ease-out"
                   style={videoZoomStyle}
                 />
-                {/* Zoom indicator badge */}
-                {activeZoom && (
-                  <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-md bg-violet-600/90 px-2 py-1 text-xs font-medium text-white shadow-lg backdrop-blur-sm">
-                    <ZoomIn className="size-3" strokeWidth={2} />
-                    <span>{activeZoom.scale}x</span>
-                  </div>
-                )}
+                {/* Effect indicator badges */}
+                <div className="absolute right-3 top-3 flex flex-col gap-1.5">
+                  {activeZoom && (
+                    <div className="flex items-center gap-1.5 rounded-md bg-violet-600/90 px-2 py-1 text-xs font-medium text-white shadow-lg backdrop-blur-sm">
+                      <ZoomIn className="size-3" strokeWidth={2} />
+                      <span>{activeZoom.scale}x</span>
+                    </div>
+                  )}
+                  {activeSpeed && (
+                    <div className="flex items-center gap-1.5 rounded-md bg-accent/90 px-2 py-1 text-xs font-medium text-accent-foreground shadow-lg backdrop-blur-sm">
+                      <Gauge className="size-3" strokeWidth={2} />
+                      <span>{currentPlaybackRate}x</span>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex min-h-[300px] w-full flex-col items-center justify-center gap-3 text-muted-foreground">
