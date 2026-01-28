@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useCallback } from "react";
+import { useEffect, useRef, useMemo, useCallback, startTransition } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -31,6 +31,14 @@ import { useProject } from "../../hooks/useProject";
 import { useEditorStore } from "../../stores";
 import { Project, ZoomEffect, SpeedEffect } from "../../types/project";
 import { cn } from "@/lib/utils";
+
+// Hoisted outside component to avoid recreation on every render
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 100);
+  return `${mins}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(2, "0")}`;
+}
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -268,7 +276,12 @@ export function EditorPage() {
     return null; // No more segments
   }, [enabledSegments]);
 
+  // Ref to access latest project in event handlers without re-subscribing (Rule 8.2)
+  const projectRef = useRef(project);
+  projectRef.current = project;
+
   // Video metadata and ended handlers
+  // Using ref pattern to avoid re-subscribing on every project change
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -277,15 +290,16 @@ export function EditorPage() {
       const actualDuration = video.duration;
       setDuration(actualDuration);
       
+      const currentProject = projectRef.current;
       // Sync project duration and clamp segments if actual video duration differs
-      if (project && Math.abs(project.duration - actualDuration) > 0.1) {
+      if (currentProject && Math.abs(currentProject.duration - actualDuration) > 0.1) {
         // Update project with correct duration and clamp segment times
         setProject({
-          ...project,
+          ...currentProject,
           duration: actualDuration,
           edits: {
-            ...project.edits,
-            segments: project.edits.segments.map(seg => ({
+            ...currentProject.edits,
+            segments: currentProject.edits.segments.map(seg => ({
               ...seg,
               startTime: Math.max(0, Math.min(seg.startTime, actualDuration)),
               endTime: Math.max(0, Math.min(seg.endTime, actualDuration)),
@@ -303,16 +317,19 @@ export function EditorPage() {
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
       video.removeEventListener("ended", handleEnded);
     };
-  }, [project, setDuration, setIsPlaying, setProject]);
+  }, [setDuration, setIsPlaying, setProject]);
 
   // Track the current speed segment to detect boundary crossings
   const currentSpeedSegmentRef = useRef<string | null>(null);
+
+  // Extract speed effects for narrower dependency (Rule 5.6)
+  const speedEffects = project?.edits.speed;
 
   // Use requestAnimationFrame for smooth time updates during playback
   // Throttle UI updates to reduce React overhead while checking speed boundaries every frame
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !isPlaying || !project) return;
+    if (!video || !isPlaying || !speedEffects) return;
 
     let rafId: number;
     let lastUIUpdateTime = 0;
@@ -323,7 +340,7 @@ export function EditorPage() {
       const videoTime = video.currentTime;
       
       // Check if we've crossed into a different speed segment (check every frame for responsiveness)
-      const activeSpeedSegment = project.edits.speed.find(
+      const activeSpeedSegment = speedEffects.find(
         (s) => videoTime >= s.startTime && videoTime < s.endTime
       );
       const newSegmentId = activeSpeedSegment?.id ?? null;
@@ -338,8 +355,9 @@ export function EditorPage() {
       }
       
       // Throttle React state updates for UI (timeline scrubber, etc.)
+      // Use startTransition to mark as non-urgent, keeping UI responsive
       if (timestamp - lastUIUpdateTime >= uiUpdateInterval) {
-        setCurrentTime(videoTime);
+        startTransition(() => setCurrentTime(videoTime));
         lastUIUpdateTime = timestamp;
       }
       
@@ -351,7 +369,7 @@ export function EditorPage() {
     return () => {
       cancelAnimationFrame(rafId);
     };
-  }, [isPlaying, project, setCurrentTime]);
+  }, [isPlaying, speedEffects, setCurrentTime]);
 
   // Update video playback rate based on active speed effect
   // Only update when the rate actually changes to avoid stuttering at high speeds
@@ -568,13 +586,6 @@ export function EditorPage() {
   const canDeleteZoom = selectedZoomId !== null;
   const canDeleteSpeed = selectedSpeedId !== null;
   const canDelete = canDeleteSegment || canDeleteZoom || canDeleteSpeed;
-
-  function formatTime(seconds: number): string {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 100);
-    return `${mins}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(2, "0")}`;
-  }
 
   // Loading state with studio aesthetic
   if (isLoading || !project) {

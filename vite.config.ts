@@ -14,6 +14,10 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Optimize barrel imports for faster dev startup and HMR
+  optimizeDeps: {
+    include: ["lucide-react"],
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
