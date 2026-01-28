@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Monitor, AppWindow, Lock, FolderOpen } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { SourceSelector } from "../../components/SourceSelector";
 import { ToggleRow } from "../../components/ToggleRow";
 import { Button } from "@/components/ui/button";
@@ -307,16 +308,28 @@ export function RecorderPage() {
         </div>
 
         {/* Camera Preview */}
-        {captureCamera && (
-          <div className="my-1 flex justify-center animate-scale-in">
-            <CameraPreview
-              enabled={captureCamera}
-              isRecording={isRecording}
-              projectId={projectId}
-              onCameraReady={setCameraReady}
-            />
-          </div>
-        )}
+        <AnimatePresence>
+          {captureCamera && (
+            <motion.div
+              className="my-1 flex justify-center"
+              initial={{ opacity: 0, scale: 0.8, y: -10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: -10 }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 25,
+              }}
+            >
+              <CameraPreview
+                enabled={captureCamera}
+                isRecording={isRecording}
+                projectId={projectId}
+                onCameraReady={setCameraReady}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Input Sources */}
         <div className="animate-fade-up-delay-3 space-y-2">
