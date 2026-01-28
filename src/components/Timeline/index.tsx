@@ -247,32 +247,88 @@ export function Timeline({
         hasDraggedRef.current = true;
       }
       
-      const deltaTime = (deltaX / rect.width) * timelineDuration;
+      // Convert deltaX to display time delta
+      const deltaDisplayTime = (deltaX / rect.width) * timelineDuration;
       
       const { startTime: origStart, endTime: origEnd } = dragStartRef.current;
-      const effectDuration = origEnd - origStart;
-      const minDuration = 0.5; // Minimum 0.5 seconds
+      const sourceDuration = origEnd - origStart; // Preserve source duration for move
+      const minDuration = 0.5; // Minimum 0.5 seconds in source time
       
-      let newStart = origStart;
-      let newEnd = origEnd;
+      // Convert original source times to display positions
+      const origDisplayStart = sourceToDisplayTime(origStart);
+      const origDisplayEnd = sourceToDisplayTime(origEnd);
+      
+      let newStart: number;
+      let newEnd: number;
       
       switch (zoomDragMode) {
-        case "move":
-          newStart = Math.max(0, Math.min(duration - effectDuration, origStart + deltaTime));
-          newEnd = newStart + effectDuration;
+        case "move": {
+          // Calculate new display start position
+          let newDisplayStart = origDisplayStart + deltaDisplayTime;
+          
+          // Clamp display position to timeline bounds
+          newDisplayStart = Math.max(0, Math.min(timelineDuration, newDisplayStart));
+          
+          // Convert display position back to source time
+          newStart = displayToSourceTime(newDisplayStart);
+          
+          // Preserve source duration and clamp to video bounds
+          newEnd = newStart + sourceDuration;
+          if (newEnd > duration) {
+            newEnd = duration;
+            newStart = Math.max(0, newEnd - sourceDuration);
+          }
           break;
-        case "resize-start":
-          newStart = Math.max(0, Math.min(origEnd - minDuration, origStart + deltaTime));
+        }
+        case "resize-start": {
+          // Calculate new display start position
+          let newDisplayStart = origDisplayStart + deltaDisplayTime;
+          
+          // Clamp to valid display range (can't go past end edge minus some margin)
+          newDisplayStart = Math.max(0, newDisplayStart);
+          
+          // Convert back to source time
+          newStart = displayToSourceTime(newDisplayStart);
+          newEnd = origEnd;
+          
+          // Apply minimum duration constraint in source-time space
+          if (newEnd - newStart < minDuration) {
+            newStart = newEnd - minDuration;
+          }
+          
+          // Final clamp to source bounds
+          newStart = Math.max(0, newStart);
           break;
-        case "resize-end":
-          newEnd = Math.max(origStart + minDuration, Math.min(duration, origEnd + deltaTime));
+        }
+        case "resize-end": {
+          // Calculate new display end position
+          let newDisplayEnd = origDisplayEnd + deltaDisplayTime;
+          
+          // Clamp to valid display range
+          newDisplayEnd = Math.min(timelineDuration, newDisplayEnd);
+          
+          // Convert back to source time
+          newStart = origStart;
+          newEnd = displayToSourceTime(newDisplayEnd);
+          
+          // Apply minimum duration constraint in source-time space
+          if (newEnd - newStart < minDuration) {
+            newEnd = newStart + minDuration;
+          }
+          
+          // Final clamp to source bounds
+          newEnd = Math.min(duration, newEnd);
           break;
+        }
+        default:
+          newStart = origStart;
+          newEnd = origEnd;
       }
       
       // Update local state for immediate visual feedback (no parent re-render)
       setLocalZoomOverride({ id: draggingZoomId, startTime: newStart, endTime: newEnd });
     });
-  }, [draggingZoomId, zoomDragMode, timelineDuration, duration]);
+  }, [draggingZoomId, zoomDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime]);
 
   // Handle zoom drag end - commit local state to parent
   const handleZoomDragEnd = useCallback(() => {
