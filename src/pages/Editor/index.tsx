@@ -25,8 +25,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { ZoomInspector } from "../../components/ZoomInspector";
+import { SpeedInspector } from "../../components/SpeedInspector";
 import { useProject } from "../../hooks/useProject";
-import { Project, ZoomEffect } from "../../types/project";
+import { Project, ZoomEffect, SpeedEffect } from "../../types/project";
 import { cn } from "@/lib/utils";
 
 export function EditorPage() {
@@ -47,6 +48,8 @@ export function EditorPage() {
     updateZoom,
     deleteZoom,
     addSpeed,
+    updateSpeed,
+    deleteSpeed,
   } = useProject(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
@@ -56,16 +59,26 @@ export function EditorPage() {
   const [selectedTool, setSelectedTool] = useState<"cut" | "zoom" | "speed" | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
+  const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   // Draft state for live preview while editing zoom properties in the inspector
   const [zoomDraft, setZoomDraft] = useState<{ scale: number; x: number; y: number } | null>(null);
+  
+  // Draft state for live preview while editing speed properties in the inspector
+  const [speedDraft, setSpeedDraft] = useState<{ speed: number } | null>(null);
 
   // Derive the selected zoom effect from the project
   const selectedZoom = useMemo(() => {
     if (!project || !selectedZoomId) return null;
     return project.edits.zoom.find((z) => z.id === selectedZoomId) ?? null;
   }, [project, selectedZoomId]);
+
+  // Derive the selected speed effect from the project
+  const selectedSpeed = useMemo(() => {
+    if (!project || !selectedSpeedId) return null;
+    return project.edits.speed.find((s) => s.id === selectedSpeedId) ?? null;
+  }, [project, selectedSpeedId]);
 
   // Find the active zoom effect at the current time (for preview)
   const activeZoom = useMemo(() => {
@@ -74,6 +87,23 @@ export function EditorPage() {
       (z) => currentTime >= z.startTime && currentTime < z.endTime
     ) ?? null;
   }, [project, currentTime]);
+
+  // Find the active speed effect at the current time (for preview)
+  const activeSpeed = useMemo(() => {
+    if (!project) return null;
+    return project.edits.speed.find(
+      (s) => currentTime >= s.startTime && currentTime < s.endTime
+    ) ?? null;
+  }, [project, currentTime]);
+
+  // Get the current playback rate based on active speed effect
+  // Uses draft value when editing the currently active speed
+  const currentPlaybackRate = useMemo(() => {
+    if (!activeSpeed) return 1;
+    // Use draft values if we're editing the currently active speed
+    const useDraft = speedDraft && selectedSpeedId === activeSpeed.id;
+    return useDraft ? speedDraft.speed : activeSpeed.speed;
+  }, [activeSpeed, selectedSpeedId, speedDraft]);
 
   // Calculate video transform style for zoom preview
   // Uses draft values when the active zoom is the one being edited in the inspector
@@ -121,6 +151,55 @@ export function EditorPage() {
       .filter((s) => s.enabled)
       .sort((a, b) => a.startTime - b.startTime);
     
+    // Get active speed effects (those that actually change speed)
+    const speedEffects = project.edits.speed.filter(
+      (s) => Math.abs(s.speed - 1.0) > 0.01
+    );
+    
+    // Helper to get speed at a given time
+    const getSpeedAt = (time: number): number => {
+      for (const effect of speedEffects) {
+        if (time >= effect.startTime && time < effect.endTime) {
+          return effect.speed;
+        }
+      }
+      return 1.0;
+    };
+    
+    // Helper to calculate speed-adjusted duration for a time range
+    const getAdjustedDuration = (start: number, end: number): number => {
+      if (speedEffects.length === 0) {
+        return end - start;
+      }
+      
+      // Build time segments with their speeds
+      const breakpoints = new Set<number>();
+      breakpoints.add(start);
+      breakpoints.add(end);
+      
+      for (const effect of speedEffects) {
+        if (effect.startTime > start && effect.startTime < end) {
+          breakpoints.add(effect.startTime);
+        }
+        if (effect.endTime > start && effect.endTime < end) {
+          breakpoints.add(effect.endTime);
+        }
+      }
+      
+      const sortedPoints = Array.from(breakpoints).sort((a, b) => a - b);
+      let totalAdjusted = 0;
+      
+      for (let i = 0; i < sortedPoints.length - 1; i++) {
+        const segStart = sortedPoints[i];
+        const segEnd = sortedPoints[i + 1];
+        const speed = getSpeedAt(segStart);
+        // Duration is divided by speed (2x speed = half duration)
+        totalAdjusted += (segEnd - segStart) / speed;
+      }
+      
+      return totalAdjusted;
+    };
+    
     // Calculate edited duration and time mapping (clamp to video duration)
     let editedOffset = 0;
     const segmentInfo: Array<{ seg: typeof sorted[0]; clampedStart: number; clampedEnd: number; editedStart: number }> = [];
@@ -137,7 +216,8 @@ export function EditorPage() {
           clampedEnd,
           editedStart: editedOffset,
         });
-        editedOffset += segDuration;
+        // Use speed-adjusted duration
+        editedOffset += getAdjustedDuration(clampedStart, clampedEnd);
       }
     }
     
@@ -176,12 +256,11 @@ export function EditorPage() {
     return null; // No more segments
   }, [enabledSegments]);
 
-  // Video time update handler
+  // Video metadata and ended handlers
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const handleTimeUpdate = () => setCurrentTime(video.currentTime);
     const handleLoadedMetadata = () => {
       const actualDuration = video.duration;
       setDuration(actualDuration);
@@ -205,16 +284,75 @@ export function EditorPage() {
     };
     const handleEnded = () => setIsPlaying(false);
 
-    video.addEventListener("timeupdate", handleTimeUpdate);
     video.addEventListener("loadedmetadata", handleLoadedMetadata);
     video.addEventListener("ended", handleEnded);
 
     return () => {
-      video.removeEventListener("timeupdate", handleTimeUpdate);
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
       video.removeEventListener("ended", handleEnded);
     };
   }, [project]);
+
+  // Track the current speed segment to detect boundary crossings
+  const currentSpeedSegmentRef = useRef<string | null>(null);
+
+  // Use requestAnimationFrame for smooth time updates during playback
+  // Throttle UI updates to reduce React overhead while checking speed boundaries every frame
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isPlaying || !project) return;
+
+    let rafId: number;
+    let lastUIUpdateTime = 0;
+    // Update UI at ~30fps - video renders independently at full speed
+    const uiUpdateInterval = 1000 / 30;
+    
+    const updateTime = (timestamp: number) => {
+      const videoTime = video.currentTime;
+      
+      // Check if we've crossed into a different speed segment (check every frame for responsiveness)
+      const activeSpeedSegment = project.edits.speed.find(
+        (s) => videoTime >= s.startTime && videoTime < s.endTime
+      );
+      const newSegmentId = activeSpeedSegment?.id ?? null;
+      
+      // If segment changed, update playback rate immediately
+      if (newSegmentId !== currentSpeedSegmentRef.current) {
+        currentSpeedSegmentRef.current = newSegmentId;
+        const newRate = activeSpeedSegment?.speed ?? 1;
+        if (video.playbackRate !== newRate) {
+          video.playbackRate = newRate;
+        }
+      }
+      
+      // Throttle React state updates for UI (timeline scrubber, etc.)
+      if (timestamp - lastUIUpdateTime >= uiUpdateInterval) {
+        setCurrentTime(videoTime);
+        lastUIUpdateTime = timestamp;
+      }
+      
+      rafId = requestAnimationFrame(updateTime);
+    };
+    
+    rafId = requestAnimationFrame(updateTime);
+    
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
+  }, [isPlaying, project]);
+
+  // Update video playback rate based on active speed effect
+  // Only update when the rate actually changes to avoid stuttering at high speeds
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    // Only set playbackRate when it actually changes to avoid performance issues
+    // Repeatedly setting playbackRate (even to the same value) can cause lag at high speeds
+    if (video.playbackRate !== currentPlaybackRate) {
+      video.playbackRate = currentPlaybackRate;
+    }
+  }, [currentPlaybackRate]);
 
   // Segment-aware playback: skip gaps between segments
   useEffect(() => {
@@ -373,28 +511,52 @@ export function EditorPage() {
     if (selectedZoomId) {
       deleteZoom(selectedZoomId);
       setSelectedZoomId(null);
+    } else if (selectedSpeedId) {
+      deleteSpeed(selectedSpeedId);
+      setSelectedSpeedId(null);
     } else if (selectedSegmentId && project && project.edits.segments.length > 1) {
       deleteSegment(selectedSegmentId);
       setSelectedSegmentId(null);
     }
   }
 
-  // Handle segment selection (deselects zoom when selecting segment)
+  // Handle segment selection (deselects zoom and speed when selecting segment)
   function handleSelectSegment(segmentId: string | null) {
     setSelectedSegmentId(segmentId);
-    if (segmentId) setSelectedZoomId(null);
+    if (segmentId) {
+      setSelectedZoomId(null);
+      setSelectedSpeedId(null);
+    }
   }
 
-  // Handle zoom selection (deselects segment when selecting zoom)
+  // Handle zoom selection (deselects segment and speed when selecting zoom)
   function handleSelectZoom(zoomId: string | null) {
     setSelectedZoomId(zoomId);
     setZoomDraft(null); // Clear draft when selection changes
-    if (zoomId) setSelectedSegmentId(null);
+    if (zoomId) {
+      setSelectedSegmentId(null);
+      setSelectedSpeedId(null);
+    }
+  }
+
+  // Handle speed selection (deselects segment and zoom when selecting speed)
+  function handleSelectSpeed(speedId: string | null) {
+    setSelectedSpeedId(speedId);
+    setSpeedDraft(null); // Clear draft when selection changes
+    if (speedId) {
+      setSelectedSegmentId(null);
+      setSelectedZoomId(null);
+    }
   }
 
   // Handle zoom inspector draft changes (for live preview)
   const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => {
     setZoomDraft(draft);
+  }, []);
+
+  // Handle speed inspector draft changes (for live preview)
+  const handleSpeedDraftChange = useCallback((draft: { speed: number }) => {
+    setSpeedDraft(draft);
   }, []);
 
   // Handle zoom inspector commits
@@ -404,16 +566,30 @@ export function EditorPage() {
     }
   }, [selectedZoomId, updateZoom]);
 
+  // Handle speed inspector commits
+  const handleSpeedCommit = useCallback((updates: Partial<SpeedEffect>) => {
+    if (selectedSpeedId) {
+      updateSpeed(selectedSpeedId, updates);
+    }
+  }, [selectedSpeedId, updateSpeed]);
+
   // Close the zoom inspector
   const handleCloseZoomInspector = useCallback(() => {
     setSelectedZoomId(null);
     setZoomDraft(null);
   }, []);
 
+  // Close the speed inspector
+  const handleCloseSpeedInspector = useCallback(() => {
+    setSelectedSpeedId(null);
+    setSpeedDraft(null);
+  }, []);
+
   // Check if we can delete
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
   const canDeleteZoom = selectedZoomId !== null;
-  const canDelete = canDeleteSegment || canDeleteZoom;
+  const canDeleteSpeed = selectedSpeedId !== null;
+  const canDelete = canDeleteSegment || canDeleteZoom || canDeleteSpeed;
 
   function formatTime(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -488,13 +664,21 @@ export function EditorPage() {
                   className="max-h-full max-w-full transition-transform duration-150 ease-out"
                   style={videoZoomStyle}
                 />
-                {/* Zoom indicator badge */}
-                {activeZoom && (
-                  <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-md bg-violet-600/90 px-2 py-1 text-xs font-medium text-white shadow-lg backdrop-blur-sm">
-                    <ZoomIn className="size-3" strokeWidth={2} />
-                    <span>{activeZoom.scale}x</span>
-                  </div>
-                )}
+                {/* Effect indicator badges */}
+                <div className="absolute right-3 top-3 flex flex-col gap-1.5">
+                  {activeZoom && (
+                    <div className="flex items-center gap-1.5 rounded-md bg-violet-600/90 px-2 py-1 text-xs font-medium text-white shadow-lg backdrop-blur-sm">
+                      <ZoomIn className="size-3" strokeWidth={2} />
+                      <span>{activeZoom.scale}x</span>
+                    </div>
+                  )}
+                  {activeSpeed && (
+                    <div className="flex items-center gap-1.5 rounded-md bg-accent/90 px-2 py-1 text-xs font-medium text-accent-foreground shadow-lg backdrop-blur-sm">
+                      <Gauge className="size-3" strokeWidth={2} />
+                      <span>{currentPlaybackRate}x</span>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex min-h-[300px] w-full flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -633,6 +817,8 @@ export function EditorPage() {
                 <TooltipContent>
                   {canDeleteZoom 
                     ? "Delete selected zoom" 
+                    : canDeleteSpeed
+                    ? "Delete selected speed"
                     : canDeleteSegment 
                     ? "Delete selected segment" 
                     : "Select an item to delete"}
@@ -664,6 +850,28 @@ export function EditorPage() {
             </motion.aside>
           ) : null}
         </AnimatePresence>
+
+        {/* Speed Inspector Sidebar */}
+        <AnimatePresence>
+          {selectedSpeed ? (
+            <motion.aside
+              key="speed-inspector"
+              className="shrink-0 overflow-hidden"
+              initial={{ width: 0, opacity: 0, x: 16 }}
+              animate={{ width: 256, opacity: 1, x: 0 }}
+              exit={{ width: 0, opacity: 0, x: 16 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              aria-label="Speed settings"
+            >
+              <SpeedInspector
+                speed={selectedSpeed}
+                onCommit={handleSpeedCommit}
+                onClose={handleCloseSpeedInspector}
+                onDraftChange={handleSpeedDraftChange}
+              />
+            </motion.aside>
+          ) : null}
+        </AnimatePresence>
       </div>
 
       {/* Timeline */}
@@ -681,6 +889,9 @@ export function EditorPage() {
           selectedZoomId={selectedZoomId}
           onSelectZoom={handleSelectZoom}
           onUpdateZoom={updateZoom}
+          selectedSpeedId={selectedSpeedId}
+          onSelectSpeed={handleSelectSpeed}
+          onUpdateSpeed={updateSpeed}
         />
       </div>
 

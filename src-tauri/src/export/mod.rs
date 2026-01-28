@@ -156,8 +156,41 @@ pub fn build_ffmpeg_args(
                 // No camera and not using input seeking - apply edit filters
                 let filter = build_filter_complex(project, options);
                 if !filter.is_empty() {
-                    // Check if we have multi-segment concat (which uses trim and requires video-only output)
+                    // Check if we have multi-segment concat (clip segments or speed segments)
                     let has_multi_segment = enabled_segments.len() > 1;
+                    
+                    // Check if speed effects create multi-segment concat
+                    // This happens when speed effects don't cover the entire video
+                    let has_speed_concat = {
+                        let active_speed_effects: Vec<_> = project.edits.speed.iter()
+                            .filter(|s| (s.speed - 1.0).abs() > 0.01)
+                            .collect();
+                        
+                        if active_speed_effects.is_empty() {
+                            false
+                        } else {
+                            // Check if speed effects create multiple segments
+                            let mut segment_count = 0;
+                            let mut current_pos = 0.0;
+                            let video_duration = project.duration;
+                            
+                            let mut sorted_effects = active_speed_effects;
+                            sorted_effects.sort_by(|a, b| a.start_time.partial_cmp(&b.start_time).unwrap());
+                            
+                            for effect in &sorted_effects {
+                                if effect.start_time > current_pos {
+                                    segment_count += 1; // Gap before effect
+                                }
+                                segment_count += 1; // The effect itself
+                                current_pos = effect.end_time;
+                            }
+                            if current_pos < video_duration {
+                                segment_count += 1; // Gap after last effect
+                            }
+                            
+                            segment_count > 1
+                        }
+                    };
                     
                     // Add scaling to the filter chain before final output
                     let filter_with_scale = format!(
@@ -172,7 +205,7 @@ pub fn build_ffmpeg_args(
                     args.push("-map".to_string());
                     args.push("[vout]".to_string());
                     
-                    if has_multi_segment {
+                    if has_multi_segment || has_speed_concat {
                         // Multi-segment concat doesn't handle audio, strip it
                         args.push("-an".to_string());
                     } else {
@@ -387,25 +420,95 @@ fn build_filter_complex(project: &Project, options: &ExportOptions) -> String {
         current_video_label = output_label.to_string();
     }
     
-    // Handle speed effects
-    // Speed effects modify playback rate during specific time ranges
-    // Note: Time-based speed is complex; for now, apply to whole video if any exist
-    for speed in &edits.speed {
-        if (speed.speed - 1.0).abs() > 0.01 {
-            // For simplicity, apply speed change to the whole video
-            // Time-selective speed would require segment splitting similar to zoom
-            let setpts_label = format!("[speed{}]", filters.len());
+    // Handle speed effects using trim+setpts+concat for time-selective speed
+    // This approach splits the video into segments with different speeds
+    let active_speed_effects: Vec<_> = edits.speed.iter()
+        .filter(|s| (s.speed - 1.0).abs() > 0.01)
+        .collect();
+    
+    if !active_speed_effects.is_empty() {
+        // Sort speed effects by start time
+        let mut sorted_effects = active_speed_effects.clone();
+        sorted_effects.sort_by(|a, b| a.start_time.partial_cmp(&b.start_time).unwrap());
+        
+        // Build time segments: regions at normal speed and regions at modified speed
+        // Each segment: (start, end, speed_multiplier)
+        let mut segments: Vec<(f64, f64, f64)> = Vec::new();
+        let mut current_pos = 0.0;
+        let video_duration = project.duration;
+        
+        for effect in sorted_effects {
+            // Add normal-speed segment before this effect (if any gap)
+            if effect.start_time > current_pos {
+                segments.push((current_pos, effect.start_time, 1.0));
+            }
             
-            // Video speed: setpts adjusts presentation timestamps
-            // speed > 1 means faster, so PTS multiplier = 1/speed
+            // Add the speed-modified segment
+            let effect_end = effect.end_time.min(video_duration);
+            if effect_end > effect.start_time {
+                segments.push((effect.start_time, effect_end, effect.speed));
+            }
+            
+            current_pos = effect_end;
+        }
+        
+        // Add final normal-speed segment after all effects (if any)
+        if current_pos < video_duration {
+            segments.push((current_pos, video_duration, 1.0));
+        }
+        
+        // Filter out zero-duration segments
+        let segments: Vec<_> = segments.into_iter()
+            .filter(|(start, end, _)| end > start)
+            .collect();
+        
+        if segments.len() == 1 && (segments[0].2 - 1.0).abs() < 0.01 {
+            // Single segment at normal speed - no speed filter needed
+        } else if segments.len() == 1 {
+            // Single segment with speed change - simple setpts
+            let speed_multiplier = 1.0 / segments[0].2;
+            let output_label = "[speedout]";
             filters.push(format!(
                 "{}setpts={}*PTS{}",
                 current_video_label,
-                1.0 / speed.speed,
-                setpts_label
+                speed_multiplier,
+                output_label
             ));
+            current_video_label = output_label.to_string();
+        } else {
+            // Multiple segments - use trim+setpts+concat
+            let mut segment_labels = Vec::new();
+            let input_label = current_video_label.clone();
             
-            current_video_label = setpts_label;
+            for (i, (start, end, speed)) in segments.iter().enumerate() {
+                let seg_label = format!("[speedseg{}]", i);
+                let speed_multiplier = 1.0 / speed;
+                
+                // Trim the segment and apply speed change, reset PTS
+                filters.push(format!(
+                    "{}trim=start={}:end={},setpts={}*(PTS-STARTPTS){}",
+                    input_label,
+                    start,
+                    end,
+                    speed_multiplier,
+                    seg_label
+                ));
+                segment_labels.push(seg_label);
+            }
+            
+            // Concat all segments
+            let concat_inputs: String = segment_labels.iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join("");
+            let output_label = "[speedout]";
+            filters.push(format!(
+                "{}concat=n={}:v=1:a=0{}",
+                concat_inputs,
+                segment_labels.len(),
+                output_label
+            ));
+            current_video_label = output_label.to_string();
         }
     }
     

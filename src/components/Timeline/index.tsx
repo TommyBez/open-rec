@@ -16,6 +16,9 @@ interface TimelineProps {
   selectedZoomId: string | null;
   onSelectZoom: (zoomId: string | null) => void;
   onUpdateZoom?: (zoomId: string, updates: Partial<ZoomEffect>) => void;
+  selectedSpeedId: string | null;
+  onSelectSpeed: (speedId: string | null) => void;
+  onUpdateSpeed?: (speedId: string, updates: Partial<SpeedEffect>) => void;
 }
 
 type DragMode = "move" | "resize-start" | "resize-end" | null;
@@ -33,6 +36,9 @@ export function Timeline({
   selectedZoomId,
   onSelectZoom,
   onUpdateZoom,
+  selectedSpeedId,
+  onSelectSpeed,
+  onUpdateSpeed,
 }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -40,11 +46,18 @@ export function Timeline({
   // Zoom drag state
   const [zoomDragMode, setZoomDragMode] = useState<DragMode>(null);
   const [draggingZoomId, setDraggingZoomId] = useState<string | null>(null);
-  const dragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
-  const hasDraggedRef = useRef(false);
+  const zoomDragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
+  const zoomHasDraggedRef = useRef(false);
+  
+  // Speed drag state
+  const [speedDragMode, setSpeedDragMode] = useState<DragMode>(null);
+  const [draggingSpeedId, setDraggingSpeedId] = useState<string | null>(null);
+  const speedDragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
+  const speedHasDraggedRef = useRef(false);
   
   // Optimistic local state for smooth dragging (avoids parent re-renders during drag)
   const [localZoomOverride, setLocalZoomOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
+  const [localSpeedOverride, setLocalSpeedOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
   const rafIdRef = useRef<number | null>(null);
 
   // Calculate display positions for segments (shifted left to fill gaps)
@@ -158,6 +171,7 @@ export function Timeline({
     // Deselect all when clicking on timeline background
     onSelectSegment(null);
     onSelectZoom(null);
+    onSelectSpeed(null);
   }
 
   function handleMouseDown(e: React.MouseEvent) {
@@ -197,14 +211,15 @@ export function Timeline({
   function handleZoomClick(e: React.MouseEvent, zoomId: string) {
     e.stopPropagation();
     // Only select if we didn't just drag (dragging deselects on end)
-    if (hasDraggedRef.current) {
-      hasDraggedRef.current = false;
+    if (zoomHasDraggedRef.current) {
+      zoomHasDraggedRef.current = false;
       return;
     }
     // Select the zoom
     onSelectZoom(zoomId);
-    // Deselect segment when selecting zoom
+    // Deselect segment and speed when selecting zoom
     onSelectSegment(null);
+    onSelectSpeed(null);
   }
 
   // Zoom segment mouse down for drag/resize
@@ -215,19 +230,52 @@ export function Timeline({
     const zoomEffect = zoom.find(z => z.id === zoomId);
     if (!zoomEffect || !timelineRef.current) return;
     
-    hasDraggedRef.current = false; // Reset drag flag
+    zoomHasDraggedRef.current = false; // Reset drag flag
     setDraggingZoomId(zoomId);
     setZoomDragMode(mode);
-    dragStartRef.current = {
+    zoomDragStartRef.current = {
       x: e.clientX,
       startTime: zoomEffect.startTime,
       endTime: zoomEffect.endTime,
     };
   }
 
+  // Speed segment click handler (selection)
+  function handleSpeedClick(e: React.MouseEvent, speedId: string) {
+    e.stopPropagation();
+    // Only select if we didn't just drag (dragging deselects on end)
+    if (speedHasDraggedRef.current) {
+      speedHasDraggedRef.current = false;
+      return;
+    }
+    // Select the speed
+    onSelectSpeed(speedId);
+    // Deselect segment and zoom when selecting speed
+    onSelectSegment(null);
+    onSelectZoom(null);
+  }
+
+  // Speed segment mouse down for drag/resize
+  function handleSpeedMouseDown(e: React.MouseEvent, speedId: string, mode: DragMode) {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    const speedEffect = speed.find(s => s.id === speedId);
+    if (!speedEffect || !timelineRef.current) return;
+    
+    speedHasDraggedRef.current = false; // Reset drag flag
+    setDraggingSpeedId(speedId);
+    setSpeedDragMode(mode);
+    speedDragStartRef.current = {
+      x: e.clientX,
+      startTime: speedEffect.startTime,
+      endTime: speedEffect.endTime,
+    };
+  }
+
   // Handle zoom drag/resize move - uses RAF and local state for smooth dragging
   const handleZoomDragMove = useCallback((e: MouseEvent) => {
-    if (!draggingZoomId || !zoomDragMode || !dragStartRef.current || !timelineRef.current) return;
+    if (!draggingZoomId || !zoomDragMode || !zoomDragStartRef.current || !timelineRef.current) return;
     
     // Cancel any pending RAF to avoid stacking
     if (rafIdRef.current !== null) {
@@ -237,20 +285,20 @@ export function Timeline({
     const clientX = e.clientX;
     
     rafIdRef.current = requestAnimationFrame(() => {
-      if (!dragStartRef.current || !timelineRef.current) return;
+      if (!zoomDragStartRef.current || !timelineRef.current) return;
       
       const rect = timelineRef.current.getBoundingClientRect();
-      const deltaX = clientX - dragStartRef.current.x;
+      const deltaX = clientX - zoomDragStartRef.current.x;
       
       // Mark that we actually dragged (mouse moved significantly)
       if (Math.abs(deltaX) > 2) {
-        hasDraggedRef.current = true;
+        zoomHasDraggedRef.current = true;
       }
       
       // Convert deltaX to display time delta
       const deltaDisplayTime = (deltaX / rect.width) * timelineDuration;
       
-      const { startTime: origStart, endTime: origEnd } = dragStartRef.current;
+      const { startTime: origStart, endTime: origEnd } = zoomDragStartRef.current;
       const sourceDuration = origEnd - origStart; // Preserve source duration for move
       const minDuration = 0.5; // Minimum 0.5 seconds in source time
       
@@ -330,6 +378,111 @@ export function Timeline({
     });
   }, [draggingZoomId, zoomDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime]);
 
+  // Handle speed drag/resize move - uses RAF and local state for smooth dragging
+  const handleSpeedDragMove = useCallback((e: MouseEvent) => {
+    if (!draggingSpeedId || !speedDragMode || !speedDragStartRef.current || !timelineRef.current) return;
+    
+    // Cancel any pending RAF to avoid stacking
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+    }
+    
+    const clientX = e.clientX;
+    
+    rafIdRef.current = requestAnimationFrame(() => {
+      if (!speedDragStartRef.current || !timelineRef.current) return;
+      
+      const rect = timelineRef.current.getBoundingClientRect();
+      const deltaX = clientX - speedDragStartRef.current.x;
+      
+      // Mark that we actually dragged (mouse moved significantly)
+      if (Math.abs(deltaX) > 2) {
+        speedHasDraggedRef.current = true;
+      }
+      
+      // Convert deltaX to display time delta
+      const deltaDisplayTime = (deltaX / rect.width) * timelineDuration;
+      
+      const { startTime: origStart, endTime: origEnd } = speedDragStartRef.current;
+      const sourceDuration = origEnd - origStart; // Preserve source duration for move
+      const minDuration = 0.5; // Minimum 0.5 seconds in source time
+      
+      // Convert original source times to display positions
+      const origDisplayStart = sourceToDisplayTime(origStart);
+      const origDisplayEnd = sourceToDisplayTime(origEnd);
+      
+      let newStart: number;
+      let newEnd: number;
+      
+      switch (speedDragMode) {
+        case "move": {
+          // Calculate new display start position
+          let newDisplayStart = origDisplayStart + deltaDisplayTime;
+          
+          // Clamp display position to timeline bounds
+          newDisplayStart = Math.max(0, Math.min(timelineDuration, newDisplayStart));
+          
+          // Convert display position back to source time
+          newStart = displayToSourceTime(newDisplayStart);
+          
+          // Preserve source duration and clamp to video bounds
+          newEnd = newStart + sourceDuration;
+          if (newEnd > duration) {
+            newEnd = duration;
+            newStart = Math.max(0, newEnd - sourceDuration);
+          }
+          break;
+        }
+        case "resize-start": {
+          // Calculate new display start position
+          let newDisplayStart = origDisplayStart + deltaDisplayTime;
+          
+          // Clamp to valid display range (can't go past end edge minus some margin)
+          newDisplayStart = Math.max(0, newDisplayStart);
+          
+          // Convert back to source time
+          newStart = displayToSourceTime(newDisplayStart);
+          newEnd = origEnd;
+          
+          // Apply minimum duration constraint in source-time space
+          if (newEnd - newStart < minDuration) {
+            newStart = newEnd - minDuration;
+          }
+          
+          // Final clamp to source bounds
+          newStart = Math.max(0, newStart);
+          break;
+        }
+        case "resize-end": {
+          // Calculate new display end position
+          let newDisplayEnd = origDisplayEnd + deltaDisplayTime;
+          
+          // Clamp to valid display range
+          newDisplayEnd = Math.min(timelineDuration, newDisplayEnd);
+          
+          // Convert back to source time
+          newStart = origStart;
+          newEnd = displayToSourceTime(newDisplayEnd);
+          
+          // Apply minimum duration constraint in source-time space
+          if (newEnd - newStart < minDuration) {
+            newEnd = newStart + minDuration;
+          }
+          
+          // Final clamp to source bounds
+          newEnd = Math.min(duration, newEnd);
+          break;
+        }
+        default:
+          newStart = origStart;
+          newEnd = origEnd;
+      }
+      
+      // Update local state for immediate visual feedback (no parent re-render)
+      setLocalSpeedOverride({ id: draggingSpeedId, startTime: newStart, endTime: newEnd });
+    });
+  }, [draggingSpeedId, speedDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime]);
+
   // Handle zoom drag end - commit local state to parent
   const handleZoomDragEnd = useCallback(() => {
     // Cancel any pending RAF
@@ -347,25 +500,56 @@ export function Timeline({
     }
     
     // If we actually dragged/resized, deselect the zoom
-    if (hasDraggedRef.current) {
+    if (zoomHasDraggedRef.current) {
       onSelectZoom(null);
     }
     
     setLocalZoomOverride(null);
     setDraggingZoomId(null);
     setZoomDragMode(null);
-    dragStartRef.current = null;
+    zoomDragStartRef.current = null;
   }, [onSelectZoom, localZoomOverride, onUpdateZoom]);
+
+  // Handle speed drag end - commit local state to parent
+  const handleSpeedDragEnd = useCallback(() => {
+    // Cancel any pending RAF
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    
+    // Commit local override to parent state
+    if (localSpeedOverride && onUpdateSpeed) {
+      onUpdateSpeed(localSpeedOverride.id, { 
+        startTime: localSpeedOverride.startTime, 
+        endTime: localSpeedOverride.endTime 
+      });
+    }
+    
+    // If we actually dragged/resized, deselect the speed
+    if (speedHasDraggedRef.current) {
+      onSelectSpeed(null);
+    }
+    
+    setLocalSpeedOverride(null);
+    setDraggingSpeedId(null);
+    setSpeedDragMode(null);
+    speedDragStartRef.current = null;
+  }, [onSelectSpeed, localSpeedOverride, onUpdateSpeed]);
 
   useEffect(() => {
     function handleGlobalMouseUp() {
       setIsDragging(false);
       handleZoomDragEnd();
+      handleSpeedDragEnd();
     }
     
     function handleGlobalMouseMove(e: MouseEvent) {
       if (draggingZoomId && zoomDragMode) {
         handleZoomDragMove(e);
+      }
+      if (draggingSpeedId && speedDragMode) {
+        handleSpeedDragMove(e);
       }
     }
     
@@ -379,7 +563,7 @@ export function Timeline({
         cancelAnimationFrame(rafIdRef.current);
       }
     };
-  }, [draggingZoomId, zoomDragMode, handleZoomDragMove, handleZoomDragEnd]);
+  }, [draggingZoomId, zoomDragMode, handleZoomDragMove, handleZoomDragEnd, draggingSpeedId, speedDragMode, handleSpeedDragMove, handleSpeedDragEnd]);
 
   // Convert source time to display time for playhead position
   const displayTime = sourceToDisplayTime(currentTime);
@@ -538,20 +722,60 @@ export function Timeline({
           <div className="relative h-10 w-full overflow-hidden rounded-lg bg-muted/30">
             {speed.length > 0 ? (
               speed.map((effect) => {
+                const isDraggingThis = draggingSpeedId === effect.id;
+                
+                // Use local override for the element being dragged (smooth visual feedback)
+                const effectTimes = isDraggingThis && localSpeedOverride
+                  ? { startTime: localSpeedOverride.startTime, endTime: localSpeedOverride.endTime }
+                  : { startTime: effect.startTime, endTime: effect.endTime };
+                
                 // Convert speed effect times to display positions
-                const displayStart = sourceToDisplayTime(effect.startTime);
-                const displayEnd = sourceToDisplayTime(effect.endTime);
+                const displayStart = sourceToDisplayTime(effectTimes.startTime);
+                const displayEnd = sourceToDisplayTime(effectTimes.endTime);
+                const isSelected = selectedSpeedId === effect.id;
+                
                 return (
                   <div
                     key={effect.id}
-                    className="absolute flex h-full cursor-grab items-center justify-between overflow-hidden rounded-md border border-accent/30 bg-gradient-to-r from-accent/80 to-accent/60 px-3"
+                    className={cn(
+                      "group/speed absolute flex h-full items-center justify-between overflow-hidden rounded-md border px-3 select-none",
+                      "bg-gradient-to-r from-accent/80 to-accent/60",
+                      // Only apply transitions when NOT dragging for instant visual feedback
+                      !isDraggingThis && "transition-all",
+                      isSelected 
+                        ? "border-white ring-2 ring-white ring-offset-1 ring-offset-background" 
+                        : "border-accent/30",
+                      isDraggingThis && "opacity-90"
+                    )}
                     style={{
                       left: `${(displayStart / timelineDuration) * 100}%`,
                       width: `${((displayEnd - displayStart) / timelineDuration) * 100}%`,
+                      // Use transform for GPU-accelerated positioning during drag
+                      willChange: isDraggingThis ? 'left, width' : 'auto',
                     }}
+                    onClick={(e) => handleSpeedClick(e, effect.id)}
                   >
-                    <span className="min-w-0 truncate text-[11px] font-medium text-accent-foreground">Speed</span>
-                    <span className="min-w-0 shrink-0 font-mono text-[10px] text-accent-foreground/70">{effect.speed}x</span>
+                    {/* Left resize handle */}
+                    <div
+                      className="absolute left-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
+                      onMouseDown={(e) => handleSpeedMouseDown(e, effect.id, "resize-start")}
+                    />
+                    
+                    {/* Center drag area */}
+                    <div
+                      className="absolute inset-x-2 inset-y-0 cursor-grab active:cursor-grabbing"
+                      onMouseDown={(e) => handleSpeedMouseDown(e, effect.id, "move")}
+                    />
+                    
+                    {/* Right resize handle */}
+                    <div
+                      className="absolute right-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
+                      onMouseDown={(e) => handleSpeedMouseDown(e, effect.id, "resize-end")}
+                    />
+                    
+                    {/* Content (non-interactive, pointer-events-none) */}
+                    <span className="pointer-events-none min-w-0 truncate text-[11px] font-medium text-accent-foreground">Speed</span>
+                    <span className="pointer-events-none min-w-0 shrink-0 font-mono text-[10px] text-accent-foreground/70">{effect.speed}x</span>
                   </div>
                 );
               })

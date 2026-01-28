@@ -248,36 +248,125 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [updateProject]);
 
-  // Add a speed effect
-  const addSpeed = useCallback((startTime: number, endTime: number, speed: number = 1.0) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        speed: [
-          ...p.edits.speed,
-          {
-            id: generateId(),
-            startTime,
-            endTime,
-            speed,
-          },
-        ],
-      },
-    }));
+  // Add a speed effect (automatically adjusts end time to avoid overlapping existing speeds)
+  const addSpeed = useCallback((startTime: number, endTime: number, speed: number = 2.0) => {
+    updateProject((p) => {
+      // Find the earliest speed segment that starts after our start time
+      // to prevent overlap
+      let adjustedEndTime = endTime;
+      const minDuration = 0.5; // Minimum speed duration
+      
+      for (const existingSpeed of p.edits.speed) {
+        // If this speed starts after our start and before our end, we'd overlap
+        if (existingSpeed.startTime > startTime && existingSpeed.startTime < adjustedEndTime) {
+          adjustedEndTime = existingSpeed.startTime;
+        }
+        // If our start is inside an existing speed, don't create (return unchanged)
+        if (startTime >= existingSpeed.startTime && startTime < existingSpeed.endTime) {
+          return p; // Start is inside existing speed, abort
+        }
+      }
+      
+      // Ensure minimum duration
+      if (adjustedEndTime - startTime < minDuration) {
+        return p; // Not enough room, abort
+      }
+      
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          speed: [
+            ...p.edits.speed,
+            {
+              id: generateId(),
+              startTime,
+              endTime: adjustedEndTime,
+              speed,
+            },
+          ],
+        },
+      };
+    });
   }, [updateProject]);
 
-  // Update a speed effect
+  // Update a speed effect (prevents overlapping with other speeds)
   const updateSpeed = useCallback((speedId: string, updates: Partial<SpeedEffect>) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        speed: p.edits.speed.map((s) =>
-          s.id === speedId ? { ...s, ...updates } : s
-        ),
-      },
-    }));
+    updateProject((p) => {
+      const currentSpeed = p.edits.speed.find(s => s.id === speedId);
+      if (!currentSpeed) return p;
+      
+      let newStartTime = updates.startTime ?? currentSpeed.startTime;
+      let newEndTime = updates.endTime ?? currentSpeed.endTime;
+      const minDuration = 0.5;
+      
+      // Detect if this is a "move" operation (both edges updated together)
+      const isMove = updates.startTime !== undefined && updates.endTime !== undefined;
+      
+      // Check against all other speed segments for overlaps
+      for (const otherSpeed of p.edits.speed) {
+        if (otherSpeed.id === speedId) continue;
+        
+        if (isMove) {
+          // For a move operation, abort if any overlap would occur instead of clamping
+          // This preserves the original duration
+          
+          // Would encompass another speed entirely - abort
+          if (newStartTime < otherSpeed.startTime && newEndTime > otherSpeed.endTime) {
+            return p;
+          }
+          
+          // Start would go into another speed - abort
+          if (newStartTime >= otherSpeed.startTime && newStartTime < otherSpeed.endTime) {
+            return p;
+          }
+          
+          // End would go into another speed - abort
+          if (newEndTime > otherSpeed.startTime && newEndTime <= otherSpeed.endTime) {
+            return p;
+          }
+        } else {
+          // Single-edge move: use clamping behavior
+          
+          // Prevent start from going into another speed
+          if (newStartTime >= otherSpeed.startTime && newStartTime < otherSpeed.endTime) {
+            newStartTime = otherSpeed.endTime;
+          }
+          
+          // Prevent end from going into another speed
+          if (newEndTime > otherSpeed.startTime && newEndTime <= otherSpeed.endTime) {
+            newEndTime = otherSpeed.startTime;
+          }
+          
+          // Prevent encompassing another speed entirely
+          if (newStartTime < otherSpeed.startTime && newEndTime > otherSpeed.endTime) {
+            // Decide based on which side we're moving
+            if (updates.startTime !== undefined && updates.endTime === undefined) {
+              // Moving start, clamp to not pass the other speed's end
+              newStartTime = Math.max(newStartTime, otherSpeed.endTime);
+            } else if (updates.endTime !== undefined && updates.startTime === undefined) {
+              // Moving end, clamp to not pass the other speed's start
+              newEndTime = Math.min(newEndTime, otherSpeed.startTime);
+            }
+          }
+        }
+      }
+      
+      // Ensure minimum duration
+      if (newEndTime - newStartTime < minDuration) {
+        return p; // Would result in too small segment, abort
+      }
+      
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          speed: p.edits.speed.map((s) =>
+            s.id === speedId ? { ...s, ...updates, startTime: newStartTime, endTime: newEndTime } : s
+          ),
+        },
+      };
+    });
   }, [updateProject]);
 
   // Delete a speed effect
