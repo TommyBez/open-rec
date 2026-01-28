@@ -256,12 +256,11 @@ export function EditorPage() {
     return null; // No more segments
   }, [enabledSegments]);
 
-  // Video time update handler
+  // Video metadata and ended handlers
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const handleTimeUpdate = () => setCurrentTime(video.currentTime);
     const handleLoadedMetadata = () => {
       const actualDuration = video.duration;
       setDuration(actualDuration);
@@ -285,23 +284,74 @@ export function EditorPage() {
     };
     const handleEnded = () => setIsPlaying(false);
 
-    video.addEventListener("timeupdate", handleTimeUpdate);
     video.addEventListener("loadedmetadata", handleLoadedMetadata);
     video.addEventListener("ended", handleEnded);
 
     return () => {
-      video.removeEventListener("timeupdate", handleTimeUpdate);
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
       video.removeEventListener("ended", handleEnded);
     };
   }, [project]);
 
+  // Track the current speed segment to detect boundary crossings
+  const currentSpeedSegmentRef = useRef<string | null>(null);
+
+  // Use requestAnimationFrame for smooth time updates during playback
+  // Throttle UI updates to reduce React overhead while checking speed boundaries every frame
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isPlaying || !project) return;
+
+    let rafId: number;
+    let lastUIUpdateTime = 0;
+    // Update UI at ~30fps - video renders independently at full speed
+    const uiUpdateInterval = 1000 / 30;
+    
+    const updateTime = (timestamp: number) => {
+      const videoTime = video.currentTime;
+      
+      // Check if we've crossed into a different speed segment (check every frame for responsiveness)
+      const activeSpeedSegment = project.edits.speed.find(
+        (s) => videoTime >= s.startTime && videoTime < s.endTime
+      );
+      const newSegmentId = activeSpeedSegment?.id ?? null;
+      
+      // If segment changed, update playback rate immediately
+      if (newSegmentId !== currentSpeedSegmentRef.current) {
+        currentSpeedSegmentRef.current = newSegmentId;
+        const newRate = activeSpeedSegment?.speed ?? 1;
+        if (video.playbackRate !== newRate) {
+          video.playbackRate = newRate;
+        }
+      }
+      
+      // Throttle React state updates for UI (timeline scrubber, etc.)
+      if (timestamp - lastUIUpdateTime >= uiUpdateInterval) {
+        setCurrentTime(videoTime);
+        lastUIUpdateTime = timestamp;
+      }
+      
+      rafId = requestAnimationFrame(updateTime);
+    };
+    
+    rafId = requestAnimationFrame(updateTime);
+    
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
+  }, [isPlaying, project]);
+
   // Update video playback rate based on active speed effect
+  // Only update when the rate actually changes to avoid stuttering at high speeds
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     
-    video.playbackRate = currentPlaybackRate;
+    // Only set playbackRate when it actually changes to avoid performance issues
+    // Repeatedly setting playbackRate (even to the same value) can cause lag at high speeds
+    if (video.playbackRate !== currentPlaybackRate) {
+      video.playbackRate = currentPlaybackRate;
+    }
   }, [currentPlaybackRate]);
 
   // Segment-aware playback: skip gaps between segments
