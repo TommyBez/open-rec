@@ -168,32 +168,54 @@ export function useProject(initialProject: Project | null) {
       let newEndTime = updates.endTime ?? currentZoom.endTime;
       const minDuration = 0.5;
       
+      // Detect if this is a "move" operation (both edges updated together)
+      const isMove = updates.startTime !== undefined && updates.endTime !== undefined;
+      
       // Check against all other zoom segments for overlaps
       for (const otherZoom of p.edits.zoom) {
         if (otherZoom.id === zoomId) continue;
         
-        // Prevent start from going into another zoom
-        if (newStartTime >= otherZoom.startTime && newStartTime < otherZoom.endTime) {
-          newStartTime = otherZoom.endTime;
-        }
-        
-        // Prevent end from going into another zoom
-        if (newEndTime > otherZoom.startTime && newEndTime <= otherZoom.endTime) {
-          newEndTime = otherZoom.startTime;
-        }
-        
-        // Prevent encompassing another zoom entirely
-        if (newStartTime < otherZoom.startTime && newEndTime > otherZoom.endTime) {
-          // Decide based on which side we're moving
-          if (updates.startTime !== undefined && updates.endTime === undefined) {
-            // Moving start, clamp to not pass the other zoom's end
-            newStartTime = Math.max(newStartTime, otherZoom.endTime);
-          } else if (updates.endTime !== undefined && updates.startTime === undefined) {
-            // Moving end, clamp to not pass the other zoom's start
-            newEndTime = Math.min(newEndTime, otherZoom.startTime);
-          } else {
-            // Moving whole segment - clamp end to other's start if we'd encompass it
-            newEndTime = Math.min(newEndTime, otherZoom.startTime);
+        if (isMove) {
+          // For a move operation, abort if any overlap would occur instead of clamping
+          // This preserves the original duration
+          
+          // Would encompass another zoom entirely - abort
+          if (newStartTime < otherZoom.startTime && newEndTime > otherZoom.endTime) {
+            return p;
+          }
+          
+          // Start would go into another zoom - abort
+          if (newStartTime >= otherZoom.startTime && newStartTime < otherZoom.endTime) {
+            return p;
+          }
+          
+          // End would go into another zoom - abort
+          if (newEndTime > otherZoom.startTime && newEndTime <= otherZoom.endTime) {
+            return p;
+          }
+        } else {
+          // Single-edge move: use clamping behavior
+          
+          // Prevent start from going into another zoom
+          if (newStartTime >= otherZoom.startTime && newStartTime < otherZoom.endTime) {
+            newStartTime = otherZoom.endTime;
+          }
+          
+          // Prevent end from going into another zoom
+          if (newEndTime > otherZoom.startTime && newEndTime <= otherZoom.endTime) {
+            newEndTime = otherZoom.startTime;
+          }
+          
+          // Prevent encompassing another zoom entirely
+          if (newStartTime < otherZoom.startTime && newEndTime > otherZoom.endTime) {
+            // Decide based on which side we're moving
+            if (updates.startTime !== undefined && updates.endTime === undefined) {
+              // Moving start, clamp to not pass the other zoom's end
+              newStartTime = Math.max(newStartTime, otherZoom.endTime);
+            } else if (updates.endTime !== undefined && updates.startTime === undefined) {
+              // Moving end, clamp to not pass the other zoom's start
+              newEndTime = Math.min(newEndTime, otherZoom.startTime);
+            }
           }
         }
       }
