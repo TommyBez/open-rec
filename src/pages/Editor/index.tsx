@@ -32,6 +32,21 @@ import { useEditorStore } from "../../stores";
 import { Project, ZoomEffect, SpeedEffect } from "../../types/project";
 import { cn } from "@/lib/utils";
 
+// Hoisted static JSX elements to avoid recreation on every render (Rule 6.3)
+const atmosphericGradient = (
+  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
+);
+
+const loadingSpinner = (
+  <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background">
+    {atmosphericGradient}
+    <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3">
+      <div className="size-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
+      <p className="text-sm text-muted-foreground">Loading project...</p>
+    </div>
+  </div>
+);
+
 // Hoisted outside component to avoid recreation on every render
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -465,7 +480,15 @@ export function EditorPage() {
     }
   }
 
-  function togglePlay() {
+  // Memoized handlers for better performance (Rule 5.9)
+  const seek = useCallback((time: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = time;
+    setCurrentTime(time);
+  }, [setCurrentTime]);
+
+  const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
 
@@ -485,28 +508,21 @@ export function EditorPage() {
       video.play();
     }
     setIsPlaying(!isPlaying);
-  }
+  }, [isPlaying, isTimeInSegment, findNextSegmentStart, enabledSegments, setIsPlaying]);
 
-  function seek(time: number) {
-    const video = videoRef.current;
-    if (!video) return;
-    video.currentTime = time;
-    setCurrentTime(time);
-  }
-
-  function skipBackward() {
+  const skipBackward = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
     video.currentTime = Math.max(0, video.currentTime - 5);
-  }
+  }, []);
 
-  function skipForward() {
+  const skipForward = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
     video.currentTime = Math.min(duration, video.currentTime + 5);
-  }
+  }, [duration]);
 
-  function handleTimelineClick(time: number) {
+  const handleTimelineClick = useCallback((time: number) => {
     if (!project) {
       seek(time);
       return;
@@ -530,9 +546,9 @@ export function EditorPage() {
         // Selection mode - just seek
         seek(time);
     }
-  }
+  }, [project, selectedTool, cutAt, addZoom, addSpeed, duration, seek]);
 
-  function handleDeleteSelected() {
+  const handleDeleteSelected = useCallback(() => {
     if (selectedZoomId) {
       deleteZoom(selectedZoomId);
       selectZoom(null);
@@ -543,7 +559,7 @@ export function EditorPage() {
       deleteSegment(selectedSegmentId);
       selectSegment(null);
     }
-  }
+  }, [selectedZoomId, selectedSpeedId, selectedSegmentId, project, deleteZoom, deleteSpeed, deleteSegment, selectZoom, selectSpeed, selectSegment]);
 
   // Handle zoom inspector draft changes (for live preview)
   const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => {
@@ -589,21 +605,13 @@ export function EditorPage() {
 
   // Loading state with studio aesthetic
   if (isLoading || !project) {
-    return (
-      <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3">
-          <div className="size-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
-          <p className="text-sm text-muted-foreground">Loading project...</p>
-        </div>
-      </div>
-    );
+    return loadingSpinner;
   }
 
   return (
     <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background text-foreground">
       {/* Atmospheric background gradient */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
+      {atmosphericGradient}
 
       {/* Header */}
       <header className="relative z-10 flex items-center justify-between border-b border-border/50 bg-card/30 px-4 py-3 backdrop-blur-sm animate-fade-up">
