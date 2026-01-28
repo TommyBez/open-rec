@@ -76,25 +76,25 @@ export const useEditorStore = create<EditorStore>((set) => ({
   })),
   
   // Selection actions - when selecting one type, clear others
-  selectSegment: (id) => set({
+  selectSegment: (id) => set(() => ({
     selectedSegmentId: id,
-    selectedZoomId: id ? null : undefined,
-    selectedSpeedId: id ? null : undefined,
-  }),
+    selectedZoomId: null,
+    selectedSpeedId: null,
+  })),
   
-  selectZoom: (id) => set({
+  selectZoom: (id) => set(() => ({
     selectedZoomId: id,
     zoomDraft: null, // Clear draft when selection changes
-    selectedSegmentId: id ? null : undefined,
-    selectedSpeedId: id ? null : undefined,
-  }),
+    selectedSegmentId: null,
+    selectedSpeedId: null,
+  })),
   
-  selectSpeed: (id) => set({
+  selectSpeed: (id) => set(() => ({
     selectedSpeedId: id,
     speedDraft: null, // Clear draft when selection changes
-    selectedSegmentId: id ? null : undefined,
-    selectedZoomId: id ? null : undefined,
-  }),
+    selectedSegmentId: null,
+    selectedZoomId: null,
+  })),
   
   clearSelection: () => set({
     selectedSegmentId: null,
