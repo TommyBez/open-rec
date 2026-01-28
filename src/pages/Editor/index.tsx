@@ -25,8 +25,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { ZoomInspector } from "../../components/ZoomInspector";
+import { SpeedInspector } from "../../components/SpeedInspector";
 import { useProject } from "../../hooks/useProject";
-import { Project, ZoomEffect } from "../../types/project";
+import { Project, ZoomEffect, SpeedEffect } from "../../types/project";
 import { cn } from "@/lib/utils";
 
 export function EditorPage() {
@@ -47,6 +48,8 @@ export function EditorPage() {
     updateZoom,
     deleteZoom,
     addSpeed,
+    updateSpeed,
+    deleteSpeed,
   } = useProject(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
@@ -56,16 +59,26 @@ export function EditorPage() {
   const [selectedTool, setSelectedTool] = useState<"cut" | "zoom" | "speed" | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
+  const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   // Draft state for live preview while editing zoom properties in the inspector
   const [zoomDraft, setZoomDraft] = useState<{ scale: number; x: number; y: number } | null>(null);
+  
+  // Draft state for live preview while editing speed properties in the inspector
+  const [speedDraft, setSpeedDraft] = useState<{ speed: number } | null>(null);
 
   // Derive the selected zoom effect from the project
   const selectedZoom = useMemo(() => {
     if (!project || !selectedZoomId) return null;
     return project.edits.zoom.find((z) => z.id === selectedZoomId) ?? null;
   }, [project, selectedZoomId]);
+
+  // Derive the selected speed effect from the project
+  const selectedSpeed = useMemo(() => {
+    if (!project || !selectedSpeedId) return null;
+    return project.edits.speed.find((s) => s.id === selectedSpeedId) ?? null;
+  }, [project, selectedSpeedId]);
 
   // Find the active zoom effect at the current time (for preview)
   const activeZoom = useMemo(() => {
@@ -373,28 +386,52 @@ export function EditorPage() {
     if (selectedZoomId) {
       deleteZoom(selectedZoomId);
       setSelectedZoomId(null);
+    } else if (selectedSpeedId) {
+      deleteSpeed(selectedSpeedId);
+      setSelectedSpeedId(null);
     } else if (selectedSegmentId && project && project.edits.segments.length > 1) {
       deleteSegment(selectedSegmentId);
       setSelectedSegmentId(null);
     }
   }
 
-  // Handle segment selection (deselects zoom when selecting segment)
+  // Handle segment selection (deselects zoom and speed when selecting segment)
   function handleSelectSegment(segmentId: string | null) {
     setSelectedSegmentId(segmentId);
-    if (segmentId) setSelectedZoomId(null);
+    if (segmentId) {
+      setSelectedZoomId(null);
+      setSelectedSpeedId(null);
+    }
   }
 
-  // Handle zoom selection (deselects segment when selecting zoom)
+  // Handle zoom selection (deselects segment and speed when selecting zoom)
   function handleSelectZoom(zoomId: string | null) {
     setSelectedZoomId(zoomId);
     setZoomDraft(null); // Clear draft when selection changes
-    if (zoomId) setSelectedSegmentId(null);
+    if (zoomId) {
+      setSelectedSegmentId(null);
+      setSelectedSpeedId(null);
+    }
+  }
+
+  // Handle speed selection (deselects segment and zoom when selecting speed)
+  function handleSelectSpeed(speedId: string | null) {
+    setSelectedSpeedId(speedId);
+    setSpeedDraft(null); // Clear draft when selection changes
+    if (speedId) {
+      setSelectedSegmentId(null);
+      setSelectedZoomId(null);
+    }
   }
 
   // Handle zoom inspector draft changes (for live preview)
   const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => {
     setZoomDraft(draft);
+  }, []);
+
+  // Handle speed inspector draft changes (for live preview)
+  const handleSpeedDraftChange = useCallback((draft: { speed: number }) => {
+    setSpeedDraft(draft);
   }, []);
 
   // Handle zoom inspector commits
@@ -404,16 +441,30 @@ export function EditorPage() {
     }
   }, [selectedZoomId, updateZoom]);
 
+  // Handle speed inspector commits
+  const handleSpeedCommit = useCallback((updates: Partial<SpeedEffect>) => {
+    if (selectedSpeedId) {
+      updateSpeed(selectedSpeedId, updates);
+    }
+  }, [selectedSpeedId, updateSpeed]);
+
   // Close the zoom inspector
   const handleCloseZoomInspector = useCallback(() => {
     setSelectedZoomId(null);
     setZoomDraft(null);
   }, []);
 
+  // Close the speed inspector
+  const handleCloseSpeedInspector = useCallback(() => {
+    setSelectedSpeedId(null);
+    setSpeedDraft(null);
+  }, []);
+
   // Check if we can delete
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
   const canDeleteZoom = selectedZoomId !== null;
-  const canDelete = canDeleteSegment || canDeleteZoom;
+  const canDeleteSpeed = selectedSpeedId !== null;
+  const canDelete = canDeleteSegment || canDeleteZoom || canDeleteSpeed;
 
   function formatTime(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -633,6 +684,8 @@ export function EditorPage() {
                 <TooltipContent>
                   {canDeleteZoom 
                     ? "Delete selected zoom" 
+                    : canDeleteSpeed
+                    ? "Delete selected speed"
                     : canDeleteSegment 
                     ? "Delete selected segment" 
                     : "Select an item to delete"}
@@ -664,6 +717,28 @@ export function EditorPage() {
             </motion.aside>
           ) : null}
         </AnimatePresence>
+
+        {/* Speed Inspector Sidebar */}
+        <AnimatePresence>
+          {selectedSpeed ? (
+            <motion.aside
+              key="speed-inspector"
+              className="shrink-0 overflow-hidden"
+              initial={{ width: 0, opacity: 0, x: 16 }}
+              animate={{ width: 256, opacity: 1, x: 0 }}
+              exit={{ width: 0, opacity: 0, x: 16 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              aria-label="Speed settings"
+            >
+              <SpeedInspector
+                speed={selectedSpeed}
+                onCommit={handleSpeedCommit}
+                onClose={handleCloseSpeedInspector}
+                onDraftChange={handleSpeedDraftChange}
+              />
+            </motion.aside>
+          ) : null}
+        </AnimatePresence>
       </div>
 
       {/* Timeline */}
@@ -681,6 +756,9 @@ export function EditorPage() {
           selectedZoomId={selectedZoomId}
           onSelectZoom={handleSelectZoom}
           onUpdateZoom={updateZoom}
+          selectedSpeedId={selectedSpeedId}
+          onSelectSpeed={handleSelectSpeed}
+          onUpdateSpeed={updateSpeed}
         />
       </div>
 
