@@ -297,6 +297,9 @@ export function EditorPage() {
   const handleCloseSpeedInspector = useCallback(() => { selectSpeed(null); setSpeedDraft(null); }, [selectSpeed, setSpeedDraft]);
   const handleBack = useCallback(() => navigate("/recorder"), [navigate]);
   const handleExport = useCallback(() => setShowExportModal(true), [setShowExportModal]);
+  const handleOpenVideos = useCallback(() => {
+    navigate("/videos", { state: { from: "editor", projectId } });
+  }, [navigate, projectId]);
 
   // Derived delete state
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
@@ -315,6 +318,7 @@ export function EditorPage() {
         isDirty={isDirty}
         onBack={handleBack}
         onExport={handleExport}
+        onOpenVideos={handleOpenVideos}
       />
 
       <div className="relative z-10 flex min-h-0 flex-1">

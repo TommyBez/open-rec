@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { RecorderPage } from "./pages/Recorder";
 import { EditorPage } from "./pages/Editor";
 import { RecordingWidget } from "./pages/RecordingWidget";
+import { VideoSelectionPage } from "./pages/VideoSelection";
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
       <Route path="/recorder" element={<RecorderPage />} />
       <Route path="/editor/:projectId" element={<EditorPage />} />
       <Route path="/recording-widget" element={<RecordingWidget />} />
+      <Route path="/videos" element={<VideoSelectionPage />} />
     </Routes>
   );
 }
