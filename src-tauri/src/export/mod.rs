@@ -98,13 +98,17 @@ pub fn build_ffmpeg_args(
     
     // Check for single segment case - use input seeking instead of filter_complex
     // This handles files with or without audio gracefully
+    // BUT: if there are zoom or speed effects, we need filter_complex
     let enabled_segments: Vec<_> = project.edits.segments.iter()
         .filter(|s| s.enabled)
         .collect();
     
+    let has_effects = !project.edits.zoom.is_empty() || !project.edits.speed.is_empty();
+    
     let use_input_seeking = camera_path.is_none() 
         && enabled_segments.len() == 1 
-        && (enabled_segments[0].start_time > 0.0 || enabled_segments[0].end_time < project.duration);
+        && (enabled_segments[0].start_time > 0.0 || enabled_segments[0].end_time < project.duration)
+        && !has_effects; // Don't use input seeking if we have effects to apply
     
     if use_input_seeking {
         // Use -ss and -to for seeking (more efficient and handles missing audio)
@@ -149,30 +153,34 @@ pub fn build_ffmpeg_args(
                 args.push(full_filter);
                 has_filter_complex = true;
             } else if !use_input_seeking {
-                // No camera and not using input seeking - apply multi-segment edit filters if any
+                // No camera and not using input seeking - apply edit filters
                 let filter = build_filter_complex(project, options);
                 if !filter.is_empty() {
-                    // Check if filter has segment edits (produces [outv] - video only)
-                    let has_segment_edits = filter.contains("[outv]");
+                    // Check if we have multi-segment concat (which uses trim and requires video-only output)
+                    let has_multi_segment = enabled_segments.len() > 1;
                     
-                    if has_segment_edits {
-                        // Add scaling to the filter chain before final output
-                        // Video-only filter chain (audio is stripped for multi-segment to avoid issues with video-only files)
-                        let filter_with_scale = format!(
-                            "{};[outv]scale=-2:{}[vout]",
-                            filter,
-                            options.resolution.height()
-                        );
-                        args.push("-filter_complex".to_string());
-                        args.push(filter_with_scale);
-                        // Map only video output (no audio for multi-segment concat)
-                        args.push("-map".to_string());
-                        args.push("[vout]".to_string());
-                        args.push("-an".to_string()); // No audio for multi-segment
+                    // Add scaling to the filter chain before final output
+                    let filter_with_scale = format!(
+                        "{};[outv]scale=-2:{}[vout]",
+                        filter,
+                        options.resolution.height()
+                    );
+                    args.push("-filter_complex".to_string());
+                    args.push(filter_with_scale);
+                    
+                    // Map video output
+                    args.push("-map".to_string());
+                    args.push("[vout]".to_string());
+                    
+                    if has_multi_segment {
+                        // Multi-segment concat doesn't handle audio, strip it
+                        args.push("-an".to_string());
                     } else {
-                        args.push("-filter_complex".to_string());
-                        args.push(filter);
+                        // Single segment with effects - try to preserve audio from input
+                        args.push("-map".to_string());
+                        args.push("0:a?".to_string()); // ? means optional (won't fail if no audio)
                     }
+                    
                     has_filter_complex = true;
                 }
             }
@@ -242,14 +250,23 @@ pub fn build_ffmpeg_args(
 }
 
 /// Build ffmpeg filter complex for applying edits
-fn build_filter_complex(project: &Project, _options: &ExportOptions) -> String {
+fn build_filter_complex(project: &Project, options: &ExportOptions) -> String {
     let edits = &project.edits;
-    let mut filters = Vec::new();
+    let width = project.resolution.width;
+    let height = project.resolution.height;
     
     // Handle cuts (segments)
     let enabled_segments: Vec<_> = edits.segments.iter()
         .filter(|s| s.enabled)
         .collect();
+    
+    // Determine the video input label after segment processing
+    let mut current_video_label = "[0:v]".to_string();
+    let mut filters = Vec::new();
+    
+    // Track if we need additional effects after concat
+    let has_post_segment_effects = !edits.zoom.is_empty() || 
+        edits.speed.iter().any(|s| (s.speed - 1.0).abs() > 0.01);
     
     if enabled_segments.len() > 1 {
         // Multiple segments need concat
@@ -264,34 +281,141 @@ fn build_filter_complex(project: &Project, _options: &ExportOptions) -> String {
         }
         
         // Concat video streams only
+        // Use intermediate label if we have effects to apply after
+        let concat_output = if has_post_segment_effects { "[concat_out]" } else { "[outv]" };
         let v_streams: String = (0..enabled_segments.len()).map(|i| format!("[v{}]", i)).collect();
         segment_filters.push(format!(
-            "{}concat=n={}:v=1:a=0[outv]",
-            v_streams, enabled_segments.len()
+            "{}concat=n={}:v=1:a=0{}",
+            v_streams, enabled_segments.len(), concat_output
         ));
         
         filters.push(segment_filters.join(";"));
+        current_video_label = concat_output.to_string();
     }
     // Note: Single segment case is now handled with -ss/-to input seeking in build_ffmpeg_args
     // This avoids filter_complex issues with files that have no audio stream
     
-    // Handle zoom effects
-    for zoom in &edits.zoom {
-        // Zoom is implemented as crop + scale
-        // The crop extracts a zoomed region, then scale restores resolution
+    // Handle zoom effects with smooth transitions using zoompan filter
+    // zoompan evaluates z, x, y expressions per-frame, enabling smooth animated zoom
+    // Key: fps option must be set to match frame rate, d=1 for 1:1 frame mapping, s=WxH for output size
+    if !edits.zoom.is_empty() {
+        // Transition duration in seconds (matches the 150ms CSS transition in the editor)
+        let transition_secs: f64 = 0.15;
+        
+        // Build a combined zoom expression for all zoom effects
+        // For each zoom: smoothly ramp from 1 to scale, hold, then ramp back to 1
+        // Since zooms don't overlap, we can combine them with nested conditionals
+        
+        let mut zoom_expr_parts: Vec<String> = Vec::new();
+        let mut x_offset_parts: Vec<String> = Vec::new();
+        let mut y_offset_parts: Vec<String> = Vec::new();
+        
+        for zoom in &edits.zoom {
+            let s = zoom.start_time;
+            let e = zoom.end_time;
+            let scale = zoom.scale;
+            
+            // Ensure transition doesn't exceed half the zoom duration
+            let trans = transition_secs.min((e - s) / 2.0);
+            
+            // Build smooth envelope expression using 'it' (input time in seconds)
+            // This creates: 0 outside range, smooth ramp up, hold at 1, smooth ramp down
+            // envelope = contribution factor from 0 to 1
+            // Using gte/lte for boundary conditions and clip() to ensure value stays in [0,1]
+            // Ramp-up: (it - s) / t from 0 to 1
+            // Ramp-down: 1 - (it - (e - t)) / t from 1 to 0
+            let envelope = format!(
+                "if(lt(it,{s}),0,if(lte(it,{s_t}),clip((it-{s})/{t},0,1),if(lt(it,{e_t}),1,if(lte(it,{e}),clip(1-(it-{e_t})/{t},0,1),0))))",
+                s = s,
+                s_t = s + trans,
+                e_t = e - trans,
+                e = e,
+                t = trans
+            );
+            
+            // Contribution to zoom: (scale - 1) * envelope
+            // When envelope is 0, contribution is 0; when envelope is 1, contribution is (scale-1)
+            zoom_expr_parts.push(format!("(({}-1)*({}))", scale, envelope));
+            
+            // Offset contributions (scaled by envelope)
+            x_offset_parts.push(format!("({}*({}))", zoom.x, envelope));
+            y_offset_parts.push(format!("({}*({}))", zoom.y, envelope));
+        }
+        
+        // Combined zoom factor: 1 + sum of all contributions
+        // At any time, only one zoom's envelope is non-zero (they don't overlap)
+        let zoom_factor = format!("(1+{})", zoom_expr_parts.join("+"));
+        
+        // Combined offsets for x and y panning
+        let x_offset = if x_offset_parts.iter().all(|x| x.starts_with("(0*")) {
+            "0".to_string()
+        } else {
+            format!("({})", x_offset_parts.join("+"))
+        };
+        let y_offset = if y_offset_parts.iter().all(|y| y.starts_with("(0*")) {
+            "0".to_string()
+        } else {
+            format!("({})", y_offset_parts.join("+"))
+        };
+        
+        // zoompan x,y are the top-left coordinates of the visible region
+        // For centered zoom: x = (iw - iw/zoom) / 2, y = (ih - ih/zoom) / 2
+        // We use 'zoom' variable which references the current z value
+        let pan_x = format!("iw/2-(iw/zoom/2)+{}", x_offset);
+        let pan_y = format!("ih/2-(ih/zoom/2)+{}", y_offset);
+        
+        let output_label = "[zoomout]";
+        
+        // Build the zoompan filter with all required options:
+        // - fps: must match frame rate (use export option)
+        // - d=1: 1 output frame per input frame (essential for video, not slideshow)
+        // - s=WxH: output size matching project resolution
+        // - z: zoom expression using 'it' for time-based evaluation
+        // - x,y: pan expressions using 'zoom' to reference current zoom value
         filters.push(format!(
-            "crop=iw/{}:ih/{}:{}:{}",
-            zoom.scale, zoom.scale, zoom.x, zoom.y
+            "{}zoompan=fps={}:d=1:s={}x{}:z='{}':x='{}':y='{}'{}",
+            current_video_label,
+            options.frame_rate,
+            width,
+            height,
+            zoom_factor,
+            pan_x,
+            pan_y,
+            output_label
         ));
+        
+        current_video_label = output_label.to_string();
     }
     
     // Handle speed effects
+    // Speed effects modify playback rate during specific time ranges
+    // Note: Time-based speed is complex; for now, apply to whole video if any exist
     for speed in &edits.speed {
         if (speed.speed - 1.0).abs() > 0.01 {
-            // Video speed
-            filters.push(format!("setpts={}*PTS", 1.0 / speed.speed));
-            // Audio speed
-            filters.push(format!("atempo={}", speed.speed.clamp(0.5, 2.0)));
+            // For simplicity, apply speed change to the whole video
+            // Time-selective speed would require segment splitting similar to zoom
+            let setpts_label = format!("[speed{}]", filters.len());
+            
+            // Video speed: setpts adjusts presentation timestamps
+            // speed > 1 means faster, so PTS multiplier = 1/speed
+            filters.push(format!(
+                "{}setpts={}*PTS{}",
+                current_video_label,
+                1.0 / speed.speed,
+                setpts_label
+            ));
+            
+            current_video_label = setpts_label;
+        }
+    }
+    
+    // If we have filters but the final output isn't [outv], rename it
+    // This ensures the build_ffmpeg_args function can reference the output correctly
+    if !filters.is_empty() && current_video_label != "[outv]" {
+        // The last filter's output becomes our final video output
+        // We need to update the last filter to output to [outv] for consistency
+        if let Some(last) = filters.last_mut() {
+            *last = last.replace(&current_video_label, "[outv]");
         }
     }
     
