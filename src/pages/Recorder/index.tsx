@@ -67,6 +67,20 @@ export function RecorderPage() {
 
   const isRecording = recordingState === "recording" || recordingState === "paused";
 
+  // Resize window to compact size on mount
+  useEffect(() => {
+    async function resizeWindow() {
+      try {
+        const window = getCurrentWindow();
+        await window.setSize({ type: "Logical", width: 380, height: 580 });
+        await window.center();
+      } catch (error) {
+        console.error("Failed to resize window:", error);
+      }
+    }
+    resizeWindow();
+  }, []);
+
   // Check permission on mount
   useEffect(() => {
     checkPermission();

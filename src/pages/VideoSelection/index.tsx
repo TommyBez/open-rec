@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ArrowLeft, Video, FolderOpen } from "lucide-react";
 import { BrandLogo } from "../../components/BrandLogo";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,20 @@ export function VideoSelectionPage() {
   // Determine where we came from for the back button
   const cameFromEditor = location.state?.from === "editor";
   const previousProjectId = location.state?.projectId;
+
+  // Resize window to full screen on mount
+  useEffect(() => {
+    async function resizeWindow() {
+      try {
+        const window = getCurrentWindow();
+        await window.setSize({ type: "Logical", width: 1200, height: 800 });
+        await window.center();
+      } catch (error) {
+        console.error("Failed to resize window:", error);
+      }
+    }
+    resizeWindow();
+  }, []);
 
   useEffect(() => {
     loadProjects();
