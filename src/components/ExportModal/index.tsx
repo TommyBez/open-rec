@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { Clapperboard, Monitor, Package, Timer } from "lucide-react";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { Clapperboard, Monitor, Package, Timer, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { Project, ExportOptions as ExportOptionsType } from "../../types/project";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +36,8 @@ type FrameRate = ExportOptionsType["frameRate"];
 type Compression = ExportOptionsType["compression"];
 type Resolution = ExportOptionsType["resolution"];
 
+type ExportStatus = "idle" | "exporting" | "complete" | "error";
+
 export function ExportModal({ project, editedDuration, open, onOpenChange, onSaveProject }: ExportModalProps) {
   const [options, setOptions] = useState<ExportOptionsType>({
     format: "mp4",
@@ -43,21 +45,49 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
     compression: "social",
     resolution: "1080p",
   });
-  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<ExportStatus>("idle");
   const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [outputPath, setOutputPath] = useState<string | null>(null);
+  const unlistenRefs = useRef<UnlistenFn[]>([]);
 
   // Use edited duration if provided, otherwise fall back to project duration
   const displayDuration = editedDuration ?? project.duration;
+
+  // Clean up listeners when modal closes or component unmounts
+  useEffect(() => {
+    return () => {
+      unlistenRefs.current.forEach(unlisten => unlisten());
+      unlistenRefs.current = [];
+    };
+  }, []);
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (open) {
+      setExportStatus("idle");
+      setProgress(0);
+      setCurrentTime(0);
+      setError(null);
+      setOutputPath(null);
+    }
+  }, [open]);
 
   // Calculate estimated file size and time based on edited duration
   const estimatedSize = calculateEstimatedSize(displayDuration, options);
   const estimatedTime = calculateEstimatedTime(displayDuration, options);
 
   async function handleExport() {
-    setIsExporting(true);
+    setExportStatus("exporting");
     setProgress(0);
+    setCurrentTime(0);
     setError(null);
+    setOutputPath(null);
+
+    // Clean up any existing listeners
+    unlistenRefs.current.forEach(unlisten => unlisten());
+    unlistenRefs.current = [];
 
     try {
       // Save project first to ensure latest changes are persisted
@@ -65,10 +95,30 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
         await onSaveProject();
       }
 
-      // Listen for progress updates
-      const unlisten = await listen<number>("export-progress", (event) => {
-        setProgress(event.payload);
+      // Listen for progress updates (current time in seconds from ffmpeg)
+      const unlistenProgress = await listen<number>("export-progress", (event) => {
+        const currentTimeSeconds = event.payload;
+        setCurrentTime(currentTimeSeconds);
+        // Calculate progress percentage based on edited duration
+        const percentage = Math.min((currentTimeSeconds / displayDuration) * 100, 99);
+        setProgress(percentage);
       });
+      unlistenRefs.current.push(unlistenProgress);
+
+      // Listen for export completion
+      const unlistenComplete = await listen<string>("export-complete", (event) => {
+        setProgress(100);
+        setExportStatus("complete");
+        setOutputPath(event.payload);
+      });
+      unlistenRefs.current.push(unlistenComplete);
+
+      // Listen for export errors
+      const unlistenError = await listen<string>("export-error", (event) => {
+        setExportStatus("error");
+        setError(event.payload);
+      });
+      unlistenRefs.current.push(unlistenError);
 
       await invoke("export_project", {
         projectId: project.id,
@@ -79,14 +129,17 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
           resolution: options.resolution,
         },
       });
-
-      unlisten();
-      onOpenChange(false);
     } catch (err) {
+      setExportStatus("error");
       setError(err instanceof Error ? err.message : "Export failed");
-    } finally {
-      setIsExporting(false);
     }
+  }
+
+  function handleClose() {
+    // Clean up listeners
+    unlistenRefs.current.forEach(unlisten => unlisten());
+    unlistenRefs.current = [];
+    onOpenChange(false);
   }
 
   function formatDuration(seconds: number): string {
@@ -190,43 +243,108 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
         </div>
 
         <DialogFooter className="flex-col gap-4 sm:flex-col">
-          {/* Info badges */}
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary" className="gap-1.5">
-              <Clapperboard className="size-3" />
-              {formatDuration(displayDuration)}
-            </Badge>
-            <Badge variant="secondary" className="gap-1.5">
-              <Monitor className="size-3" />
-              {formatResolution()}
-            </Badge>
-            <Badge variant="secondary" className="gap-1.5">
-              <Package className="size-3" />
-              {estimatedSize}
-            </Badge>
-            <Badge variant="secondary" className="gap-1.5">
-              <Timer className="size-3" />
-              ~{estimatedTime}
-            </Badge>
-          </div>
-
-          {error && (
-            <p className="text-destructive text-sm">{error}</p>
+          {/* Info badges - hide during/after export */}
+          {exportStatus === "idle" && (
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary" className="gap-1.5">
+                <Clapperboard className="size-3" />
+                {formatDuration(displayDuration)}
+              </Badge>
+              <Badge variant="secondary" className="gap-1.5">
+                <Monitor className="size-3" />
+                {formatResolution()}
+              </Badge>
+              <Badge variant="secondary" className="gap-1.5">
+                <Package className="size-3" />
+                {estimatedSize}
+              </Badge>
+              <Badge variant="secondary" className="gap-1.5">
+                <Timer className="size-3" />
+                ~{estimatedTime}
+              </Badge>
+            </div>
           )}
 
-          {isExporting ? (
-            <div className="flex w-full items-center gap-3">
-              <Progress value={progress} className="flex-1" />
-              <span className="text-muted-foreground min-w-[40px] text-sm font-medium">
-                {Math.round(progress)}%
-              </span>
+          {/* Export Progress Widget */}
+          {exportStatus === "exporting" && (
+            <div className="flex w-full flex-col gap-3 rounded-lg border bg-muted/30 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin text-primary" />
+                  <span className="text-sm font-medium">Exporting video...</span>
+                </div>
+                <span className="text-sm font-semibold tabular-nums">
+                  {Math.round(progress)}%
+                </span>
+              </div>
+              <Progress value={progress} className="h-2" />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {formatDuration(currentTime)} / {formatDuration(displayDuration)}
+                </span>
+                <span>
+                  {options.format.toUpperCase()} • {options.resolution}
+                </span>
+              </div>
             </div>
-          ) : (
+          )}
+
+          {/* Export Complete Widget */}
+          {exportStatus === "complete" && (
+            <div className="flex w-full flex-col gap-3 rounded-lg border border-green-500/30 bg-green-500/10 p-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="size-5 text-green-500" />
+                <span className="text-sm font-medium">Export complete!</span>
+              </div>
+              {outputPath && (
+                <p className="text-xs text-muted-foreground truncate" title={outputPath}>
+                  Saved to: {outputPath}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Export Error Widget */}
+          {exportStatus === "error" && (
+            <div className="flex w-full flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+              <div className="flex items-center gap-2">
+                <XCircle className="size-5 text-destructive" />
+                <span className="text-sm font-medium">Export failed</span>
+              </div>
+              {error && (
+                <p className="text-xs text-destructive">{error}</p>
+              )}
+            </div>
+          )}
+
+          {/* Action buttons */}
+          {exportStatus === "idle" && (
             <div className="flex w-full justify-end gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
               <Button onClick={handleExport}>Export</Button>
+            </div>
+          )}
+
+          {exportStatus === "exporting" && (
+            <div className="flex w-full justify-end">
+              <Button variant="outline" onClick={handleClose} disabled>
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {(exportStatus === "complete" || exportStatus === "error") && (
+            <div className="flex w-full justify-end gap-2">
+              {exportStatus === "error" && (
+                <Button variant="outline" onClick={handleExport}>
+                  Retry
+                </Button>
+              )}
+              <Button onClick={handleClose}>
+                {exportStatus === "complete" ? "Done" : "Close"}
+              </Button>
             </div>
           )}
         </DialogFooter>
