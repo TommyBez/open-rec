@@ -4,14 +4,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Monitor, AppWindow, FolderOpen } from "lucide-react";
+import { Monitor, AppWindow } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { SourceSelector } from "../../components/SourceSelector";
-import { ToggleRow } from "../../components/ToggleRow";
 import { MicrophoneRecorder } from "../../components/MicrophoneRecorder";
 import { CameraPreview } from "../../components/CameraPreview";
-import { BrandLogo } from "../../components/BrandLogo";
-import { StatusIndicator } from "../../components/StatusIndicator";
 import { SourceTypeButton } from "../../components/SourceTypeButton";
 import { RecordButton } from "../../components/RecordButton";
 import { useRecordingStore } from "../../stores";
@@ -29,12 +26,11 @@ import {
   requestTrayQuickRecord,
 } from "../../lib/trayQuickRecord";
 import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { PermissionDeniedView, PermissionLoadingView } from "./components/PermissionViews";
+import { RecorderHeader } from "./components/RecorderHeader";
+import { RecorderInputSources } from "./components/RecorderInputSources";
+import { RecorderQualityControls } from "./components/RecorderQualityControls";
+import { CountdownOverlay } from "./components/CountdownOverlay";
 
 interface DiskSpaceStatus {
   freeBytes: number;
@@ -440,36 +436,10 @@ export function RecorderPage() {
             : "bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40"
         )}
       />
-      
-      {/* Header */}
-      <header className="relative z-10 mb-6 flex items-center justify-between animate-fade-up">
-        <BrandLogo />
-        <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => navigate("/videos")}
-                className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                aria-label="My Recordings"
-              >
-                <FolderOpen className="size-5" strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>My Recordings</TooltipContent>
-          </Tooltip>
-          <StatusIndicator ready={!!selectedSource} />
-        </div>
-      </header>
+      <RecorderHeader ready={!!selectedSource} onOpenVideos={() => navigate("/videos")} />
 
       <main className="relative z-10 flex flex-1 flex-col gap-4">
-        {countdown !== null && (
-          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-xl bg-black/40 backdrop-blur-sm">
-            <span className="text-7xl font-semibold tracking-tight text-white drop-shadow-lg">
-              {countdown}
-            </span>
-            <span className="text-xs text-white/80">Press Esc to cancel</span>
-          </div>
-        )}
+        {countdown !== null && <CountdownOverlay value={countdown} />}
         {errorMessage && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {errorMessage}
@@ -540,66 +510,22 @@ export function RecorderPage() {
           recordingStartTimeMs={recordingStartTimeMs}
         />
 
-        {/* Input Sources */}
-        <div className="animate-fade-up-delay-3 space-y-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
-            Input Sources
-          </span>
-          <div className="flex flex-col gap-1.5">
-            <ToggleRow
-              icon="camera"
-              label="Camera"
-              sublabel={captureCamera ? (cameraReady ? "Ready" : "Loading...") : "Off"}
-              enabled={captureCamera}
-              onToggle={() => setCaptureCamera(!captureCamera)}
-            />
-            <ToggleRow
-              icon="microphone"
-              label="Microphone"
-              sublabel={captureMicrophone ? "Ready" : "Off"}
-              enabled={captureMicrophone}
-              onToggle={() => setCaptureMicrophone(!captureMicrophone)}
-            />
-            <ToggleRow
-              icon="speaker"
-              label="System Audio"
-              sublabel={captureSystemAudio ? "Ready" : "Off"}
-              enabled={captureSystemAudio}
-              onToggle={() => setCaptureSystemAudio(!captureSystemAudio)}
-            />
-          </div>
-        </div>
+        <RecorderInputSources
+          captureCamera={captureCamera}
+          cameraReady={cameraReady}
+          captureMicrophone={captureMicrophone}
+          captureSystemAudio={captureSystemAudio}
+          onToggleCamera={() => setCaptureCamera(!captureCamera)}
+          onToggleMicrophone={() => setCaptureMicrophone(!captureMicrophone)}
+          onToggleSystemAudio={() => setCaptureSystemAudio(!captureSystemAudio)}
+        />
 
-        <div className="animate-fade-up-delay-3 space-y-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
-            Recording Quality
-          </span>
-          <div className="grid grid-cols-2 gap-2">
-            <select
-              value={qualityPreset}
-              onChange={(event) =>
-                setQualityPreset(
-                  event.target.value as "720p30" | "1080p30" | "1080p60" | "4k30" | "4k60"
-                )
-              }
-              className="rounded-lg border border-border/60 bg-card/60 px-2 py-2 text-xs text-foreground/80 outline-none focus:border-primary/50"
-            >
-              <option value="720p30">720p @ 30 FPS</option>
-              <option value="1080p30">1080p @ 30 FPS</option>
-              <option value="1080p60">1080p @ 60 FPS</option>
-              <option value="4k30">4K @ 30 FPS</option>
-              <option value="4k60">4K @ 60 FPS</option>
-            </select>
-            <select
-              value={codec}
-              onChange={(event) => setCodec(event.target.value as "h264" | "hevc")}
-              className="rounded-lg border border-border/60 bg-card/60 px-2 py-2 text-xs text-foreground/80 outline-none focus:border-primary/50"
-            >
-              <option value="h264">Codec: H.264</option>
-              <option value="hevc">Codec: HEVC</option>
-            </select>
-          </div>
-        </div>
+        <RecorderQualityControls
+          qualityPreset={qualityPreset}
+          codec={codec}
+          onQualityPresetChange={setQualityPreset}
+          onCodecChange={setCodec}
+        />
 
         {/* Spacer */}
         <div className="flex-1" />
