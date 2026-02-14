@@ -488,6 +488,34 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [updateProject]);
 
+  const duplicateAnnotation = useCallback((annotationId: string) => {
+    updateProject((p) => {
+      const source = p.edits.annotations.find((annotation) => annotation.id === annotationId);
+      if (!source) return p;
+
+      const shift = 0.2;
+      const duration = Math.max(0.1, source.endTime - source.startTime);
+      const startTime = Math.min(Math.max(0, source.startTime + shift), Math.max(0, p.duration - duration));
+      const endTime = Math.min(p.duration, startTime + duration);
+
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          annotations: [
+            ...p.edits.annotations,
+            {
+              ...source,
+              id: generateId(),
+              startTime,
+              endTime,
+            },
+          ],
+        },
+      };
+    });
+  }, [updateProject]);
+
   const updateCameraOverlay = useCallback((updates: Partial<CameraOverlaySettings>) => {
     updateProject((p) => ({
       ...p,
@@ -553,6 +581,7 @@ export function useProject(initialProject: Project | null) {
     addAnnotation,
     updateAnnotation,
     deleteAnnotation,
+    duplicateAnnotation,
     setGlobalSpeed,
     updateCameraOverlay,
     updateAudioMix,

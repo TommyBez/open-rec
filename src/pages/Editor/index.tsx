@@ -98,6 +98,7 @@ export function EditorPage() {
     addAnnotation,
     deleteAnnotation,
     updateAnnotation,
+    duplicateAnnotation,
   } = useProject(null);
   
   const {
@@ -335,6 +336,10 @@ export function EditorPage() {
       selectSegment(null);
     }
   }, [selectedZoomId, selectedSpeedId, selectedAnnotationId, selectedSegmentId, project, deleteZoom, deleteSpeed, deleteAnnotation, deleteSegment, selectZoom, selectSpeed, selectAnnotation, selectSegment]);
+  const handleDuplicateSelectedAnnotation = useCallback(() => {
+    if (!selectedAnnotationId) return;
+    duplicateAnnotation(selectedAnnotationId);
+  }, [duplicateAnnotation, selectedAnnotationId]);
 
   useEditorKeyboardShortcuts({
     canUndo,
@@ -350,6 +355,7 @@ export function EditorPage() {
     selectedAnnotationId,
     selectedSegmentId,
     handleDeleteSelected,
+    duplicateSelectedAnnotation: handleDuplicateSelectedAnnotation,
     currentTime,
     duration,
     seek,

@@ -15,6 +15,7 @@ interface UseEditorKeyboardShortcutsOptions {
   selectedAnnotationId: string | null;
   selectedSegmentId: string | null;
   handleDeleteSelected: () => void;
+  duplicateSelectedAnnotation: () => void;
   currentTime: number;
   duration: number;
   seek: (time: number) => void;
@@ -36,6 +37,7 @@ export function useEditorKeyboardShortcuts({
   selectedAnnotationId,
   selectedSegmentId,
   handleDeleteSelected,
+  duplicateSelectedAnnotation,
   currentTime,
   duration,
   seek,
@@ -57,6 +59,10 @@ export function useEditorKeyboardShortcuts({
       if (isModifier && ((e.key === "z" && e.shiftKey) || e.key.toLowerCase() === "y")) {
         e.preventDefault();
         if (canRedo) redo();
+      }
+      if (isModifier && e.key.toLowerCase() === "d" && selectedAnnotationId) {
+        e.preventDefault();
+        duplicateSelectedAnnotation();
       }
       if (isModifier) return;
 
@@ -152,6 +158,7 @@ export function useEditorKeyboardShortcuts({
     selectedAnnotationId,
     selectedSegmentId,
     handleDeleteSelected,
+    duplicateSelectedAnnotation,
     currentTime,
     duration,
     seek,
