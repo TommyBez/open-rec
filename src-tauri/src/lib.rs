@@ -823,14 +823,14 @@ fn pause_recording(
 
     do_pause_recording(&state, &project_id)?;
 
-    app.emit(
+    emit_with_log(
+        &app,
         "recording-state-changed",
         serde_json::json!({
             "state": "paused",
             "projectId": project_id
         }),
-    )
-    .map_err(|e| AppError::Message(format!("Failed to emit pause event: {}", e)))?;
+    );
 
     Ok(())
 }
@@ -850,14 +850,14 @@ fn resume_recording(
 
     do_resume_recording(&state, &project_id)?;
 
-    app.emit(
+    emit_with_log(
+        &app,
         "recording-state-changed",
         serde_json::json!({
             "state": "recording",
             "projectId": project_id
         }),
-    )
-    .map_err(|e| AppError::Message(format!("Failed to emit resume event: {}", e)))?;
+    );
 
     Ok(())
 }
