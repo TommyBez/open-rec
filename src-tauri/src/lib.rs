@@ -446,9 +446,19 @@ fn cleanup_active_exports(export_jobs: &SharedExportJobs) -> Result<(), AppError
 
 async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), AppError> {
     let shell = app.shell();
-    let (mut rx, _child) = shell
-        .sidecar("ffmpeg")
-        .unwrap_or_else(|_| shell.command("ffmpeg"))
+    let ffmpeg_command = match shell.sidecar("ffmpeg") {
+        Ok(command) => command,
+        Err(error) => {
+            eprintln!(
+                "Bundled ffmpeg sidecar unavailable, falling back to system ffmpeg: {}",
+                error
+            );
+            shell.command("ffmpeg")
+        }
+    };
+    // Use the sidecar when present, fallback to system binary otherwise.
+    // This keeps concat/finalization functional in development environments.
+    let (mut rx, _child) = ffmpeg_command
         .args(args)
         .spawn()
         .map_err(|e| AppError::Message(format!("Failed to spawn ffmpeg: {}", e)))?;
@@ -1083,10 +1093,18 @@ async fn export_project(
     // Run ffmpeg using the shell plugin
     let shell = app.shell();
 
-    // Try to use bundled ffmpeg sidecar, fallback to system ffmpeg
-    let (mut rx, child) = shell
-        .sidecar("ffmpeg")
-        .unwrap_or_else(|_| shell.command("ffmpeg"))
+    // Try to use bundled ffmpeg sidecar, fallback to system ffmpeg.
+    let ffmpeg_command = match shell.sidecar("ffmpeg") {
+        Ok(command) => command,
+        Err(error) => {
+            eprintln!(
+                "Bundled ffmpeg sidecar unavailable, falling back to system ffmpeg: {}",
+                error
+            );
+            shell.command("ffmpeg")
+        }
+    };
+    let (mut rx, child) = ffmpeg_command
         .args(&args)
         .spawn()
         .map_err(|e| AppError::Message(format!("Failed to spawn ffmpeg: {}", e)))?;
