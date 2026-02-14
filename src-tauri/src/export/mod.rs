@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::error::AppError;
 use crate::project::Project;
 
 /// Export options from the frontend
@@ -116,35 +117,37 @@ fn has_audio_stream(path: &str) -> bool {
     }
 }
 
-pub fn validate_export_inputs(project: &Project) -> Result<(), String> {
+pub fn validate_export_inputs(project: &Project) -> Result<(), AppError> {
     let screen_path = std::path::Path::new(&project.screen_video_path);
     if !screen_path.exists() {
-        return Err(format!(
+        return Err(AppError::Message(format!(
             "Screen recording file does not exist: {}",
             project.screen_video_path
-        ));
+        )));
     }
 
     if let Some(camera_path) = &project.camera_video_path {
         if !std::path::Path::new(camera_path).exists() {
-            return Err(format!(
+            return Err(AppError::Message(format!(
                 "Camera recording file does not exist: {}",
                 camera_path
-            ));
+            )));
         }
     }
 
     if let Some(mic_path) = &project.microphone_audio_path {
         if !std::path::Path::new(mic_path).exists() {
-            return Err(format!(
+            return Err(AppError::Message(format!(
                 "Microphone recording file does not exist: {}",
                 mic_path
-            ));
+            )));
         }
     }
 
     if project.edits.segments.iter().all(|s| !s.enabled) {
-        return Err("No enabled timeline segments to export".to_string());
+        return Err(AppError::Message(
+            "No enabled timeline segments to export".to_string(),
+        ));
     }
 
     Ok(())
