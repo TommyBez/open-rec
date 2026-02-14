@@ -350,6 +350,19 @@ export function EditorPage() {
     if (!selectedAnnotationId) return;
     duplicateAnnotation(selectedAnnotationId);
   }, [duplicateAnnotation, selectedAnnotationId]);
+  const handleNudgeSelectedAnnotation = useCallback(
+    (deltaX: number, deltaY: number) => {
+      if (!selectedAnnotationId || !project) return;
+      const annotation = project.edits.annotations.find((item) => item.id === selectedAnnotationId);
+      if (!annotation) return;
+      const width = Math.max(0.02, Math.min(1, annotation.width));
+      const height = Math.max(0.02, Math.min(1, annotation.height));
+      const nextX = Math.max(0, Math.min(1 - width, annotation.x + deltaX));
+      const nextY = Math.max(0, Math.min(1 - height, annotation.y + deltaY));
+      updateAnnotation(selectedAnnotationId, { x: nextX, y: nextY });
+    },
+    [selectedAnnotationId, project, updateAnnotation]
+  );
   const handleManualSaveShortcut = useCallback(() => {
     saveProject().catch(console.error);
   }, [saveProject]);
@@ -370,6 +383,7 @@ export function EditorPage() {
     selectedSegmentId,
     handleDeleteSelected,
     duplicateSelectedAnnotation: handleDuplicateSelectedAnnotation,
+    nudgeSelectedAnnotation: handleNudgeSelectedAnnotation,
     currentTime,
     duration,
     seek,

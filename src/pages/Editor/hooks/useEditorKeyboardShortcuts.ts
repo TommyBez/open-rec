@@ -17,6 +17,7 @@ interface UseEditorKeyboardShortcutsOptions {
   selectedSegmentId: string | null;
   handleDeleteSelected: () => void;
   duplicateSelectedAnnotation: () => void;
+  nudgeSelectedAnnotation: (deltaX: number, deltaY: number) => void;
   currentTime: number;
   duration: number;
   seek: (time: number) => void;
@@ -40,6 +41,7 @@ export function useEditorKeyboardShortcuts({
   selectedSegmentId,
   handleDeleteSelected,
   duplicateSelectedAnnotation,
+  nudgeSelectedAnnotation,
   currentTime,
   duration,
   seek,
@@ -54,6 +56,15 @@ export function useEditorKeyboardShortcuts({
       }
 
       const isModifier = e.metaKey || e.ctrlKey;
+      if (e.altKey && selectedAnnotationId && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const step = e.shiftKey ? 0.03 : 0.01;
+        if (e.key === "ArrowLeft") nudgeSelectedAnnotation(-step, 0);
+        if (e.key === "ArrowRight") nudgeSelectedAnnotation(step, 0);
+        if (e.key === "ArrowUp") nudgeSelectedAnnotation(0, -step);
+        if (e.key === "ArrowDown") nudgeSelectedAnnotation(0, step);
+        return;
+      }
       if (isModifier && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         if (canUndo) undo();
@@ -166,6 +177,7 @@ export function useEditorKeyboardShortcuts({
     selectedSegmentId,
     handleDeleteSelected,
     duplicateSelectedAnnotation,
+    nudgeSelectedAnnotation,
     currentTime,
     duration,
     seek,
