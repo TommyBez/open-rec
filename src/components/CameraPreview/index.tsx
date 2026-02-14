@@ -1,6 +1,3 @@
-import { useRef, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { writeFile, BaseDirectory, mkdir } from "@tauri-apps/plugin-fs";
 import { Camera, ChevronDown, VideoOff } from "lucide-react";
 import {
   Select,
@@ -10,6 +7,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useCameraCapture } from "./hooks/useCameraCapture";
 
 interface CameraPreviewProps {
   enabled: boolean;
@@ -20,15 +18,6 @@ interface CameraPreviewProps {
   onRecordingComplete?: (blobUrl: string) => void;
 }
 
-function getVideoMimeType(): string | undefined {
-  const preferred = [
-    "video/webm;codecs=vp9",
-    "video/webm;codecs=vp8",
-    "video/webm",
-  ];
-  return preferred.find((mime) => MediaRecorder.isTypeSupported(mime));
-}
-
 export function CameraPreview({
   enabled,
   isRecording,
@@ -37,186 +26,14 @@ export function CameraPreview({
   onCameraReady,
   onRecordingComplete,
 }: CameraPreviewProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
-  const [isStreamReady, setIsStreamReady] = useState(false);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<string>("");
-
-  // Get available camera devices
-  useEffect(() => {
-    async function getDevices() {
-      try {
-        // Request permission first to get device labels
-        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        tempStream.getTracks().forEach((track) => track.stop());
-
-        const deviceList = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = deviceList.filter((d) => d.kind === "videoinput");
-        setDevices(videoDevices);
-        if (videoDevices.length > 0 && !selectedDevice) {
-          setSelectedDevice(videoDevices[0].deviceId);
-        }
-        setHasPermission(true);
-      } catch (error) {
-        console.error("Failed to get camera devices:", error);
-        setHasPermission(false);
-      }
-    }
-
-    if (enabled) {
-      getDevices();
-    }
-  }, [enabled]);
-
-  // Start/stop camera stream
-  useEffect(() => {
-    async function startCamera() {
-      if (!enabled || !selectedDevice) return;
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            deviceId: selectedDevice,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30 },
-          },
-          audio: false, // Audio is captured separately
-        });
-
-        streamRef.current = stream;
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-
-        setIsStreamReady(true);
-        onCameraReady?.(true);
-      } catch (error) {
-        console.error("Failed to start camera:", error);
-        setHasPermission(false);
-        setIsStreamReady(false);
-        onCameraReady?.(false);
-      }
-    }
-
-    function stopCamera() {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
-      }
-      mediaRecorderRef.current = null;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-      setIsStreamReady(false);
-      onCameraReady?.(false);
-    }
-
-    if (enabled && selectedDevice) {
-      startCamera();
-    } else {
-      stopCamera();
-    }
-
-    return () => {
-      stopCamera();
-    };
-  }, [enabled, selectedDevice, onCameraReady]);
-
-  // Handle recording start/stop
-  useEffect(() => {
-    if (!enabled || !isStreamReady || !streamRef.current || !projectId) return;
-
-    if (isRecording && !mediaRecorderRef.current) {
-      // Start recording
-      chunksRef.current = [];
-      const mimeType = getVideoMimeType();
-      const mediaRecorder = mimeType
-        ? new MediaRecorder(streamRef.current, {
-            mimeType,
-            videoBitsPerSecond: 2500000,
-          })
-        : new MediaRecorder(streamRef.current);
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: "video/webm" });
-        const blobUrl = URL.createObjectURL(blob);
-        if (objectUrlRef.current) {
-          URL.revokeObjectURL(objectUrlRef.current);
-        }
-        objectUrlRef.current = blobUrl;
-        onRecordingComplete?.(blobUrl);
-
-        try {
-          // Ensure directory exists
-          await mkdir(`recordings/${projectId}`, {
-            baseDir: BaseDirectory.AppData,
-            recursive: true,
-          }).catch(() => {});
-          
-          const arrayBuffer = await blob.arrayBuffer();
-          const uint8Array = new Uint8Array(arrayBuffer);
-          await writeFile(`recordings/${projectId}/camera.webm`, uint8Array, {
-            baseDir: BaseDirectory.AppData,
-          });
-        } catch (error) {
-          console.error("Failed to save camera recording:", error);
-        }
-
-        chunksRef.current = [];
-      };
-
-      if (recordingStartTimeMs) {
-        const offset = Date.now() - recordingStartTimeMs;
-        void invoke("set_recording_media_offsets", {
-          projectId,
-          cameraOffsetMs: offset,
-        }).catch((error) => {
-          console.error("Failed to persist camera offset:", error);
-        });
-      }
-
-      mediaRecorder.start(1000); // Collect data every second
-      mediaRecorderRef.current = mediaRecorder;
-    } else if (!isRecording && mediaRecorderRef.current) {
-      // Stop recording
-      if (mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
-      }
-      mediaRecorderRef.current = null;
-    }
-
-    return () => {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current = null;
-      }
-    };
-  }, [isRecording, enabled, isStreamReady, projectId, recordingStartTimeMs, onRecordingComplete]);
-
-  useEffect(() => {
-    return () => {
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
-    };
-  }, []);
+  const { videoRef, hasPermission, devices, selectedDevice, setSelectedDevice } = useCameraCapture({
+    enabled,
+    isRecording,
+    projectId,
+    recordingStartTimeMs,
+    onCameraReady,
+    onRecordingComplete,
+  });
 
   if (!enabled) {
     return null;
