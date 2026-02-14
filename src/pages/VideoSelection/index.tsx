@@ -89,6 +89,28 @@ export function VideoSelectionPage() {
     navigate(`/editor/${project.id}`);
   }
 
+  async function handleRenameProject(projectId: string, nextName: string) {
+    const trimmed = nextName.trim();
+    if (!trimmed) return;
+
+    const target = projects.find((project) => project.id === projectId);
+    if (!target || target.name === trimmed) return;
+
+    const updatedProject = { ...target, name: trimmed };
+    setProjects((prev) =>
+      prev.map((project) => (project.id === projectId ? updatedProject : project))
+    );
+
+    try {
+      await invoke("save_project", { project: updatedProject });
+    } catch (err) {
+      console.error("Failed to rename project:", err);
+      setProjects((prev) =>
+        prev.map((project) => (project.id === projectId ? target : project))
+      );
+    }
+  }
+
   function handleBack() {
     if (cameFromEditor && previousProjectId) {
       navigate(`/editor/${previousProjectId}`);
@@ -174,6 +196,7 @@ export function VideoSelectionPage() {
                   key={project.id}
                   project={project}
                   onSelect={handleSelectProject}
+                  onRename={handleRenameProject}
                   index={index}
                 />
               ))}

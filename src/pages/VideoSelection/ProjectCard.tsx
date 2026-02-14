@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Film, Clock, Calendar, Video } from "lucide-react";
+import { Film, Clock, Calendar, Video, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Project } from "../../types/project";
 
@@ -24,14 +24,28 @@ function formatDate(dateString: string): string {
 interface ProjectCardProps {
   project: Project;
   onSelect: (project: Project) => void;
+  onRename: (projectId: string, name: string) => void;
   index: number;
 }
 
-export function ProjectCard({ project, onSelect, index }: ProjectCardProps) {
+export function ProjectCard({ project, onSelect, onRename, index }: ProjectCardProps) {
   const [thumbnailError, setThumbnailError] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [draftName, setDraftName] = useState(project.name);
   const thumbnailSrc = project.screenVideoPath
     ? convertFileSrc(project.screenVideoPath)
     : "";
+
+  useEffect(() => {
+    if (!isRenaming) {
+      setDraftName(project.name);
+    }
+  }, [project.name, isRenaming]);
+
+  const commitRename = () => {
+    onRename(project.id, draftName);
+    setIsRenaming(false);
+  };
 
   return (
     <button
@@ -76,9 +90,43 @@ export function ProjectCard({ project, onSelect, index }: ProjectCardProps) {
 
       {/* Info area */}
       <div className="flex flex-col gap-1 p-3">
-        <h3 className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-          {project.name}
-        </h3>
+        <div className="flex items-center gap-2">
+          {isRenaming ? (
+            <input
+              value={draftName}
+              onChange={(event) => setDraftName(event.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  commitRename();
+                }
+                if (event.key === "Escape") {
+                  setDraftName(project.name);
+                  setIsRenaming(false);
+                }
+              }}
+              autoFocus
+              onClick={(event) => event.stopPropagation()}
+              className="w-full rounded-md border border-border/60 bg-background px-2 py-1 text-sm font-medium text-foreground outline-none focus:border-primary/50"
+            />
+          ) : (
+            <>
+              <h3 className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
+                {project.name}
+              </h3>
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsRenaming(true);
+                }}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                title="Rename project"
+              >
+                <Pencil className="size-3.5" strokeWidth={1.75} />
+              </button>
+            </>
+          )}
+        </div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Calendar className="size-3" strokeWidth={2} />
           {formatDate(project.createdAt)}
