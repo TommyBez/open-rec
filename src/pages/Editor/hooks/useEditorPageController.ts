@@ -26,8 +26,8 @@ export function useEditorPageController({
 }: UseEditorPageControllerOptions) {
   const {
     project,
-    setProject,
     replaceProject,
+    patchProject,
     isDirty,
     saveProject,
     renameProject,
@@ -135,7 +135,7 @@ export function useEditorPageController({
     setIsPlaying,
     setCurrentTime,
     setDuration,
-    setProject,
+    patchProject,
   });
 
   useEffect(() => {

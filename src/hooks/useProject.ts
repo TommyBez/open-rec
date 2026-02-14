@@ -77,6 +77,18 @@ export function useProject(initialProject: Project | null) {
     });
   }, [pushToHistory]);
 
+  const patchProject = useCallback((updater: (p: Project) => Project) => {
+    setProjectState((prev) => {
+      if (!prev) return prev;
+      const updated = updater(prev);
+      if (updated === prev) {
+        return prev;
+      }
+      setIsDirty(true);
+      return updated;
+    });
+  }, []);
+
   const replaceProject = useCallback((nextProject: Project) => {
     historyRef.current = [];
     futureRef.current = [];
@@ -621,6 +633,7 @@ export function useProject(initialProject: Project | null) {
     project,
     setProject: setProjectState,
     replaceProject,
+    patchProject,
     isDirty,
     saveProject,
     renameProject,
