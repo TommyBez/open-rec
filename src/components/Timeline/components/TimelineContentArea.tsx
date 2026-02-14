@@ -8,7 +8,6 @@ import { Playhead } from "./Playhead";
 import { SpeedTrack } from "./SpeedTrack";
 import { TimelineAudioWaveforms } from "./TimelineAudioWaveforms";
 import { ZoomTrack } from "./ZoomTrack";
-
 interface TimelineContentAreaProps {
   timelineRef: RefObject<HTMLDivElement | null>;
   selectedTool: "cut" | "zoom" | "speed" | "annotation" | null;
