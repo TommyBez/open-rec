@@ -26,6 +26,7 @@ interface PlaybackControlsProps {
   canDeleteZoom: boolean;
   canDeleteSpeed: boolean;
   canDeleteSegment: boolean;
+  canDeleteAnnotation: boolean;
   selectedTool: string | null;
   onTogglePlay: () => void;
   onSkipBackward: () => void;
@@ -47,6 +48,7 @@ export const PlaybackControls = memo(function PlaybackControls({
   canDeleteZoom,
   canDeleteSpeed,
   canDeleteSegment,
+  canDeleteAnnotation,
   selectedTool,
   onTogglePlay,
   onSkipBackward,
@@ -210,6 +212,8 @@ export const PlaybackControls = memo(function PlaybackControls({
               ? "Delete selected zoom (Delete/Backspace)" 
               : canDeleteSpeed
               ? "Delete selected speed (Delete/Backspace)"
+              : canDeleteAnnotation
+              ? "Delete selected annotation (Delete/Backspace)"
               : canDeleteSegment 
               ? "Delete selected segment (Delete/Backspace)" 
               : "Select an item to delete (Delete/Backspace)"}

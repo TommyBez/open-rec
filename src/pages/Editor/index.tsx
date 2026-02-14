@@ -6,9 +6,10 @@ import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { ZoomInspector } from "../../components/ZoomInspector";
 import { SpeedInspector } from "../../components/SpeedInspector";
+import { AnnotationInspector } from "../../components/AnnotationInspector";
 import { useProject } from "../../hooks/useProject";
 import { useEditorStore, useExportStore } from "../../stores";
-import { Project, ZoomEffect, SpeedEffect } from "../../types/project";
+import { Annotation, Project, ZoomEffect, SpeedEffect } from "../../types/project";
 
 // Extracted components
 import { EditorHeader } from "./components/EditorHeader";
@@ -83,6 +84,8 @@ export function EditorPage() {
     updateSpeed,
     deleteSpeed,
     addAnnotation,
+    deleteAnnotation,
+    updateAnnotation,
   } = useProject(null);
   
   const {
@@ -93,6 +96,7 @@ export function EditorPage() {
     selectedSegmentId,
     selectedZoomId,
     selectedSpeedId,
+    selectedAnnotationId,
     zoomDraft,
     speedDraft,
     showExportModal,
@@ -104,6 +108,7 @@ export function EditorPage() {
     selectSegment,
     selectZoom,
     selectSpeed,
+    selectAnnotation,
     setZoomDraft,
     setSpeedDraft,
     setShowExportModal,
@@ -122,6 +127,11 @@ export function EditorPage() {
     if (!project || !selectedSpeedId) return null;
     return project.edits.speed.find((s) => s.id === selectedSpeedId) ?? null;
   }, [project, selectedSpeedId]);
+
+  const selectedAnnotation = useMemo(() => {
+    if (!project || !selectedAnnotationId) return null;
+    return project.edits.annotations.find((a) => a.id === selectedAnnotationId) ?? null;
+  }, [project, selectedAnnotationId]);
 
   const activeZoom = useMemo(() => {
     if (!project) return null;
@@ -289,11 +299,12 @@ export function EditorPage() {
   const handleDeleteSelected = useCallback(() => {
     if (selectedZoomId) { deleteZoom(selectedZoomId); selectZoom(null); }
     else if (selectedSpeedId) { deleteSpeed(selectedSpeedId); selectSpeed(null); }
+    else if (selectedAnnotationId) { deleteAnnotation(selectedAnnotationId); selectAnnotation(null); }
     else if (selectedSegmentId && project && project.edits.segments.length > 1) {
       deleteSegment(selectedSegmentId);
       selectSegment(null);
     }
-  }, [selectedZoomId, selectedSpeedId, selectedSegmentId, project, deleteZoom, deleteSpeed, deleteSegment, selectZoom, selectSpeed, selectSegment]);
+  }, [selectedZoomId, selectedSpeedId, selectedAnnotationId, selectedSegmentId, project, deleteZoom, deleteSpeed, deleteAnnotation, deleteSegment, selectZoom, selectSpeed, selectAnnotation, selectSegment]);
 
   // Keyboard shortcuts (undo/redo + JKL transport controls)
   useEffect(() => {
@@ -361,7 +372,7 @@ export function EditorPage() {
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedZoomId || selectedSpeedId || selectedSegmentId) {
+        if (selectedZoomId || selectedSpeedId || selectedAnnotationId || selectedSegmentId) {
           e.preventDefault();
           handleDeleteSelected();
         }
@@ -394,6 +405,7 @@ export function EditorPage() {
     toggleTool,
     selectedZoomId,
     selectedSpeedId,
+    selectedAnnotationId,
     selectedSegmentId,
     handleDeleteSelected,
     currentTime,
@@ -458,8 +470,17 @@ export function EditorPage() {
   const handleSpeedDraftChange = useCallback((draft: { speed: number }) => setSpeedDraft(draft), [setSpeedDraft]);
   const handleZoomCommit = useCallback((updates: Partial<ZoomEffect>) => { if (selectedZoomId) updateZoom(selectedZoomId, updates); }, [selectedZoomId, updateZoom]);
   const handleSpeedCommit = useCallback((updates: Partial<SpeedEffect>) => { if (selectedSpeedId) updateSpeed(selectedSpeedId, updates); }, [selectedSpeedId, updateSpeed]);
+  const handleAnnotationCommit = useCallback(
+    (updates: Partial<Annotation>) => {
+      if (selectedAnnotationId) {
+        updateAnnotation(selectedAnnotationId, updates);
+      }
+    },
+    [selectedAnnotationId, updateAnnotation]
+  );
   const handleCloseZoomInspector = useCallback(() => { selectZoom(null); setZoomDraft(null); }, [selectZoom, setZoomDraft]);
   const handleCloseSpeedInspector = useCallback(() => { selectSpeed(null); setSpeedDraft(null); }, [selectSpeed, setSpeedDraft]);
+  const handleCloseAnnotationInspector = useCallback(() => selectAnnotation(null), [selectAnnotation]);
   const handleBack = useCallback(() => navigate("/recorder"), [navigate]);
   const handleExport = useCallback(() => setShowExportModal(true), [setShowExportModal]);
   const handleOpenVideos = useCallback(() => {
@@ -478,7 +499,8 @@ export function EditorPage() {
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
   const canDeleteZoom = selectedZoomId !== null;
   const canDeleteSpeed = selectedSpeedId !== null;
-  const canDelete = canDeleteSegment || canDeleteZoom || canDeleteSpeed;
+  const canDeleteAnnotation = selectedAnnotationId !== null;
+  const canDelete = canDeleteSegment || canDeleteZoom || canDeleteSpeed || canDeleteAnnotation;
 
   if (isLoading || !project) return loadingSpinner;
 
@@ -557,6 +579,7 @@ export function EditorPage() {
             canDeleteZoom={canDeleteZoom}
             canDeleteSpeed={canDeleteSpeed}
             canDeleteSegment={!!canDeleteSegment}
+            canDeleteAnnotation={canDeleteAnnotation}
             selectedTool={selectedTool}
             onTogglePlay={togglePlay}
             onSkipBackward={skipBackward}
@@ -613,6 +636,27 @@ export function EditorPage() {
             </motion.aside>
           )}
         </AnimatePresence>
+
+        {/* Annotation Inspector Sidebar */}
+        <AnimatePresence>
+          {selectedAnnotation && (
+            <motion.aside
+              key="annotation-inspector"
+              className="shrink-0 overflow-hidden"
+              initial={{ width: 0, opacity: 0, x: 16 }}
+              animate={{ width: 256, opacity: 1, x: 0 }}
+              exit={{ width: 0, opacity: 0, x: 16 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              aria-label="Annotation settings"
+            >
+              <AnnotationInspector
+                annotation={selectedAnnotation}
+                onCommit={handleAnnotationCommit}
+                onClose={handleCloseAnnotationInspector}
+              />
+            </motion.aside>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="relative z-10 animate-fade-up-delay-3">
@@ -622,6 +666,7 @@ export function EditorPage() {
           segments={project.edits.segments}
           zoom={project.edits.zoom}
           speed={project.edits.speed}
+          annotations={project.edits.annotations}
           screenWaveform={screenWaveform}
           microphoneWaveform={microphoneWaveform}
           onSeek={handleTimelineClick}
@@ -634,6 +679,8 @@ export function EditorPage() {
           selectedSpeedId={selectedSpeedId}
           onSelectSpeed={selectSpeed}
           onUpdateSpeed={updateSpeed}
+          selectedAnnotationId={selectedAnnotationId}
+          onSelectAnnotation={selectAnnotation}
         />
       </div>
 

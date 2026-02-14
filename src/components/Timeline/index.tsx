@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { ZoomIn, Film, Timer } from "lucide-react";
-import type { Segment, ZoomEffect, SpeedEffect } from "../../types/project";
+import type { Segment, ZoomEffect, SpeedEffect, Annotation } from "../../types/project";
 import { cn } from "@/lib/utils";
 
 interface TimelineProps {
@@ -9,6 +9,7 @@ interface TimelineProps {
   segments: Segment[];
   zoom: ZoomEffect[];
   speed?: SpeedEffect[];
+  annotations?: Annotation[];
   screenWaveform?: number[];
   microphoneWaveform?: number[];
   onSeek: (time: number) => void;
@@ -21,6 +22,8 @@ interface TimelineProps {
   selectedSpeedId: string | null;
   onSelectSpeed: (speedId: string | null) => void;
   onUpdateSpeed?: (speedId: string, updates: Partial<SpeedEffect>) => void;
+  selectedAnnotationId: string | null;
+  onSelectAnnotation: (annotationId: string | null) => void;
 }
 
 type DragMode = "move" | "resize-start" | "resize-end" | null;
@@ -31,6 +34,7 @@ export function Timeline({
   segments,
   zoom,
   speed = [],
+  annotations = [],
   screenWaveform = [],
   microphoneWaveform = [],
   onSeek,
@@ -43,6 +47,8 @@ export function Timeline({
   selectedSpeedId,
   onSelectSpeed,
   onUpdateSpeed,
+  selectedAnnotationId,
+  onSelectAnnotation,
 }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -235,6 +241,7 @@ export function Timeline({
     onSelectSegment(null);
     onSelectZoom(null);
     onSelectSpeed(null);
+    onSelectAnnotation(null);
   }
 
   function handleMouseDown(e: React.MouseEvent) {
@@ -654,6 +661,7 @@ export function Timeline({
           <TrackLabel icon={<Film className="size-3.5" strokeWidth={1.75} />} label="Clips" />
           <TrackLabel icon={<ZoomIn className="size-3.5" strokeWidth={1.75} />} label="Zoom" />
           <TrackLabel icon={<Timer className="size-3.5" strokeWidth={1.75} />} label="Speed" />
+          {annotations.length > 0 && <TrackLabel icon={<Timer className="size-3.5" strokeWidth={1.75} />} label="Annot" />}
           {screenWaveformBars.length > 0 && <TrackLabel icon={<Film className="size-3.5" strokeWidth={1.75} />} label="Sys Aud" />}
           {microphoneWaveformBars.length > 0 && <TrackLabel icon={<Film className="size-3.5" strokeWidth={1.75} />} label="Mic Aud" />}
         </div>
@@ -782,6 +790,43 @@ export function Timeline({
               </div>
             )}
           </div>
+
+          {annotations.length > 0 && (
+            <div className="relative h-10 w-full overflow-hidden rounded-lg bg-amber-500/10">
+              {annotations.map((annotation) => {
+                const displayStart = sourceToDisplayTime(annotation.startTime);
+                const displayEnd = sourceToDisplayTime(annotation.endTime);
+                const width = Math.max(0.4, displayEnd - displayStart);
+                const isSelected = selectedAnnotationId === annotation.id;
+                return (
+                  <button
+                    key={annotation.id}
+                    type="button"
+                    className={cn(
+                      "absolute h-full rounded-md border px-2 text-left text-[11px] font-medium text-amber-50 transition-all",
+                      "bg-gradient-to-r from-amber-500/90 to-amber-600/80",
+                      isSelected
+                        ? "border-white ring-2 ring-white ring-offset-1 ring-offset-background"
+                        : "border-amber-300/30"
+                    )}
+                    style={{
+                      left: `${(displayStart / timelineDuration) * 100}%`,
+                      width: `${(width / timelineDuration) * 100}%`,
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelectAnnotation(
+                        selectedAnnotationId === annotation.id ? null : annotation.id
+                      );
+                    }}
+                    title="Annotation range"
+                  >
+                    Box
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Speed track */}
           <div className="relative h-10 w-full overflow-hidden rounded-lg bg-muted/30">
