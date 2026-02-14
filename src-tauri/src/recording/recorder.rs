@@ -277,12 +277,14 @@ pub fn start_recording(
 ) -> Result<StartRecordingResult, AppError> {
     let project_id = Uuid::new_v4().to_string();
 
-    let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
 
     // Create project directory
     let project_dir = state_guard.recordings_dir.join(&project_id);
     std::fs::create_dir_all(&project_dir)
-        .map_err(|e| format!("Failed to create project dir: {}", e))?;
+        .map_err(|e| AppError::Io(format!("Failed to create project dir: {}", e)))?;
 
     let screen_video_path = project_dir.join("screen.mp4");
     let camera_video_path = if options.capture_camera {
@@ -298,7 +300,7 @@ pub fn start_recording(
 
     // Get shareable content
     let content = SCShareableContent::get()
-        .map_err(|e| format!("Failed to get shareable content: {:?}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
     // Create content filter based on source type
     let filter = match options.source_type {
@@ -358,10 +360,10 @@ pub fn start_recording(
     let stream = SCStream::new(&filter, &config);
     stream
         .add_recording_output(&recording_output)
-        .map_err(|e| format!("Failed to add recording output: {:?}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to add recording output: {:?}", e)))?;
     stream
         .start_capture()
-        .map_err(|e| format!("Failed to start capture: {:?}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to start capture: {:?}", e)))?;
 
     let recording_start_time_ms = chrono::Utc::now().timestamp_millis();
 
@@ -406,7 +408,9 @@ pub fn stop_recording(
     state: &SharedRecorderState,
     project_id: &str,
 ) -> Result<StopRecordingResult, AppError> {
-    let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
 
     let mut session = state_guard
         .sessions
@@ -419,13 +423,15 @@ pub fn stop_recording(
         // First stop the capture to signal we're done
         stream
             .stop_capture()
-            .map_err(|e| format!("Failed to stop capture: {:?}", e))?;
+            .map_err(|e| AppError::Message(format!("Failed to stop capture: {:?}", e)))?;
 
         // Then remove the recording output - this should trigger file finalization
         if let Some(ref recording_output) = session.recording_output {
             stream
                 .remove_recording_output(recording_output)
-                .map_err(|e| format!("Failed to remove recording output: {:?}", e))?;
+                .map_err(|e| {
+                    AppError::Message(format!("Failed to remove recording output: {:?}", e))
+                })?;
         }
 
         wait_for_file_ready(&current_segment_path, Duration::from_secs(20))?;
@@ -459,7 +465,9 @@ pub fn stop_recording(
 /// Pause recording (creates a new segment)
 #[cfg(target_os = "macos")]
 pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), AppError> {
-    let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
 
     let session = state_guard
         .sessions
@@ -475,11 +483,13 @@ pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<
         if let Some(ref recording_output) = session.recording_output {
             stream
                 .remove_recording_output(recording_output)
-                .map_err(|e| format!("Failed to remove recording output: {:?}", e))?;
+                .map_err(|e| {
+                    AppError::Message(format!("Failed to remove recording output: {:?}", e))
+                })?;
         }
         stream
             .stop_capture()
-            .map_err(|e| format!("Failed to stop capture for pause: {:?}", e))?;
+            .map_err(|e| AppError::Message(format!("Failed to stop capture for pause: {:?}", e)))?;
     }
 
     if let Some(last_resume) = session.last_resume_instant.take() {
@@ -499,7 +509,9 @@ pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<
 /// Resume recording (starts a new segment)
 #[cfg(target_os = "macos")]
 pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), AppError> {
-    let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
 
     let session = state_guard
         .sessions
@@ -524,7 +536,7 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
 
     // Get shareable content again
     let content = SCShareableContent::get()
-        .map_err(|e| format!("Failed to get shareable content: {:?}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
     // Recreate filter
     let filter = match session.options.source_type {
@@ -583,10 +595,10 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
     let stream = SCStream::new(&filter, &config);
     stream
         .add_recording_output(&recording_output)
-        .map_err(|e| format!("Failed to add recording output: {:?}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to add recording output: {:?}", e)))?;
     stream
         .start_capture()
-        .map_err(|e| format!("Failed to resume capture: {:?}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to resume capture: {:?}", e)))?;
 
     session.state = RecordingState::Recording;
     session.stream = Some(stream);
@@ -606,7 +618,9 @@ pub fn set_media_offsets(
     camera_offset_ms: Option<i64>,
     microphone_offset_ms: Option<i64>,
 ) -> Result<(), AppError> {
-    let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
     let session = state_guard
         .sessions
         .get_mut(project_id)
@@ -625,7 +639,9 @@ pub fn set_media_offsets(
 /// Cleanup all active recording streams (used on app termination)
 #[cfg(target_os = "macos")]
 pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), AppError> {
-    let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
 
     for session in state_guard.sessions.values_mut() {
         if let Some(stream) = session.stream.as_ref() {
