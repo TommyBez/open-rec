@@ -944,6 +944,7 @@ export function Timeline({
             <div className="relative h-10 w-full overflow-hidden rounded-lg bg-amber-500/10">
               {annotations.map((annotation) => {
                 const isDraggingThis = draggingAnnotationId === annotation.id;
+                const mode = annotation.mode ?? "outline";
                 const annotationTimes =
                   isDraggingThis && localAnnotationOverride
                     ? {
@@ -963,7 +964,11 @@ export function Timeline({
                     key={annotation.id}
                     className={cn(
                       "group/annotation absolute flex h-full items-center justify-between overflow-hidden rounded-md border px-2 text-left text-[11px] font-medium text-amber-50 select-none",
-                      "bg-gradient-to-r from-amber-500/90 to-amber-600/80",
+                      mode === "blur"
+                        ? "bg-gradient-to-r from-slate-500/90 to-slate-600/80"
+                        : mode === "text"
+                        ? "bg-gradient-to-r from-indigo-500/90 to-violet-600/80"
+                        : "bg-gradient-to-r from-amber-500/90 to-amber-600/80",
                       !isDraggingThis && "transition-all",
                       isSelected
                         ? "border-white ring-2 ring-white ring-offset-1 ring-offset-background"
@@ -996,7 +1001,9 @@ export function Timeline({
                         handleAnnotationMouseDown(event, annotation.id, "resize-end")
                       }
                     />
-                    <span className="pointer-events-none">Box</span>
+                    <span className="pointer-events-none">
+                      {mode === "blur" ? "Blur" : mode === "text" ? "Text" : "Box"}
+                    </span>
                   </div>
                 );
               })}
