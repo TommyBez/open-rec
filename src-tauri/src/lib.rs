@@ -116,6 +116,112 @@ fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> 
     projects.into_iter().take(max_items).collect()
 }
 
+fn build_tray_menu<R: tauri::Runtime, M: Manager<R>>(
+    manager: &M,
+    recordings_dir: &PathBuf,
+) -> Result<Menu<R>, AppError> {
+    let recent_projects = load_recent_projects_for_tray(recordings_dir, 6);
+    let open_recorder_item = MenuItem::with_id(
+        manager,
+        TRAY_MENU_OPEN_RECORDER,
+        "Open Recorder",
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+    let open_projects_item = MenuItem::with_id(
+        manager,
+        TRAY_MENU_OPEN_PROJECTS,
+        "Open Projects",
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+    let start_stop_item = MenuItem::with_id(
+        manager,
+        TRAY_MENU_START_STOP,
+        "Start/Stop Recording",
+        true,
+        Some(START_STOP_SHORTCUT),
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+    let pause_resume_item = MenuItem::with_id(
+        manager,
+        TRAY_MENU_PAUSE_RESUME,
+        "Pause/Resume Recording",
+        true,
+        Some(PAUSE_RESUME_SHORTCUT),
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+    let quit_item = MenuItem::with_id(manager, TRAY_MENU_QUIT, "Quit OpenRec", true, None::<&str>)
+        .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+
+    let recent_submenu = if recent_projects.is_empty() {
+        let no_recent_item = MenuItem::with_id(
+            manager,
+            "tray.recent.none",
+            "No recent projects",
+            false,
+            None::<&str>,
+        )
+        .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+        Submenu::with_items(manager, "Recent Projects", true, &[&no_recent_item])
+            .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?
+    } else {
+        let recent_items = recent_projects
+            .iter()
+            .map(|project| {
+                MenuItem::with_id(
+                    manager,
+                    format!("{TRAY_MENU_RECENT_PREFIX}{}", project.id),
+                    truncate_tray_label(&project.name, 28),
+                    true,
+                    None::<&str>,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+        let recent_item_refs = recent_items.iter().collect::<Vec<_>>();
+        Submenu::with_items(manager, "Recent Projects", true, &recent_item_refs)
+            .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?
+    };
+
+    let separator_top = PredefinedMenuItem::separator(manager)
+        .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+    let separator_bottom = PredefinedMenuItem::separator(manager)
+        .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+    Menu::with_items(
+        manager,
+        &[
+            &open_recorder_item,
+            &open_projects_item,
+            &recent_submenu,
+            &separator_top,
+            &start_stop_item,
+            &pause_resume_item,
+            &separator_bottom,
+            &quit_item,
+        ],
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))
+}
+
+fn refresh_tray_menu(app: &AppHandle, recordings_dir: &PathBuf) {
+    let Some(tray) = app.tray_by_id("open-rec-tray") else {
+        return;
+    };
+    match build_tray_menu(app, recordings_dir) {
+        Ok(menu) => {
+            if let Err(error) = tray.set_menu(Some(menu)) {
+                eprintln!("Failed to refresh tray menu: {}", error);
+            }
+        }
+        Err(error) => {
+            eprintln!("Failed to refresh tray menu: {}", error);
+        }
+    }
+}
+
 fn recording_disk_space_status(recordings_dir: &PathBuf) -> Result<DiskSpaceStatus, AppError> {
     let free_bytes = fs2::available_space(recordings_dir).map_err(|error| {
         AppError::Io(format!(
@@ -482,6 +588,7 @@ async fn stop_screen_recording(
         stop_result.microphone_offset_ms,
     );
     project::save_project(&recordings_dir, &project).await?;
+    refresh_tray_menu(&app, &recordings_dir);
 
     // First, show and prepare the main window BEFORE emitting events
     if let Some(main_window) = app.get_webview_window("main") {
@@ -615,6 +722,7 @@ async fn load_project(
 /// Save a project
 #[tauri::command]
 async fn save_project(
+    app: AppHandle,
     state: tauri::State<SharedRecorderState>,
     project: Project,
 ) -> Result<(), AppError> {
@@ -624,7 +732,9 @@ async fn save_project(
             .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::save_project(&recordings_dir, &project).await
+    project::save_project(&recordings_dir, &project).await?;
+    refresh_tray_menu(&app, &recordings_dir);
+    Ok(())
 }
 
 /// List all projects
@@ -642,6 +752,7 @@ async fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<P
 /// Delete project and all local assets
 #[tauri::command]
 async fn delete_project(
+    app: AppHandle,
     state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
@@ -652,7 +763,9 @@ async fn delete_project(
         state_guard.recordings_dir.clone()
     };
 
-    project::delete_project(&recordings_dir, &project_id).await
+    project::delete_project(&recordings_dir, &project_id).await?;
+    refresh_tray_menu(&app, &recordings_dir);
+    Ok(())
 }
 
 /// Export a project
@@ -894,79 +1007,8 @@ pub fn run() {
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
 
             let recordings_dir = app_data_dir.join("recordings");
-            let recent_projects = load_recent_projects_for_tray(&recordings_dir, 6);
-            let open_recorder_item = MenuItem::with_id(
-                app,
-                TRAY_MENU_OPEN_RECORDER,
-                "Open Recorder",
-                true,
-                None::<&str>,
-            )?;
-            let open_projects_item = MenuItem::with_id(
-                app,
-                TRAY_MENU_OPEN_PROJECTS,
-                "Open Projects",
-                true,
-                None::<&str>,
-            )?;
-            let start_stop_item = MenuItem::with_id(
-                app,
-                TRAY_MENU_START_STOP,
-                "Start/Stop Recording",
-                true,
-                Some(START_STOP_SHORTCUT),
-            )?;
-            let pause_resume_item = MenuItem::with_id(
-                app,
-                TRAY_MENU_PAUSE_RESUME,
-                "Pause/Resume Recording",
-                true,
-                Some(PAUSE_RESUME_SHORTCUT),
-            )?;
-            let quit_item =
-                MenuItem::with_id(app, TRAY_MENU_QUIT, "Quit OpenRec", true, None::<&str>)?;
-
-            let recent_submenu = if recent_projects.is_empty() {
-                let no_recent_item = MenuItem::with_id(
-                    app,
-                    "tray.recent.none",
-                    "No recent projects",
-                    false,
-                    None::<&str>,
-                )?;
-                Submenu::with_items(app, "Recent Projects", true, &[&no_recent_item])?
-            } else {
-                let recent_items = recent_projects
-                    .iter()
-                    .map(|project| {
-                        MenuItem::with_id(
-                            app,
-                            format!("{TRAY_MENU_RECENT_PREFIX}{}", project.id),
-                            truncate_tray_label(&project.name, 28),
-                            true,
-                            None::<&str>,
-                        )
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                let recent_item_refs = recent_items.iter().collect::<Vec<_>>();
-                Submenu::with_items(app, "Recent Projects", true, &recent_item_refs)?
-            };
-
-            let separator_top = PredefinedMenuItem::separator(app)?;
-            let separator_bottom = PredefinedMenuItem::separator(app)?;
-            let tray_menu = Menu::with_items(
-                app,
-                &[
-                    &open_recorder_item,
-                    &open_projects_item,
-                    &recent_submenu,
-                    &separator_top,
-                    &start_stop_item,
-                    &pause_resume_item,
-                    &separator_bottom,
-                    &quit_item,
-                ],
-            )?;
+            let tray_menu = build_tray_menu(app, &recordings_dir)
+                .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
 
             let mut tray_builder = TrayIconBuilder::with_id("open-rec-tray")
                 .menu(&tray_menu)
