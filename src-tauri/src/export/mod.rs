@@ -542,15 +542,16 @@ pub fn build_ffmpeg_args(
                 current_video_label = "[vwithcam]".to_string();
             }
 
-            let mut audio_labels: Vec<String> = Vec::new();
-            if screen_has_audio {
+            let screen_audio_label = if screen_has_audio {
                 let (audio_filters, audio_label) =
                     build_audio_timeline_filter("[0:a]", &timeline_pieces, "ascreen");
                 filter_parts.extend(audio_filters);
-                audio_labels.push(audio_label);
-            }
+                Some(audio_label)
+            } else {
+                None
+            };
 
-            if let Some(idx) = mic_index {
+            let microphone_audio_label = if let Some(idx) = mic_index {
                 let input_label = format!("[{}:a]", idx);
                 let (offset_filters, offset_label) = apply_audio_offset(
                     &input_label,
@@ -561,22 +562,28 @@ pub fn build_ffmpeg_args(
                 let (mic_filters, mic_label) =
                     build_audio_timeline_filter(&offset_label, &timeline_pieces, "amicpiece");
                 filter_parts.extend(mic_filters);
-                audio_labels.push(mic_label);
-            }
-
-            let audio_output_label = if audio_labels.is_empty() {
-                None
-            } else if audio_labels.len() == 1 {
-                Some(audio_labels[0].clone())
+                Some(mic_label)
             } else {
-                let mixed_label = "[aout]".to_string();
-                filter_parts.push(format!(
-                    "{}amix=inputs={}:duration=longest:dropout_transition=0{}",
-                    audio_labels.join(""),
-                    audio_labels.len(),
-                    mixed_label
-                ));
-                Some(mixed_label)
+                None
+            };
+
+            let audio_output_label = match (screen_audio_label, microphone_audio_label) {
+                (Some(screen_label), Some(microphone_label)) => {
+                    let ducked_label = "[aducked]".to_string();
+                    let mixed_label = "[aout]".to_string();
+                    filter_parts.push(format!(
+                        "{}{}sidechaincompress=threshold=0.025:ratio=8:attack=20:release=300{}",
+                        &screen_label, &microphone_label, ducked_label
+                    ));
+                    filter_parts.push(format!(
+                        "{}{}amix=inputs=2:duration=longest:dropout_transition=0{}",
+                        ducked_label, &microphone_label, mixed_label
+                    ));
+                    Some(mixed_label)
+                }
+                (Some(screen_label), None) => Some(screen_label),
+                (None, Some(microphone_label)) => Some(microphone_label),
+                (None, None) => None,
             };
 
             let final_video_label = if filter_parts.is_empty() {
@@ -695,16 +702,17 @@ pub fn build_ffmpeg_args(
         }
         ExportFormat::Wav | ExportFormat::Mp3 => {
             let mut filter_parts: Vec<String> = Vec::new();
-            let mut audio_labels: Vec<String> = Vec::new();
 
-            if screen_has_audio {
+            let screen_audio_label = if screen_has_audio {
                 let (audio_filters, audio_label) =
                     build_audio_timeline_filter("[0:a]", &timeline_pieces, "ascreen");
                 filter_parts.extend(audio_filters);
-                audio_labels.push(audio_label);
-            }
+                Some(audio_label)
+            } else {
+                None
+            };
 
-            if let Some(idx) = mic_index {
+            let microphone_audio_label = if let Some(idx) = mic_index {
                 let input_label = format!("[{}:a]", idx);
                 let (offset_filters, offset_label) = apply_audio_offset(
                     &input_label,
@@ -715,22 +723,28 @@ pub fn build_ffmpeg_args(
                 let (mic_filters, mic_label) =
                     build_audio_timeline_filter(&offset_label, &timeline_pieces, "amicpiece");
                 filter_parts.extend(mic_filters);
-                audio_labels.push(mic_label);
-            }
-
-            let audio_output_label = if audio_labels.is_empty() {
-                None
-            } else if audio_labels.len() == 1 {
-                Some(audio_labels[0].clone())
+                Some(mic_label)
             } else {
-                let mixed_label = "[aout]".to_string();
-                filter_parts.push(format!(
-                    "{}amix=inputs={}:duration=longest:dropout_transition=0{}",
-                    audio_labels.join(""),
-                    audio_labels.len(),
-                    mixed_label
-                ));
-                Some(mixed_label)
+                None
+            };
+
+            let audio_output_label = match (screen_audio_label, microphone_audio_label) {
+                (Some(screen_label), Some(microphone_label)) => {
+                    let ducked_label = "[aducked]".to_string();
+                    let mixed_label = "[aout]".to_string();
+                    filter_parts.push(format!(
+                        "{}{}sidechaincompress=threshold=0.025:ratio=8:attack=20:release=300{}",
+                        &screen_label, &microphone_label, ducked_label
+                    ));
+                    filter_parts.push(format!(
+                        "{}{}amix=inputs=2:duration=longest:dropout_transition=0{}",
+                        ducked_label, &microphone_label, mixed_label
+                    ));
+                    Some(mixed_label)
+                }
+                (Some(screen_label), None) => Some(screen_label),
+                (None, Some(microphone_label)) => Some(microphone_label),
+                (None, None) => None,
             };
 
             args.push("-vn".to_string());
