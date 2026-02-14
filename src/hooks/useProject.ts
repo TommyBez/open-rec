@@ -631,7 +631,6 @@ export function useProject(initialProject: Project | null) {
 
   return {
     project,
-    setProject: setProjectState,
     replaceProject,
     patchProject,
     isDirty,
