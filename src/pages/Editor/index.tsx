@@ -351,8 +351,16 @@ export function EditorPage() {
         onRename={renameProject}
         hasCameraTrack={Boolean(project.cameraVideoPath)}
         cameraOverlayPosition={project.edits.cameraOverlay.position}
+        cameraOverlayScale={project.edits.cameraOverlay.scale}
+        cameraOverlayMargin={project.edits.cameraOverlay.margin}
         onCameraOverlayPositionChange={(position) =>
           updateCameraOverlay({ position })
+        }
+        onCameraOverlayScaleChange={(scale) =>
+          updateCameraOverlay({ scale: Math.max(0.1, Math.min(0.6, scale)) })
+        }
+        onCameraOverlayMarginChange={(margin) =>
+          updateCameraOverlay({ margin: Math.max(0, Math.min(100, Math.round(margin))) })
         }
         onBack={handleBack}
         onExport={handleExport}

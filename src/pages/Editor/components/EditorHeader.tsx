@@ -13,9 +13,13 @@ interface EditorHeaderProps {
   onRename: (name: string) => void;
   hasCameraTrack: boolean;
   cameraOverlayPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  cameraOverlayScale: number;
+  cameraOverlayMargin: number;
   onCameraOverlayPositionChange: (
     position: "top-left" | "top-right" | "bottom-left" | "bottom-right"
   ) => void;
+  onCameraOverlayScaleChange: (scale: number) => void;
+  onCameraOverlayMarginChange: (margin: number) => void;
   onBack: () => void;
   onExport: () => void;
   onOpenVideos: () => void;
@@ -27,7 +31,11 @@ export const EditorHeader = memo(function EditorHeader({
   onRename,
   hasCameraTrack,
   cameraOverlayPosition,
+  cameraOverlayScale,
+  cameraOverlayMargin,
   onCameraOverlayPositionChange,
+  onCameraOverlayScaleChange,
+  onCameraOverlayMarginChange,
   onBack,
   onExport,
   onOpenVideos,
@@ -97,25 +105,55 @@ export const EditorHeader = memo(function EditorHeader({
       </div>
       <div className="flex items-center gap-2">
         {hasCameraTrack && (
-          <select
-            value={cameraOverlayPosition}
-            onChange={(event) =>
-              onCameraOverlayPositionChange(
-                event.target.value as
-                  | "top-left"
-                  | "top-right"
-                  | "bottom-left"
-                  | "bottom-right"
-              )
-            }
-            className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80 outline-none focus:border-primary/50"
-            title="Camera overlay position"
-          >
-            <option value="top-left">Camera: Top Left</option>
-            <option value="top-right">Camera: Top Right</option>
-            <option value="bottom-left">Camera: Bottom Left</option>
-            <option value="bottom-right">Camera: Bottom Right</option>
-          </select>
+          <div className="flex items-center gap-1.5">
+            <select
+              value={cameraOverlayPosition}
+              onChange={(event) =>
+                onCameraOverlayPositionChange(
+                  event.target.value as
+                    | "top-left"
+                    | "top-right"
+                    | "bottom-left"
+                    | "bottom-right"
+                )
+              }
+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80 outline-none focus:border-primary/50"
+              title="Camera overlay position"
+            >
+              <option value="top-left">Cam TL</option>
+              <option value="top-right">Cam TR</option>
+              <option value="bottom-left">Cam BL</option>
+              <option value="bottom-right">Cam BR</option>
+            </select>
+            <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
+              Scale
+              <input
+                type="number"
+                min={0.1}
+                max={0.6}
+                step={0.05}
+                value={cameraOverlayScale.toFixed(2)}
+                onChange={(event) =>
+                  onCameraOverlayScaleChange(Number(event.target.value) || cameraOverlayScale)
+                }
+                className="w-11 bg-transparent text-right text-xs outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
+              Margin
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={cameraOverlayMargin}
+                onChange={(event) =>
+                  onCameraOverlayMarginChange(Number(event.target.value) || cameraOverlayMargin)
+                }
+                className="w-10 bg-transparent text-right text-xs outline-none"
+              />
+            </label>
+          </div>
         )}
         <Tooltip>
           <TooltipTrigger asChild>
