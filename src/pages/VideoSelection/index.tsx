@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
@@ -50,6 +50,9 @@ export function VideoSelectionPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [isBatchExporting, setIsBatchExporting] = useState(false);
+  const [currentBatchJobId, setCurrentBatchJobId] = useState<string | null>(null);
+  const [stopBatchRequested, setStopBatchRequested] = useState(false);
+  const stopBatchRequestedRef = useRef(false);
   const [batchStatus, setBatchStatus] = useState<string | null>(null);
   const [batchOptions, setBatchOptions] = useState<ExportOptions>({
     format: "mp4",
@@ -182,12 +185,17 @@ export function VideoSelectionPage() {
   async function handleBatchExport() {
     if (selectedProjectIds.length === 0 || isBatchExporting) return;
     setIsBatchExporting(true);
+    setStopBatchRequested(false);
+    stopBatchRequestedRef.current = false;
     setBatchStatus(`Preparing batch export (0/${selectedProjectIds.length})...`);
 
     let completed = 0;
     let failed = 0;
 
     for (let i = 0; i < selectedProjectIds.length; i++) {
+      if (stopBatchRequestedRef.current) {
+        break;
+      }
       const projectId = selectedProjectIds[i];
       setBatchStatus(`Exporting ${i + 1}/${selectedProjectIds.length}...`);
       try {
@@ -195,7 +203,9 @@ export function VideoSelectionPage() {
           projectId,
           options: batchOptions,
         });
+        setCurrentBatchJobId(started.jobId);
         const result = await waitForExportResult(started.jobId);
+        setCurrentBatchJobId(null);
         if (result.ok) {
           completed += 1;
         } else {
@@ -207,8 +217,25 @@ export function VideoSelectionPage() {
       }
     }
 
-    setBatchStatus(`Batch export finished: ${completed} succeeded, ${failed} failed.`);
+    if (stopBatchRequestedRef.current) {
+      setBatchStatus(`Batch export stopped: ${completed} succeeded, ${failed} failed.`);
+    } else {
+      setBatchStatus(`Batch export finished: ${completed} succeeded, ${failed} failed.`);
+    }
+    setStopBatchRequested(false);
+    setCurrentBatchJobId(null);
     setIsBatchExporting(false);
+  }
+
+  async function handleStopBatchExport() {
+    setStopBatchRequested(true);
+    stopBatchRequestedRef.current = true;
+    if (!currentBatchJobId) return;
+    try {
+      await invoke("cancel_export", { jobId: currentBatchJobId });
+    } catch (error) {
+      console.error("Failed to stop current batch export job:", error);
+    }
   }
 
   // Loading state
@@ -328,6 +355,16 @@ export function VideoSelectionPage() {
             >
               {isBatchExporting ? "Exporting..." : "Export Selected"}
             </Button>
+            {isBatchExporting && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={stopBatchRequested}
+                onClick={handleStopBatchExport}
+              >
+                {stopBatchRequested ? "Stopping..." : "Stop Queue"}
+              </Button>
+            )}
           </div>
         )}
         {error && (
