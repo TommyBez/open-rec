@@ -54,6 +54,10 @@ async function waitForExportResult(jobId: string): Promise<{ ok: boolean; messag
       }),
     ])
       .then((handles) => {
+        if (settled) {
+          handles.forEach((unlisten) => unlisten());
+          return;
+        }
         unlisteners.push(...handles);
       })
       .catch((error) => {
