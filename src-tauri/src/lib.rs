@@ -957,9 +957,18 @@ fn cancel_export(
 fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
     fn parse_hhmmss(value: &str) -> Option<f64> {
         let mut parts = value.trim().split(':');
-        let hours: f64 = parts.next()?.parse().ok()?;
-        let minutes: f64 = parts.next()?.parse().ok()?;
-        let seconds: f64 = parts.next()?.parse().ok()?;
+        let hours: f64 = match parts.next()?.parse() {
+            Ok(value) => value,
+            Err(_) => return None,
+        };
+        let minutes: f64 = match parts.next()?.parse() {
+            Ok(value) => value,
+            Err(_) => return None,
+        };
+        let seconds: f64 = match parts.next()?.parse() {
+            Ok(value) => value,
+            Err(_) => return None,
+        };
         if parts.next().is_some() {
             return None;
         }
