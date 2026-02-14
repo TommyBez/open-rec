@@ -462,10 +462,10 @@ fn apply_video_annotations(
             continue;
         }
 
-        let x = annotation.x.clamp(0.0, 1.0);
-        let y = annotation.y.clamp(0.0, 1.0);
         let width = annotation.width.clamp(0.02, 1.0);
         let height = annotation.height.clamp(0.02, 1.0);
+        let x = annotation.x.clamp(0.0, (1.0 - width).max(0.0));
+        let y = annotation.y.clamp(0.0, (1.0 - height).max(0.0));
         let opacity = annotation.opacity.clamp(0.1, 1.0);
         let thickness = annotation.thickness.max(1);
         let color = annotation
@@ -601,10 +601,10 @@ fn build_annotation_drawbox_chain(project: &Project) -> String {
                 return None;
             }
 
-            let x = annotation.x.clamp(0.0, 1.0);
-            let y = annotation.y.clamp(0.0, 1.0);
             let width = annotation.width.clamp(0.02, 1.0);
             let height = annotation.height.clamp(0.02, 1.0);
+            let x = annotation.x.clamp(0.0, (1.0 - width).max(0.0));
+            let y = annotation.y.clamp(0.0, (1.0 - height).max(0.0));
             let opacity = annotation.opacity.clamp(0.1, 1.0);
             let thickness = annotation.thickness.max(1);
             let color = annotation
