@@ -157,6 +157,11 @@ export function EditorPage() {
     return convertFileSrc(project.screenVideoPath);
   }, [project?.screenVideoPath]);
 
+  const cameraSrc = useMemo(() => {
+    if (!project?.cameraVideoPath) return "";
+    return convertFileSrc(project.cameraVideoPath);
+  }, [project?.cameraVideoPath]);
+
   // Segments and duration calculation
   const { enabledSegments, editedDuration, sourceToEditedTime } = useMemo(() => {
     if (!project) return { enabledSegments: [], editedDuration: 0, sourceToEditedTime: () => 0 };
@@ -419,7 +424,14 @@ export function EditorPage() {
             activeZoom={activeZoom}
             activeSpeed={activeSpeed}
             currentPlaybackRate={effectivePlaybackRate}
+            currentSourceTime={currentTime}
+            isPlaying={isPlaying}
             resolution={project.resolution}
+            cameraSrc={cameraSrc}
+            cameraOverlayPosition={project.edits.cameraOverlay.position}
+            cameraOverlayScale={project.edits.cameraOverlay.scale}
+            cameraOverlayMargin={project.edits.cameraOverlay.margin}
+            cameraOffsetMs={project.cameraOffsetMs}
           />
           
           <PlaybackControls
