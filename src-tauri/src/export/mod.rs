@@ -83,10 +83,18 @@ impl ResolutionPreset {
 }
 
 #[derive(Debug, Clone)]
+struct ActiveZoom {
+    scale: f64,
+    x: f64,
+    y: f64,
+}
+
+#[derive(Debug, Clone)]
 struct TimelinePiece {
     start: f64,
     end: f64,
     speed: f64,
+    zoom: Option<ActiveZoom>,
 }
 
 fn has_audio_stream(path: &str) -> bool {
@@ -198,6 +206,14 @@ fn build_timeline_pieces(project: &Project) -> Vec<TimelinePiece> {
                 breakpoints.push(effect.end_time);
             }
         }
+        for zoom in &project.edits.zoom {
+            if zoom.start_time > seg_start && zoom.start_time < seg_end {
+                breakpoints.push(zoom.start_time);
+            }
+            if zoom.end_time > seg_start && zoom.end_time < seg_end {
+                breakpoints.push(zoom.end_time);
+            }
+        }
 
         breakpoints.sort_by(|a, b| a.total_cmp(b));
         breakpoints.dedup_by(|a, b| (*a - *b).abs() < f64::EPSILON);
@@ -217,7 +233,29 @@ fn build_timeline_pieces(project: &Project) -> Vec<TimelinePiece> {
                 .map(|effect| effect.speed)
                 .unwrap_or(1.0);
 
-            pieces.push(TimelinePiece { start, end, speed });
+            let zoom = project
+                .edits
+                .zoom
+                .iter()
+                .find(|effect| start >= effect.start_time && start < effect.end_time)
+                .and_then(|effect| {
+                    if effect.scale > 1.0 {
+                        Some(ActiveZoom {
+                            scale: effect.scale,
+                            x: effect.x,
+                            y: effect.y,
+                        })
+                    } else {
+                        None
+                    }
+                });
+
+            pieces.push(TimelinePiece {
+                start,
+                end,
+                speed,
+                zoom,
+            });
         }
     }
 
@@ -226,6 +264,7 @@ fn build_timeline_pieces(project: &Project) -> Vec<TimelinePiece> {
             start: 0.0,
             end: project.duration,
             speed: 1.0,
+            zoom: None,
         });
     }
 
@@ -240,6 +279,7 @@ fn timeline_is_edited(project: &Project, pieces: &[TimelinePiece]) -> bool {
     piece.start > 0.001
         || (piece.end - project.duration).abs() > 0.001
         || (piece.speed - 1.0).abs() > 0.01
+        || piece.zoom.is_some()
 }
 
 fn build_audio_timeline_filter(
@@ -312,62 +352,15 @@ fn apply_audio_offset(input_label: &str, offset_ms: i64, prefix: &str) -> (Vec<S
     }
 }
 
-fn build_zoom_filter(
-    project: &Project,
-    frame_rate: u32,
-    input_label: &str,
-    output_label: &str,
-) -> Option<String> {
-    if project.edits.zoom.is_empty() {
-        return None;
-    }
-
-    let transition_secs: f64 = 0.15;
-    let mut zoom_expr_parts: Vec<String> = Vec::new();
-    let mut x_offset_parts: Vec<String> = Vec::new();
-    let mut y_offset_parts: Vec<String> = Vec::new();
-
-    for zoom in &project.edits.zoom {
-        let s = zoom.start_time;
-        let e = zoom.end_time;
-        let scale = zoom.scale;
-        let trans = transition_secs.min((e - s) / 2.0);
-
-        let envelope = format!(
-            "if(lt(it,{s}),0,if(lte(it,{s_t}),clip((it-{s})/{t},0,1),if(lt(it,{e_t}),1,if(lte(it,{e}),clip(1-(it-{e_t})/{t},0,1),0))))",
-            s = s,
-            s_t = s + trans,
-            e_t = e - trans,
-            e = e,
-            t = trans
-        );
-
-        zoom_expr_parts.push(format!("(({}-1)*({}))", scale, envelope));
-        x_offset_parts.push(format!("({}*({}))", zoom.x, envelope));
-        y_offset_parts.push(format!("({}*({}))", zoom.y, envelope));
-    }
-
-    let width = project.resolution.width;
-    let height = project.resolution.height;
-    let zoom_factor = format!("(1+{})", zoom_expr_parts.join("+"));
-    let x_offset = if x_offset_parts.iter().all(|x| x.starts_with("(0*")) {
-        "0".to_string()
-    } else {
-        format!("({})", x_offset_parts.join("+"))
-    };
-    let y_offset = if y_offset_parts.iter().all(|y| y.starts_with("(0*")) {
-        "0".to_string()
-    } else {
-        format!("({})", y_offset_parts.join("+"))
-    };
-
-    let pan_x = format!("iw/2-(iw/zoom/2)+{}", x_offset);
-    let pan_y = format!("ih/2-(ih/zoom/2)+{}", y_offset);
-
-    Some(format!(
-        "{}zoompan=fps={}:d=1:s={}x{}:z='{}':x='{}':y='{}'{}",
-        input_label, frame_rate, width, height, zoom_factor, pan_x, pan_y, output_label
-    ))
+fn append_zoom_piece_filter(filter: &mut String, zoom: &ActiveZoom, width: u32, height: u32) {
+    let scale = zoom.scale.max(1.01);
+    let crop_width = format!("iw/{scale:.6}");
+    let crop_height = format!("ih/{scale:.6}");
+    let crop_x = format!("(iw-{crop_width})/2+{:.3}", zoom.x);
+    let crop_y = format!("(ih-{crop_height})/2+{:.3}", zoom.y);
+    filter.push_str(&format!(
+        ",crop=w={crop_width}:h={crop_height}:x='{crop_x}':y='{crop_y}',scale={width}:{height}"
+    ));
 }
 
 fn build_camera_overlay_coordinates(project: &Project) -> String {
@@ -438,12 +431,24 @@ pub fn build_ffmpeg_args(
             if !use_input_seeking {
                 let mut video_piece_labels = Vec::new();
                 if timeline_edited {
+                    let output_width = project.resolution.width;
+                    let output_height = project.resolution.height;
                     for (idx, piece) in timeline_pieces.iter().enumerate() {
                         let label = format!("[vpiece{}]", idx);
-                        filter_parts.push(format!(
-                            "[0:v]trim=start={:.6}:end={:.6},setpts=(PTS-STARTPTS)/{:.6}{}",
-                            piece.start, piece.end, piece.speed, label
-                        ));
+                        let mut piece_filter = format!(
+                            "[0:v]trim=start={:.6}:end={:.6},setpts=(PTS-STARTPTS)/{:.6}",
+                            piece.start, piece.end, piece.speed
+                        );
+                        if let Some(zoom) = &piece.zoom {
+                            append_zoom_piece_filter(
+                                &mut piece_filter,
+                                zoom,
+                                output_width,
+                                output_height,
+                            );
+                        }
+                        piece_filter.push_str(&label);
+                        filter_parts.push(piece_filter);
                         video_piece_labels.push(label);
                     }
 
@@ -459,13 +464,6 @@ pub fn build_ffmpeg_args(
                         ));
                         current_video_label = concat_label;
                     }
-                }
-
-                if let Some(zoom_filter) =
-                    build_zoom_filter(project, options.frame_rate, &current_video_label, "[vzoom]")
-                {
-                    filter_parts.push(zoom_filter);
-                    current_video_label = "[vzoom]".to_string();
                 }
             }
 
