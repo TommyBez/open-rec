@@ -75,6 +75,7 @@ export interface Annotation {
   color: string;
   opacity: number;
   thickness: number;
+  text?: string;
 }
 
 // Export options

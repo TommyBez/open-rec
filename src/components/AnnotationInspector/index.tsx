@@ -173,6 +173,21 @@ export function AnnotationInspector({
           />
         </label>
 
+        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+          Text (optional)
+          <input
+            type="text"
+            value={draft.text ?? ""}
+            onChange={(event) => {
+              const next = event.target.value;
+              setDraft((current) => ({ ...current, text: next }));
+              onCommit({ text: next });
+            }}
+            className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs outline-none"
+            placeholder="Callout text"
+          />
+        </label>
+
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between text-xs text-foreground/80">
             <span>Opacity</span>

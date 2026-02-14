@@ -195,7 +195,13 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
                 opacity: Math.max(0.1, Math.min(1, annotation.opacity)),
                 boxShadow: "0 0 0 1px rgba(0,0,0,0.2)",
               }}
-            />
+            >
+              {annotation.text?.trim() && (
+                <span className="absolute left-1 top-1 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                  {annotation.text}
+                </span>
+              )}
+            </div>
           ))}
           {/* Effect indicator badges */}
           <div className="absolute right-3 top-3 flex flex-col gap-1.5">

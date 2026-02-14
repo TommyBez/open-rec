@@ -152,6 +152,8 @@ pub struct Annotation {
     pub color: String,
     pub opacity: f64,
     pub thickness: u32,
+    #[serde(default)]
+    pub text: Option<String>,
 }
 
 impl Project {

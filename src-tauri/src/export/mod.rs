@@ -440,6 +440,16 @@ fn build_camera_overlay_coordinates(project: &Project) -> String {
     }
 }
 
+fn escape_drawtext_text(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace(':', "\\:")
+        .replace('\'', "\\'")
+        .replace(',', "\\,")
+        .replace('%', "\\%")
+        .replace('\n', "\\n")
+}
+
 fn apply_video_annotations(
     filter_parts: &mut Vec<String>,
     mut current_video_label: String,
@@ -480,6 +490,25 @@ fn apply_video_annotations(
             next_label
         ));
         current_video_label = next_label;
+
+        if let Some(text) = annotation.text.as_ref().map(|value| value.trim()) {
+            if !text.is_empty() {
+                let text_label = format!("[vannottxt{}]", index);
+                let escaped_text = escape_drawtext_text(text);
+                filter_parts.push(format!(
+                    "{}drawtext=text='{}':x=iw*{:.6}+10:y=ih*{:.6}+10:fontsize=28:fontcolor=white@{:.3}:box=1:boxcolor=black@0.35:enable='between(t,{:.6},{:.6})'{}",
+                    current_video_label,
+                    escaped_text,
+                    x,
+                    y,
+                    opacity,
+                    start_time,
+                    end_time,
+                    text_label
+                ));
+                current_video_label = text_label;
+            }
+        }
     }
 
     current_video_label
@@ -513,6 +542,18 @@ fn build_annotation_drawbox_chain(project: &Project) -> String {
                 ",drawbox=x=iw*{:.6}:y=ih*{:.6}:w=iw*{:.6}:h=ih*{:.6}:color={}@{:.3}:t={}:enable='between(t,{:.6},{:.6})'",
                 x, y, width, height, color, opacity, thickness, start_time, end_time
             ))
+            .map(|mut chain| {
+                if let Some(text) = annotation.text.as_ref().map(|value| value.trim()) {
+                    if !text.is_empty() {
+                        let escaped_text = escape_drawtext_text(text);
+                        chain.push_str(&format!(
+                            ",drawtext=text='{}':x=iw*{:.6}+8:y=ih*{:.6}+8:fontsize=20:fontcolor=white@{:.3}:box=1:boxcolor=black@0.35:enable='between(t,{:.6},{:.6})'",
+                            escaped_text, x, y, opacity, start_time, end_time
+                        ));
+                    }
+                }
+                chain
+            })
         })
         .collect::<Vec<_>>()
         .join("")

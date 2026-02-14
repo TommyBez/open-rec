@@ -454,6 +454,7 @@ export function useProject(initialProject: Project | null) {
             color: "#facc15",
             opacity: 0.95,
             thickness: 4,
+            text: "",
           },
         ],
       },
