@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useCallback, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "motion/react";
@@ -94,6 +94,7 @@ export function EditorPage() {
     setShowExportModal,
     setIsLoading,
   } = useEditorStore();
+  const [jklRateMultiplier, setJklRateMultiplier] = useState(1);
 
   // Derived state
   const selectedZoom = useMemo(() => {
@@ -125,6 +126,11 @@ export function EditorPage() {
     const useDraft = speedDraft && selectedSpeedId === activeSpeed.id;
     return useDraft ? speedDraft.speed : activeSpeed.speed;
   }, [activeSpeed, selectedSpeedId, speedDraft]);
+
+  const effectivePlaybackRate = useMemo(
+    () => Math.min(currentPlaybackRate * jklRateMultiplier, 8),
+    [currentPlaybackRate, jklRateMultiplier]
+  );
 
   const videoZoomStyle = useMemo(() => {
     if (!activeZoom) {
@@ -225,6 +231,7 @@ export function EditorPage() {
     duration,
     enabledSegments,
     currentPlaybackRate,
+    playbackRateMultiplier: jklRateMultiplier,
     setIsPlaying,
     setCurrentTime,
     setDuration,
@@ -256,9 +263,14 @@ export function EditorPage() {
     return () => window.removeEventListener("beforeunload", flushSave);
   }, [isDirty, saveProject]);
 
-  // Keyboard shortcut for undo
+  // Keyboard shortcuts (undo/redo + JKL transport controls)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input,textarea,select,[contenteditable='true']")) {
+        return;
+      }
+
       const isModifier = e.metaKey || e.ctrlKey;
       if (isModifier && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
@@ -268,10 +280,32 @@ export function EditorPage() {
         e.preventDefault();
         if (canRedo) redo();
       }
+      if (isModifier) return;
+
+      if (e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setJklRateMultiplier(1);
+        if (isPlaying) togglePlay();
+      }
+      if (e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        if (!isPlaying) {
+          setJklRateMultiplier(1);
+          togglePlay();
+        } else {
+          setJklRateMultiplier((current) => (current >= 4 ? 1 : current >= 2 ? 4 : 2));
+        }
+      }
+      if (e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setJklRateMultiplier(1);
+        if (isPlaying) togglePlay();
+        skipBackward();
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canUndo, canRedo, undo, redo]);
+  }, [canUndo, canRedo, undo, redo, isPlaying, togglePlay, skipBackward]);
 
   async function loadProject(id: string) {
     setIsLoading(true);
@@ -382,7 +416,7 @@ export function EditorPage() {
             videoZoomStyle={videoZoomStyle}
             activeZoom={activeZoom}
             activeSpeed={activeSpeed}
-            currentPlaybackRate={currentPlaybackRate}
+            currentPlaybackRate={effectivePlaybackRate}
             resolution={project.resolution}
           />
           

@@ -120,7 +120,7 @@ export const PlaybackControls = memo(function PlaybackControls({
               <SkipBack className="size-5" strokeWidth={1.75} />
             </button>
           </TooltipTrigger>
-          <TooltipContent>Skip back 5s</TooltipContent>
+          <TooltipContent>Skip back 5s (or J)</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -140,7 +140,7 @@ export const PlaybackControls = memo(function PlaybackControls({
               )}
             </button>
           </TooltipTrigger>
-          <TooltipContent>{isPlaying ? "Pause" : "Play"}</TooltipContent>
+          <TooltipContent>{isPlaying ? "Pause (K)" : "Play (K/L)"}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>

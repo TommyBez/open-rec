@@ -7,6 +7,7 @@ interface UseVideoPlaybackOptions {
   duration: number;
   enabledSegments: Array<{ startTime: number; endTime: number }>;
   currentPlaybackRate: number;
+  playbackRateMultiplier: number;
   setIsPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
@@ -19,6 +20,7 @@ export function useVideoPlayback({
   duration,
   enabledSegments,
   currentPlaybackRate,
+  playbackRateMultiplier,
   setIsPlaying,
   setCurrentTime,
   setDuration,
@@ -106,7 +108,7 @@ export function useVideoPlayback({
       
       if (newSegmentId !== currentSpeedSegmentRef.current) {
         currentSpeedSegmentRef.current = newSegmentId;
-        const newRate = activeSpeedSegment?.speed ?? 1;
+        const newRate = (activeSpeedSegment?.speed ?? 1) * playbackRateMultiplier;
         if (video.playbackRate !== newRate) {
           video.playbackRate = newRate;
         }
@@ -125,17 +127,18 @@ export function useVideoPlayback({
     return () => {
       cancelAnimationFrame(rafId);
     };
-  }, [isPlaying, speedEffects, setCurrentTime]);
+  }, [isPlaying, speedEffects, playbackRateMultiplier, setCurrentTime]);
 
   // Update video playback rate
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     
-    if (video.playbackRate !== currentPlaybackRate) {
-      video.playbackRate = currentPlaybackRate;
+    const effectiveRate = currentPlaybackRate * playbackRateMultiplier;
+    if (video.playbackRate !== effectiveRate) {
+      video.playbackRate = effectiveRate;
     }
-  }, [currentPlaybackRate]);
+  }, [currentPlaybackRate, playbackRateMultiplier]);
 
   // Segment-aware playback: skip gaps
   useEffect(() => {
