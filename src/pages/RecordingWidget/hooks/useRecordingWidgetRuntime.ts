@@ -30,10 +30,11 @@ export function useRecordingWidgetRuntime() {
 
   useEffect(() => {
     const storedProjectId = localStorage.getItem("currentProjectId");
+    const effectiveProjectId = projectId ?? storedProjectId;
     if (storedProjectId && !projectId) {
       setProjectId(storedProjectId);
     }
-    if (state === "idle") {
+    if (state === "idle" && effectiveProjectId) {
       setRecordingState("recording");
     }
   }, [projectId, setProjectId, state, setRecordingState]);
