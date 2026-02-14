@@ -293,7 +293,7 @@ export function RecordingWidget() {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              {isRecording ? "Pause" : "Resume"}
+              {isRecording ? "Pause (⌘⇧P)" : "Resume (⌘⇧P)"}
             </TooltipContent>
           </Tooltip>
           
@@ -316,7 +316,7 @@ export function RecordingWidget() {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              Stop Recording
+              Stop Recording (⌘⇧2)
             </TooltipContent>
           </Tooltip>
         </div>

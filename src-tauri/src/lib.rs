@@ -662,9 +662,18 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
             // Parse time format HH:MM:SS.ff
             let parts: Vec<&str> = time_part.split(':').collect();
             if parts.len() == 3 {
-                let hours: f64 = parts[0].parse().ok()?;
-                let minutes: f64 = parts[1].parse().ok()?;
-                let seconds: f64 = parts[2].parse().ok()?;
+                let hours: f64 = match parts[0].parse() {
+                    Ok(value) => value,
+                    Err(_) => return None,
+                };
+                let minutes: f64 = match parts[1].parse() {
+                    Ok(value) => value,
+                    Err(_) => return None,
+                };
+                let seconds: f64 = match parts[2].parse() {
+                    Ok(value) => value,
+                    Err(_) => return None,
+                };
                 return Some(hours * 3600.0 + minutes * 60.0 + seconds);
             }
         }
