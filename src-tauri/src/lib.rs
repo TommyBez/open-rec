@@ -981,7 +981,13 @@ pub fn run() {
                         let _ = app_handle.emit("tray-open-projects", ());
                     }
                     TRAY_MENU_START_STOP => {
-                        let _ = app_handle.emit("global-shortcut-start-stop", ());
+                        show_main_window(app_handle);
+                        let _ = app_handle.emit("tray-open-recorder", ());
+                        let app_handle = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                            let _ = app_handle.emit("global-shortcut-start-stop", ());
+                        });
                     }
                     TRAY_MENU_PAUSE_RESUME => {
                         let _ = app_handle.emit("global-shortcut-toggle-pause", ());
@@ -1010,6 +1016,7 @@ pub fn run() {
                     {
                         let app_handle = tray.app_handle();
                         show_main_window(app_handle);
+                        let _ = app_handle.emit("tray-open-recorder", ());
                     }
                 });
 
