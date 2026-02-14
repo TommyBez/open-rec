@@ -31,6 +31,8 @@ export function RecordingWidget() {
   
   const intervalRef = useRef<number | null>(null);
   const autoStopForDiskRef = useRef(false);
+  const lastAutoSegmentAtRef = useRef(0);
+  const autoSegmentInFlightRef = useRef(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
   // Get project ID from localStorage on mount (fallback for when store is reset)
@@ -129,6 +131,26 @@ export function RecordingWidget() {
       autoStopForDiskRef.current = false;
     }
   }, [state]);
+
+  // Auto-segment every 5 minutes to reduce data-loss risk
+  useEffect(() => {
+    if (state !== "recording" || !projectId || elapsedTime < 300) return;
+    if (elapsedTime - lastAutoSegmentAtRef.current < 300) return;
+    if (autoSegmentInFlightRef.current) return;
+
+    autoSegmentInFlightRef.current = true;
+    void (async () => {
+      try {
+        await invoke("pause_recording", { projectId });
+        await invoke("resume_recording", { projectId });
+        lastAutoSegmentAtRef.current = elapsedTime;
+      } catch (error) {
+        console.error("Auto-segmentation failed:", error);
+      } finally {
+        autoSegmentInFlightRef.current = false;
+      }
+    })();
+  }, [state, projectId, elapsedTime]);
 
   // Global shortcuts while recording widget is active
   useEffect(() => {
