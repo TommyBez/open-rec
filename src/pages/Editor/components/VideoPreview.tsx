@@ -63,6 +63,8 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
       annotationId: string;
       x: number;
       y: number;
+      width: number;
+      height: number;
     } | null>(null);
     const cameraOffsetSeconds = (cameraOffsetMs ?? 0) / 1000;
     const cameraTime = currentSourceTime - cameraOffsetSeconds;
@@ -119,8 +121,10 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
         const clampedTop = Math.min(Math.max(rawTop, 0), maxTop);
         setAnnotationDragPosition({
           annotationId: dragState.annotationId,
-          x: maxLeft > 0 ? clampedLeft / maxLeft : 0,
-          y: maxTop > 0 ? clampedTop / maxTop : 0,
+          x: containerRect.width > 0 ? clampedLeft / containerRect.width : 0,
+          y: containerRect.height > 0 ? clampedTop / containerRect.height : 0,
+          width: containerRect.width > 0 ? dragState.width / containerRect.width : 0.02,
+          height: containerRect.height > 0 ? dragState.height / containerRect.height : 0.02,
         });
       }
 
@@ -136,8 +140,8 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
         ) {
           onAnnotationPositionChange(
             pending.annotationId,
-            Math.min(1, Math.max(0, pending.x)),
-            Math.min(1, Math.max(0, pending.y))
+            Math.min(Math.max(0, 1 - pending.width), Math.max(0, pending.x)),
+            Math.min(Math.max(0, 1 - pending.height), Math.max(0, pending.y))
           );
         }
       }
@@ -248,8 +252,12 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
             const arrowStroke = Math.max(2, annotation.thickness);
             const isSelected = selectedAnnotationId === annotation.id;
             const isDragging = annotationDragPosition?.annotationId === annotation.id;
-            const renderX = isDragging ? annotationDragPosition.x : annotation.x;
-            const renderY = isDragging ? annotationDragPosition.y : annotation.y;
+            const widthNormalized = Math.max(0.02, Math.min(1, annotation.width));
+            const heightNormalized = Math.max(0.02, Math.min(1, annotation.height));
+            const rawX = isDragging ? annotationDragPosition.x : annotation.x;
+            const rawY = isDragging ? annotationDragPosition.y : annotation.y;
+            const renderX = Math.max(0, Math.min(1 - widthNormalized, rawX));
+            const renderY = Math.max(0, Math.min(1 - heightNormalized, rawY));
             return (
               <div
                 key={annotation.id}
@@ -257,8 +265,8 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
                 style={{
                   left: `${Math.max(0, Math.min(1, renderX)) * 100}%`,
                   top: `${Math.max(0, Math.min(1, renderY)) * 100}%`,
-                  width: `${Math.max(0.02, Math.min(1, annotation.width)) * 100}%`,
-                  height: `${Math.max(0.02, Math.min(1, annotation.height)) * 100}%`,
+                  width: `${widthNormalized * 100}%`,
+                  height: `${heightNormalized * 100}%`,
                   borderStyle: "solid",
                   borderColor:
                     mode === "blur"
@@ -299,8 +307,10 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
                   };
                   setAnnotationDragPosition({
                     annotationId: annotation.id,
-                    x: annotation.x,
-                    y: annotation.y,
+                    x: renderX,
+                    y: renderY,
+                    width: widthNormalized,
+                    height: heightNormalized,
                   });
                   event.preventDefault();
                 }}
