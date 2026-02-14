@@ -210,10 +210,24 @@ fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> 
         let project_file = path.join("project.json");
         let content = match std::fs::read_to_string(project_file) {
             Ok(content) => content,
-            Err(_) => continue,
+            Err(error) => {
+                eprintln!(
+                    "Skipping tray recent candidate because project file could not be read in {}: {}",
+                    path.display(),
+                    error
+                );
+                continue;
+            }
         };
-        if let Ok(project) = serde_json::from_str::<Project>(&content) {
-            projects.push(project);
+        match serde_json::from_str::<Project>(&content) {
+            Ok(project) => projects.push(project),
+            Err(error) => {
+                eprintln!(
+                    "Skipping tray recent candidate because project JSON is invalid in {}: {}",
+                    path.display(),
+                    error
+                );
+            }
         }
     }
 
