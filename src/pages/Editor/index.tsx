@@ -129,6 +129,8 @@ export function EditorPage() {
   } = useEditorStore();
   const activeExportCount = useExportStore((state) => state.activeExportCount);
   const [jklRateMultiplier, setJklRateMultiplier] = useState(1);
+  const [annotationInsertMode, setAnnotationInsertMode] =
+    useState<"outline" | "blur" | "text" | "arrow">("outline");
 
   // Derived state
   const selectedZoom = useMemo(() => {
@@ -145,6 +147,12 @@ export function EditorPage() {
     if (!project || !selectedAnnotationId) return null;
     return project.edits.annotations.find((a) => a.id === selectedAnnotationId) ?? null;
   }, [project, selectedAnnotationId]);
+
+  useEffect(() => {
+    const selectedMode = selectedAnnotation?.mode;
+    if (!selectedMode) return;
+    setAnnotationInsertMode(selectedMode);
+  }, [selectedAnnotation?.id, selectedAnnotation?.mode]);
 
   const activeZoom = useMemo(() => {
     if (!project) return null;
@@ -298,6 +306,7 @@ export function EditorPage() {
       const endTime = Math.min(project.duration, startTime + 3);
       if (endTime - startTime > 0.1) {
         addAnnotation(startTime, endTime, mode);
+        setAnnotationInsertMode(mode);
       }
     },
     [addAnnotation, currentTime, project]
@@ -423,10 +432,10 @@ export function EditorPage() {
       case "cut": cutAt(time); break;
       case "zoom": addZoom(time, Math.min(time + 5, duration), 1.5); break;
       case "speed": addSpeed(time, Math.min(time + 5, duration), 2.0); break;
-      case "annotation": addAnnotation(time, Math.min(time + 3, duration)); break;
+      case "annotation": addAnnotation(time, Math.min(time + 3, duration), annotationInsertMode); break;
       default: seek(time);
     }
-  }, [project, selectedTool, cutAt, addZoom, addSpeed, addAnnotation, duration, seek]);
+  }, [project, selectedTool, cutAt, addZoom, addSpeed, addAnnotation, annotationInsertMode, duration, seek]);
 
   const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => setZoomDraft(draft), [setZoomDraft]);
   const handleSpeedDraftChange = useCallback((draft: { speed: number }) => setSpeedDraft(draft), [setSpeedDraft]);
@@ -558,6 +567,7 @@ export function EditorPage() {
             canDeleteSpeed={canDeleteSpeed}
             canDeleteSegment={!!canDeleteSegment}
             canDeleteAnnotation={canDeleteAnnotation}
+            annotationMode={annotationInsertMode}
             selectedTool={selectedTool}
             onTogglePlay={togglePlay}
             onSkipBackward={skipBackward}

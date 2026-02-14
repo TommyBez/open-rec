@@ -27,6 +27,7 @@ interface PlaybackControlsProps {
   canDeleteSpeed: boolean;
   canDeleteSegment: boolean;
   canDeleteAnnotation: boolean;
+  annotationMode: "outline" | "blur" | "text" | "arrow";
   selectedTool: "cut" | "zoom" | "speed" | "annotation" | null;
   onTogglePlay: () => void;
   onSkipBackward: () => void;
@@ -48,6 +49,7 @@ export const PlaybackControls = memo(function PlaybackControls({
   canDeleteSpeed,
   canDeleteSegment,
   canDeleteAnnotation,
+  annotationMode,
   selectedTool,
   onTogglePlay,
   onSkipBackward,
@@ -184,7 +186,7 @@ export const PlaybackControls = memo(function PlaybackControls({
           tooltip={
             selectedTool === "annotation"
               ? "Deactivate annotation tool (4)"
-              : "Annotation tool (4). Quick add: A/Shift+A/B/T"
+              : `Annotation tool (4, ${annotationMode}). Quick add: A/Shift+A/B/T`
           }
         />
         
