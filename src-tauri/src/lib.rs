@@ -866,7 +866,15 @@ fn resume_recording(
 #[tauri::command]
 fn open_recording_widget(app: AppHandle) -> Result<(), AppError> {
     // Check if widget already exists
-    if app.get_webview_window("recording-widget").is_some() {
+    if let Some(widget_window) = app.get_webview_window("recording-widget") {
+        log_if_err(
+            widget_window.show(),
+            "Failed to show existing recording widget",
+        );
+        log_if_err(
+            widget_window.set_focus(),
+            "Failed to focus existing recording widget",
+        );
         return Ok(());
     }
 
