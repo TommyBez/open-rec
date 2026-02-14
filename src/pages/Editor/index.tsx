@@ -34,6 +34,7 @@ const loadingSpinner = (
 
 function normalizeProject(project: Project): Project {
   const overlay = project.edits.cameraOverlay;
+  const audioMix = project.edits.audioMix;
   return {
     ...project,
     edits: {
@@ -46,6 +47,10 @@ function normalizeProject(project: Project): Project {
         }),
         customX: overlay?.customX ?? 1,
         customY: overlay?.customY ?? 1,
+      },
+      audioMix: {
+        systemVolume: audioMix?.systemVolume ?? 1,
+        microphoneVolume: audioMix?.microphoneVolume ?? 1,
       },
     },
   };
@@ -62,6 +67,7 @@ export function EditorPage() {
     saveProject,
     renameProject,
     updateCameraOverlay,
+    updateAudioMix,
     canUndo,
     canRedo,
     undo,
@@ -407,6 +413,10 @@ export function EditorPage() {
             customX: 1,
             customY: 1,
           },
+          audioMix: {
+            systemVolume: 1,
+            microphoneVolume: 1,
+          },
         },
       };
       setProject(mockProject);
@@ -457,9 +467,12 @@ export function EditorPage() {
         isDirty={isDirty}
         onRename={renameProject}
         hasCameraTrack={Boolean(project.cameraVideoPath)}
+        hasMicrophoneTrack={Boolean(project.microphoneAudioPath)}
         cameraOverlayPosition={project.edits.cameraOverlay.position}
         cameraOverlayScale={project.edits.cameraOverlay.scale}
         cameraOverlayMargin={project.edits.cameraOverlay.margin}
+        audioSystemVolume={project.edits.audioMix.systemVolume}
+        audioMicrophoneVolume={project.edits.audioMix.microphoneVolume}
         onCameraOverlayPositionChange={(position) =>
           updateCameraOverlay({ position })
         }
@@ -468,6 +481,12 @@ export function EditorPage() {
         }
         onCameraOverlayMarginChange={(margin) =>
           updateCameraOverlay({ margin: Math.max(0, Math.min(100, Math.round(margin))) })
+        }
+        onAudioSystemVolumeChange={(volume) =>
+          updateAudioMix({ systemVolume: Math.max(0, Math.min(2, volume)) })
+        }
+        onAudioMicrophoneVolumeChange={(volume) =>
+          updateAudioMix({ microphoneVolume: Math.max(0, Math.min(2, volume)) })
         }
         onBack={handleBack}
         onExport={handleExport}

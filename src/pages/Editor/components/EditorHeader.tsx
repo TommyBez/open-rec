@@ -12,14 +12,19 @@ interface EditorHeaderProps {
   isDirty: boolean;
   onRename: (name: string) => void;
   hasCameraTrack: boolean;
+  hasMicrophoneTrack: boolean;
   cameraOverlayPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom";
   cameraOverlayScale: number;
   cameraOverlayMargin: number;
+  audioSystemVolume: number;
+  audioMicrophoneVolume: number;
   onCameraOverlayPositionChange: (
     position: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom"
   ) => void;
   onCameraOverlayScaleChange: (scale: number) => void;
   onCameraOverlayMarginChange: (margin: number) => void;
+  onAudioSystemVolumeChange: (volume: number) => void;
+  onAudioMicrophoneVolumeChange: (volume: number) => void;
   onBack: () => void;
   onExport: () => void;
   onOpenVideos: () => void;
@@ -31,12 +36,17 @@ export const EditorHeader = memo(function EditorHeader({
   isDirty,
   onRename,
   hasCameraTrack,
+  hasMicrophoneTrack,
   cameraOverlayPosition,
   cameraOverlayScale,
   cameraOverlayMargin,
+  audioSystemVolume,
+  audioMicrophoneVolume,
   onCameraOverlayPositionChange,
   onCameraOverlayScaleChange,
   onCameraOverlayMarginChange,
+  onAudioSystemVolumeChange,
+  onAudioMicrophoneVolumeChange,
   onBack,
   onExport,
   onOpenVideos,
@@ -107,6 +117,39 @@ export const EditorHeader = memo(function EditorHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
+            Sys
+            <input
+              type="number"
+              min={0}
+              max={2}
+              step={0.05}
+              value={audioSystemVolume.toFixed(2)}
+              onChange={(event) =>
+                onAudioSystemVolumeChange(Number(event.target.value) || audioSystemVolume)
+              }
+              className="w-11 bg-transparent text-right text-xs outline-none"
+              title="System audio volume"
+            />
+          </label>
+          <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
+            Mic
+            <input
+              type="number"
+              min={0}
+              max={2}
+              step={0.05}
+              disabled={!hasMicrophoneTrack}
+              value={audioMicrophoneVolume.toFixed(2)}
+              onChange={(event) =>
+                onAudioMicrophoneVolumeChange(Number(event.target.value) || audioMicrophoneVolume)
+              }
+              className="w-11 bg-transparent text-right text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              title="Microphone volume"
+            />
+          </label>
+        </div>
         {hasCameraTrack && (
           <div className="flex items-center gap-1.5">
             <select

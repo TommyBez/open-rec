@@ -24,6 +24,7 @@ export interface EditDecisionList {
   zoom: ZoomEffect[];
   speed: SpeedEffect[];
   cameraOverlay: CameraOverlaySettings;
+  audioMix: AudioMixSettings;
 }
 
 export interface CameraOverlaySettings {
@@ -32,6 +33,11 @@ export interface CameraOverlaySettings {
   scale: number;
   customX: number;
   customY: number;
+}
+
+export interface AudioMixSettings {
+  systemVolume: number;
+  microphoneVolume: number;
 }
 
 export interface Segment {

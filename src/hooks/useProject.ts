@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CameraOverlaySettings, Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
+import { AudioMixSettings, CameraOverlaySettings, Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
 
 const MAX_HISTORY_SIZE = 50;
 
@@ -449,6 +449,19 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [updateProject]);
 
+  const updateAudioMix = useCallback((updates: Partial<AudioMixSettings>) => {
+    updateProject((p) => ({
+      ...p,
+      edits: {
+        ...p.edits,
+        audioMix: {
+          ...p.edits.audioMix,
+          ...updates,
+        },
+      },
+    }));
+  }, [updateProject]);
+
   return {
     project,
     setProject,
@@ -474,5 +487,6 @@ export function useProject(initialProject: Project | null) {
     deleteSpeed,
     setGlobalSpeed,
     updateCameraOverlay,
+    updateAudioMix,
   };
 }

@@ -399,6 +399,21 @@ fn apply_audio_offset(input_label: &str, offset_ms: i64, prefix: &str) -> (Vec<S
     }
 }
 
+fn apply_audio_gain(
+    filter_parts: &mut Vec<String>,
+    input_label: String,
+    volume: f64,
+    output_label: &str,
+) -> String {
+    let gain = volume.clamp(0.0, 2.0);
+    if (gain - 1.0).abs() < 0.01 {
+        return input_label;
+    }
+    let output = format!("[{output_label}]");
+    filter_parts.push(format!("{}volume={:.3}{}", input_label, gain, output));
+    output
+}
+
 fn append_zoom_piece_filter(filter: &mut String, zoom: &ActiveZoom, width: u32, height: u32) {
     let scale = zoom.scale.max(1.01);
     let crop_width = format!("iw/{scale:.6}");
@@ -565,6 +580,14 @@ pub fn build_ffmpeg_args(
             } else {
                 None
             };
+            let screen_audio_label = screen_audio_label.map(|label| {
+                apply_audio_gain(
+                    &mut filter_parts,
+                    label,
+                    project.edits.audio_mix.system_volume,
+                    "ascreenvol",
+                )
+            });
 
             let microphone_audio_label = if let Some(idx) = mic_index {
                 let input_label = format!("[{}:a]", idx);
@@ -585,7 +608,12 @@ pub fn build_ffmpeg_args(
             let microphone_processed_label = microphone_audio_label.map(|label| {
                 let cleaned_label = "[amicclean]".to_string();
                 filter_parts.push(format!("{}highpass=f=80{}", label, cleaned_label));
-                cleaned_label
+                apply_audio_gain(
+                    &mut filter_parts,
+                    cleaned_label,
+                    project.edits.audio_mix.microphone_volume,
+                    "amicvol",
+                )
             });
 
             let audio_output_label = match (screen_audio_label, microphone_processed_label) {
@@ -732,6 +760,14 @@ pub fn build_ffmpeg_args(
             } else {
                 None
             };
+            let screen_audio_label = screen_audio_label.map(|label| {
+                apply_audio_gain(
+                    &mut filter_parts,
+                    label,
+                    project.edits.audio_mix.system_volume,
+                    "ascreenvol",
+                )
+            });
 
             let microphone_audio_label = if let Some(idx) = mic_index {
                 let input_label = format!("[{}:a]", idx);
@@ -752,7 +788,12 @@ pub fn build_ffmpeg_args(
             let microphone_processed_label = microphone_audio_label.map(|label| {
                 let cleaned_label = "[amicclean]".to_string();
                 filter_parts.push(format!("{}highpass=f=80{}", label, cleaned_label));
-                cleaned_label
+                apply_audio_gain(
+                    &mut filter_parts,
+                    cleaned_label,
+                    project.edits.audio_mix.microphone_volume,
+                    "amicvol",
+                )
             });
 
             let audio_output_label = match (screen_audio_label, microphone_processed_label) {

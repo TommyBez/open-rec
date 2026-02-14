@@ -36,6 +36,8 @@ pub struct EditDecisionList {
     pub speed: Vec<SpeedEffect>,
     #[serde(default)]
     pub camera_overlay: CameraOverlaySettings,
+    #[serde(default)]
+    pub audio_mix: AudioMixSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +50,15 @@ pub struct CameraOverlaySettings {
     pub custom_x: f64,
     #[serde(default = "default_camera_overlay_custom_y")]
     pub custom_y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioMixSettings {
+    #[serde(default = "default_system_volume")]
+    pub system_volume: f64,
+    #[serde(default = "default_microphone_volume")]
+    pub microphone_volume: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +79,14 @@ fn default_camera_overlay_custom_y() -> f64 {
     1.0
 }
 
+fn default_system_volume() -> f64 {
+    1.0
+}
+
+fn default_microphone_volume() -> f64 {
+    1.0
+}
+
 impl Default for CameraOverlaySettings {
     fn default() -> Self {
         Self {
@@ -76,6 +95,15 @@ impl Default for CameraOverlaySettings {
             scale: 0.25,
             custom_x: default_camera_overlay_custom_x(),
             custom_y: default_camera_overlay_custom_y(),
+        }
+    }
+}
+
+impl Default for AudioMixSettings {
+    fn default() -> Self {
+        Self {
+            system_volume: default_system_volume(),
+            microphone_volume: default_microphone_volume(),
         }
     }
 }
@@ -144,6 +172,7 @@ impl Project {
                 zoom: vec![],
                 speed: vec![],
                 camera_overlay: CameraOverlaySettings::default(),
+                audio_mix: AudioMixSettings::default(),
             },
         }
     }
