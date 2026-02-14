@@ -66,9 +66,12 @@ export function useProject(initialProject: Project | null) {
   const updateProject = useCallback((updater: (p: Project) => Project) => {
     setProject((prev) => {
       if (!prev) return prev;
+      const updated = updater(prev);
+      if (updated === prev) {
+        return prev;
+      }
       // Save current state to history before updating
       pushToHistory(prev);
-      const updated = updater(prev);
       setIsDirty(true);
       return updated;
     });
@@ -90,10 +93,14 @@ export function useProject(initialProject: Project | null) {
   const renameProject = useCallback((name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    updateProject((p) => ({
-      ...p,
-      name: trimmed,
-    }));
+    updateProject((p) =>
+      p.name === trimmed
+        ? p
+        : {
+            ...p,
+            name: trimmed,
+          }
+    );
   }, [updateProject]);
 
   // Cut: Split a segment at the given time
