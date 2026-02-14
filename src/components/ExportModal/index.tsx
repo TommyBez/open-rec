@@ -1,6 +1,4 @@
-import { useState, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Clapperboard, Monitor, Package, Timer, CheckCircle2, XCircle } from "lucide-react";
 import { Project, ExportOptions as ExportOptionsType } from "../../types/project";
@@ -29,6 +27,7 @@ import {
   formatDuration,
   getPresetOptions,
 } from "./exportModalUtils";
+import { useExportJob } from "./useExportJob";
 
 interface ExportModalProps {
   project: Project;
@@ -38,32 +37,10 @@ interface ExportModalProps {
   onSaveProject?: () => Promise<void>;
 }
 
-interface ExportStartResult {
-  jobId: string;
-  outputPath: string;
-}
-
-interface ExportProgressEvent {
-  jobId: string;
-  progressSeconds: number;
-}
-
-interface ExportCompleteEvent {
-  jobId: string;
-  outputPath: string;
-}
-
-interface ExportErrorEvent {
-  jobId: string;
-  message: string;
-}
-
 type ExportFormat = ExportOptionsType["format"];
 type FrameRate = ExportOptionsType["frameRate"];
 type Compression = ExportOptionsType["compression"];
 type Resolution = ExportOptionsType["resolution"];
-
-type ExportStatus = "idle" | "exporting" | "complete" | "error";
 
 export function ExportModal({ project, editedDuration, open, onOpenChange, onSaveProject }: ExportModalProps) {
   const [options, setOptions] = useState<ExportOptionsType>({
@@ -72,137 +49,38 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
     compression: "social",
     resolution: "1080p",
   });
-  const [exportStatus, setExportStatus] = useState<ExportStatus>("idle");
-  const [progress, setProgress] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [outputPath, setOutputPath] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const jobIdRef = useRef<string | null>(null);
-  const unlistenRefs = useRef<UnlistenFn[]>([]);
 
   const displayDuration = editedDuration ?? project.duration;
   const activePreset = detectActivePreset(options);
   const isAudioOnlyFormat = options.format === "mp3" || options.format === "wav";
   const usesCompression = options.format === "mp4" || options.format === "mp3";
+  const {
+    exportStatus,
+    progress,
+    currentTime,
+    error,
+    outputPath,
+    jobId,
+    resetState,
+    cleanupListeners,
+    handleExport,
+    handleCancelExport,
+  } = useExportJob({
+    projectId: project.id,
+    displayDuration,
+    options,
+    onSaveProject,
+  });
 
   useEffect(() => {
-    return () => {
-      unlistenRefs.current.forEach(unlisten => unlisten());
-      unlistenRefs.current = [];
-    };
-  }, []);
-
-  useEffect(() => {
-    if (open) {
-      setExportStatus("idle");
-      setProgress(0);
-      setCurrentTime(0);
-      setError(null);
-      setOutputPath(null);
-      setJobId(null);
-      jobIdRef.current = null;
-    }
-  }, [open]);
+    if (open) resetState();
+  }, [open, resetState]);
 
   const estimatedSize = calculateEstimatedSize(displayDuration, options);
   const estimatedTime = calculateEstimatedTime(displayDuration, options);
 
-  async function handleExport() {
-    setExportStatus("exporting");
-    setProgress(0);
-    setCurrentTime(0);
-    setError(null);
-    setOutputPath(null);
-    setJobId(null);
-    jobIdRef.current = null;
-
-    unlistenRefs.current.forEach(unlisten => unlisten());
-    unlistenRefs.current = [];
-
-    try {
-      if (onSaveProject) {
-        await onSaveProject();
-      }
-
-      const unlistenProgress = await listen<ExportProgressEvent>("export-progress", (event) => {
-        if (!jobIdRef.current || event.payload.jobId !== jobIdRef.current) return;
-        const currentTimeSeconds = event.payload.progressSeconds;
-        setCurrentTime(currentTimeSeconds);
-        const percentage = Math.min((currentTimeSeconds / displayDuration) * 100, 99);
-        setProgress(percentage);
-      });
-      unlistenRefs.current.push(unlistenProgress);
-
-      const unlistenComplete = await listen<ExportCompleteEvent>("export-complete", (event) => {
-        if (!jobIdRef.current || event.payload.jobId !== jobIdRef.current) return;
-        setProgress(100);
-        setExportStatus("complete");
-        setOutputPath(event.payload.outputPath);
-        setJobId(null);
-        jobIdRef.current = null;
-      });
-      unlistenRefs.current.push(unlistenComplete);
-
-      const unlistenError = await listen<ExportErrorEvent>("export-error", (event) => {
-        if (!jobIdRef.current || event.payload.jobId !== jobIdRef.current) return;
-        setExportStatus("error");
-        setError(event.payload.message);
-        setJobId(null);
-        jobIdRef.current = null;
-      });
-      unlistenRefs.current.push(unlistenError);
-
-      const unlistenCancelled = await listen<{ jobId: string }>("export-cancelled", (event) => {
-        if (!jobIdRef.current || event.payload.jobId !== jobIdRef.current) return;
-        setExportStatus("idle");
-        setProgress(0);
-        setCurrentTime(0);
-        setError("Export cancelled");
-        setJobId(null);
-        jobIdRef.current = null;
-      });
-      unlistenRefs.current.push(unlistenCancelled);
-
-      const result = await invoke<ExportStartResult>("export_project", {
-        projectId: project.id,
-        options: {
-          format: options.format,
-          frameRate: options.frameRate,
-          compression: options.compression,
-          resolution: options.resolution,
-        },
-      });
-      setJobId(result.jobId);
-      jobIdRef.current = result.jobId;
-    } catch (err) {
-      setExportStatus("error");
-      setError(err instanceof Error ? err.message : "Export failed");
-      setJobId(null);
-      jobIdRef.current = null;
-    }
-  }
-
-  async function handleCancelExport() {
-    if (!jobId) return;
-    try {
-      await invoke("cancel_export", { jobId });
-    } catch (err) {
-      setExportStatus("error");
-      setError(err instanceof Error ? err.message : "Failed to cancel export");
-    }
-  }
-
-  function cleanupListeners() {
-    unlistenRefs.current.forEach(unlisten => unlisten());
-    unlistenRefs.current = [];
-    jobIdRef.current = null;
-  }
-
   function handleOpenChange(nextOpen: boolean) {
-    if (!nextOpen) {
-      cleanupListeners();
-    }
+    if (!nextOpen) cleanupListeners();
     onOpenChange(nextOpen);
   }
 
