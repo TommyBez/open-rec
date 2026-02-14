@@ -1312,10 +1312,18 @@ pub fn run() {
             app.run(|app_handle, event| {
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
                 if let RunEvent::Opened { urls } = &event {
-                    let opened_paths = urls
-                        .iter()
-                        .filter_map(|url| url.to_file_path().ok())
-                        .collect::<Vec<_>>();
+                    let mut opened_paths = Vec::new();
+                    for url in urls {
+                        match url.to_file_path() {
+                            Ok(path) => opened_paths.push(path),
+                            Err(_) => {
+                                eprintln!(
+                                    "Skipping non-file URL from Opened event: {}",
+                                    url.as_str()
+                                );
+                            }
+                        }
+                    }
                     if !opened_paths.is_empty() {
                         handle_opened_project_paths(app_handle, opened_paths);
                     }
