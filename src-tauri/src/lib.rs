@@ -911,6 +911,36 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
                         return Some(normalized);
                     }
                 }
+                if let Some(project_id) = json.get("project_id").and_then(|value| value.as_str()) {
+                    if let Some(normalized) = normalize_opened_project_id(project_id) {
+                        return Some(normalized);
+                    }
+                }
+                if let Some(project_dir) = json.get("projectDir").and_then(|value| value.as_str()) {
+                    let project_dir_path = PathBuf::from(project_dir);
+                    if project_dir_path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        == Some("project.json")
+                    {
+                        if let Some(parent_name) = project_dir_path
+                            .parent()
+                            .and_then(|parent| parent.file_name())
+                            .and_then(|value| value.to_str())
+                        {
+                            if let Some(normalized) = normalize_opened_project_id(parent_name) {
+                                return Some(normalized);
+                            }
+                        }
+                    } else if let Some(dir_name) = project_dir_path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                    {
+                        if let Some(normalized) = normalize_opened_project_id(dir_name) {
+                            return Some(normalized);
+                        }
+                    }
+                }
             }
         }
         let stem = path.file_stem()?.to_string_lossy();
