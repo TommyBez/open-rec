@@ -12,6 +12,7 @@ interface VideoPreviewProps {
   currentSourceTime: number;
   isPlaying: boolean;
   annotations: Annotation[];
+  previewFilter: string;
   selectedAnnotationId?: string | null;
   onAnnotationPositionChange?: (annotationId: string, x: number, y: number) => void;
   resolution: { width: number; height: number };
@@ -36,6 +37,7 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
       currentSourceTime,
       isPlaying,
       annotations,
+      previewFilter,
       selectedAnnotationId,
       onAnnotationPositionChange,
       resolution,
@@ -229,6 +231,7 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
         <div
           ref={previewFrameRef}
           className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-lg"
+          style={{ filter: previewFilter }}
         >
           <video
             ref={ref}

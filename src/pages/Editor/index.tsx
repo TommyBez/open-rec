@@ -172,13 +172,8 @@ export function EditorPage() {
   );
 
   const videoZoomStyle = useMemo(() => {
-    const brightness = project?.edits.colorCorrection.brightness ?? 0;
-    const contrast = project?.edits.colorCorrection.contrast ?? 1;
-    const saturation = project?.edits.colorCorrection.saturation ?? 1;
-    const cssFilter = `brightness(${1 + brightness}) contrast(${contrast}) saturate(${saturation})`;
-
     if (!activeZoom) {
-      return { transform: 'scale(1)', transformOrigin: 'center center', filter: cssFilter };
+      return { transform: 'scale(1)', transformOrigin: 'center center' };
     }
     
     const useDraft = zoomDraft && selectedZoomId === activeZoom.id;
@@ -192,9 +187,15 @@ export function EditorPage() {
     return {
       transform: `scale(${scale})`,
       transformOrigin: `${originX}% ${originY}%`,
-      filter: cssFilter,
     };
-  }, [activeZoom, selectedZoomId, zoomDraft, project?.resolution, project?.edits.colorCorrection]);
+  }, [activeZoom, selectedZoomId, zoomDraft, project?.resolution]);
+
+  const previewFilter = useMemo(() => {
+    const brightness = project?.edits.colorCorrection.brightness ?? 0;
+    const contrast = project?.edits.colorCorrection.contrast ?? 1;
+    const saturation = project?.edits.colorCorrection.saturation ?? 1;
+    return `brightness(${1 + brightness}) contrast(${contrast}) saturate(${saturation})`;
+  }, [project?.edits.colorCorrection]);
 
   const videoSrc = useMemo(() => {
     if (!project?.screenVideoPath) return "";
@@ -517,6 +518,7 @@ export function EditorPage() {
             currentSourceTime={currentTime}
             isPlaying={isPlaying}
             annotations={project.edits.annotations}
+            previewFilter={previewFilter}
             selectedAnnotationId={selectedAnnotationId}
             onAnnotationPositionChange={(annotationId, x, y) =>
               updateAnnotation(annotationId, {
