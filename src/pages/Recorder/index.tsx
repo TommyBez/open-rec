@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -47,6 +47,8 @@ export function RecorderPage() {
   const navigate = useNavigate();
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const countdownIntervalRef = useRef<number | null>(null);
   
   // Use zustand store for state management
   const {
@@ -223,9 +225,9 @@ export function RecorderPage() {
     }
   }
 
-  async function handleStartRecording() {
+  async function startRecordingSession() {
     if (!selectedSource) return;
-    
+
     beginRecordingStart();
     try {
       const options: RecordingOptions = {
@@ -264,6 +266,34 @@ export function RecorderPage() {
       setErrorMessage(String(error));
     }
   }
+
+  async function handleStartRecording() {
+    if (countdown !== null || !selectedSource) return;
+
+    setCountdown(3);
+    let value = 3;
+    countdownIntervalRef.current = window.setInterval(async () => {
+      value -= 1;
+      if (value <= 0) {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+        setCountdown(null);
+        await startRecordingSession();
+      } else {
+        setCountdown(value);
+      }
+    }, 1000);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Show permission request UI if permission not granted
   if (hasPermission === false) {
@@ -355,6 +385,13 @@ export function RecorderPage() {
       </header>
 
       <main className="relative z-10 flex flex-1 flex-col gap-4">
+        {countdown !== null && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-sm">
+            <span className="text-7xl font-semibold tracking-tight text-white drop-shadow-lg">
+              {countdown}
+            </span>
+          </div>
+        )}
         {errorMessage && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {errorMessage}
