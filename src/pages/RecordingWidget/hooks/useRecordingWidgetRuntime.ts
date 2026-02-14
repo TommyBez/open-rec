@@ -180,17 +180,22 @@ export function useRecordingWidgetRuntime() {
 
   async function togglePause() {
     if (state === "stopping") return;
+    const currentProjectId = projectId ?? localStorage.getItem("currentProjectId");
+    if (!currentProjectId) {
+      setPermissionError("No active recording session was found.");
+      return;
+    }
     try {
       if (state === "recording") {
         await withTimeout(
-          invoke("pause_recording", { projectId }),
+          invoke("pause_recording", { projectId: currentProjectId }),
           PAUSE_RESUME_TIMEOUT_MS,
           "Pausing recording timed out."
         );
         setRecordingState("paused");
       } else {
         await withTimeout(
-          invoke("resume_recording", { projectId }),
+          invoke("resume_recording", { projectId: currentProjectId }),
           PAUSE_RESUME_TIMEOUT_MS,
           "Resuming recording timed out."
         );
@@ -206,12 +211,14 @@ export function useRecordingWidgetRuntime() {
 
   useEffect(() => {
     const unlistenStartStop = listen("global-shortcut-start-stop", () => {
-      if (projectId && (state === "recording" || state === "paused")) {
+      const hasActiveProject = Boolean(projectId ?? localStorage.getItem("currentProjectId"));
+      if (hasActiveProject && (state === "recording" || state === "paused")) {
         void stopRecording();
       }
     });
     const unlistenTogglePause = listen("global-shortcut-toggle-pause", () => {
-      if (projectId && (state === "recording" || state === "paused")) {
+      const hasActiveProject = Boolean(projectId ?? localStorage.getItem("currentProjectId"));
+      if (hasActiveProject && (state === "recording" || state === "paused")) {
         void togglePause();
       }
     });
