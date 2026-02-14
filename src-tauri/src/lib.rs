@@ -655,12 +655,7 @@ fn request_permission() -> bool {
 fn check_recording_disk_space(
     state: tauri::State<SharedRecorderState>,
 ) -> Result<DiskSpaceStatus, AppError> {
-    let recordings_dir = {
-        let state_guard = state
-            .lock()
-            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
-        state_guard.recordings_dir.clone()
-    };
+    let recordings_dir = recordings_dir_from_managed_state(&state)?;
 
     recording_disk_space_status(&recordings_dir)
 }
@@ -684,12 +679,7 @@ fn start_screen_recording(
         ));
     }
 
-    let recordings_dir = {
-        let state_guard = state
-            .lock()
-            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
-        state_guard.recordings_dir.clone()
-    };
+    let recordings_dir = recordings_dir_from_managed_state(&state)?;
     ensure_recording_disk_headroom(&recordings_dir)?;
 
     let result = do_start_recording(&state, options)?;
@@ -720,12 +710,7 @@ async fn stop_screen_recording(
     concatenate_screen_segments(&app, &stop_result).await?;
 
     // Get the recordings directory from state
-    let recordings_dir = {
-        let state_guard = state
-            .lock()
-            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
-        state_guard.recordings_dir.clone()
-    };
+    let recordings_dir = recordings_dir_from_managed_state(&state)?;
 
     // Create project.json for the recording
     let duration = match probe_video_duration(&stop_result.screen_video_path) {
@@ -908,6 +893,15 @@ fn recordings_dir_from_state(app: &AppHandle) -> Result<PathBuf, AppError> {
     let state = app
         .try_state::<SharedRecorderState>()
         .ok_or_else(|| AppError::Message("Recorder state is unavailable".to_string()))?;
+    let state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    Ok(state_guard.recordings_dir.clone())
+}
+
+fn recordings_dir_from_managed_state(
+    state: &tauri::State<'_, SharedRecorderState>,
+) -> Result<PathBuf, AppError> {
     let state_guard = state
         .lock()
         .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
@@ -1098,12 +1092,7 @@ async fn load_project(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<Project, AppError> {
-    let recordings_dir = {
-        let state_guard = state
-            .lock()
-            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
-        state_guard.recordings_dir.clone()
-    };
+    let recordings_dir = recordings_dir_from_managed_state(&state)?;
     project::load_project(&recordings_dir, &project_id).await
 }
 
@@ -1114,12 +1103,7 @@ async fn save_project(
     state: tauri::State<SharedRecorderState>,
     project: Project,
 ) -> Result<(), AppError> {
-    let recordings_dir = {
-        let state_guard = state
-            .lock()
-            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
-        state_guard.recordings_dir.clone()
-    };
+    let recordings_dir = recordings_dir_from_managed_state(&state)?;
     project::save_project(&recordings_dir, &project).await?;
     refresh_tray_menu(&app, &recordings_dir);
     Ok(())
@@ -1128,12 +1112,7 @@ async fn save_project(
 /// List all projects
 #[tauri::command]
 async fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<Project>, AppError> {
-    let recordings_dir = {
-        let state_guard = state
-            .lock()
-            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
-        state_guard.recordings_dir.clone()
-    };
+    let recordings_dir = recordings_dir_from_managed_state(&state)?;
     project::list_projects(&recordings_dir).await
 }
 
@@ -1144,12 +1123,7 @@ async fn delete_project(
     state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
-    let recordings_dir = {
-        let state_guard = state
-            .lock()
-            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
-        state_guard.recordings_dir.clone()
-    };
+    let recordings_dir = recordings_dir_from_managed_state(&state)?;
 
     project::delete_project(&recordings_dir, &project_id).await?;
     refresh_tray_menu(&app, &recordings_dir);
@@ -1165,12 +1139,7 @@ async fn export_project(
     project_id: String,
     options: ExportOptions,
 ) -> Result<ExportStartResult, AppError> {
-    let recordings_dir = {
-        let state_guard = state
-            .lock()
-            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
-        state_guard.recordings_dir.clone()
-    };
+    let recordings_dir = recordings_dir_from_managed_state(&state)?;
     let project = project::load_project(&recordings_dir, &project_id).await?;
 
     validate_export_inputs(&project, &options)?;
