@@ -866,12 +866,38 @@ fn open_recording_widget(app: AppHandle) -> Result<(), AppError> {
 }
 
 fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), AppError> {
+    let title = {
+        let mut resolved_title = None;
+        if let Some(state) = app.try_state::<SharedRecorderState>() {
+            let recordings_dir = match state.lock() {
+                Ok(state_guard) => Some(state_guard.recordings_dir.clone()),
+                Err(error) => {
+                    eprintln!(
+                        "Failed to lock recorder state while resolving project title: {}",
+                        error
+                    );
+                    None
+                }
+            };
+            if let Some(recordings_dir) = recordings_dir {
+                let project_file_path = recordings_dir.join(project_id).join("project.json");
+                if let Ok(content) = std::fs::read_to_string(project_file_path) {
+                    if let Ok(project) = serde_json::from_str::<Project>(&content) {
+                        resolved_title = Some(project.name);
+                    }
+                }
+            }
+        }
+        format!(
+            "Open Rec — {}",
+            resolved_title
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| project_id.chars().take(8).collect::<String>())
+        )
+    };
+
     let label = format!("editor-{}", Uuid::new_v4());
     let route = format!("/editor/{}", project_id);
-    let title = format!(
-        "Open Rec — {}",
-        &project_id.chars().take(8).collect::<String>()
-    );
 
     WebviewWindowBuilder::new(app, label, WebviewUrl::App(route.into()))
         .title(title)
