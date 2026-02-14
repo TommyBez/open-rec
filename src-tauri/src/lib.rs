@@ -759,6 +759,14 @@ async fn stop_screen_recording(
     );
     project::save_project(&recordings_dir, &project).await?;
     refresh_tray_menu(&app, &recordings_dir);
+    emit_with_log(
+        &app,
+        "recording-state-changed",
+        serde_json::json!({
+            "state": "stopped",
+            "projectId": &project_id
+        }),
+    );
 
     // First, show and prepare the main window BEFORE emitting events
     if let Some(main_window) = app.get_webview_window("main") {
