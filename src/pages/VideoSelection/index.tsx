@@ -1,17 +1,11 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { invoke } from "@tauri-apps/api/core";
-import { LogicalSize } from "@tauri-apps/api/dpi";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FolderOpen, Video } from "lucide-react";
 import { BrandLogo } from "../../components/BrandLogo";
 import { Button } from "@/components/ui/button";
-import { Project } from "../../types/project";
 import { ProjectCard } from "./ProjectCard";
 import { useExportStore } from "../../stores";
-import { useBatchExportQueue } from "./hooks/useBatchExportQueue";
 import { VideoSelectionHeader } from "./components/VideoSelectionHeader";
 import { BatchExportToolbar } from "./components/BatchExportToolbar";
+import { useVideoSelectionState } from "./hooks/useVideoSelectionState";
 
 function EmptyState({ onRecord }: { onRecord: () => void }) {
   return (
@@ -40,14 +34,13 @@ function EmptyState({ onRecord }: { onRecord: () => void }) {
 }
 
 export function VideoSelectionPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const {
+    projects,
+    isLoading,
+    error,
+    selectionMode,
+    selectedProjectIds,
+    cameFromEditor,
     batchOptions,
     setBatchOptions,
     isBatchExporting,
@@ -56,126 +49,16 @@ export function VideoSelectionPage() {
     batchHistory,
     startBatchExport,
     stopBatchExport,
-  } = useBatchExportQueue({
-    selectedProjectIds,
-    projects,
-  });
+    handleSelectProject,
+    handleRenameProject,
+    handleDeleteProject,
+    handleOpenProjectInNewWindow,
+    toggleProjectSelection,
+    handleBack,
+    handleGoToRecorder,
+    toggleSelectionMode,
+  } = useVideoSelectionState();
   const activeExportCount = useExportStore((state) => state.activeExportCount);
-
-  // Determine where we came from for the back button
-  const cameFromEditor = location.state?.from === "editor";
-  const previousProjectId = location.state?.projectId;
-
-  // Resize window to full screen on mount
-  useEffect(() => {
-    async function resizeWindow() {
-      try {
-        const window = getCurrentWindow();
-        await window.setSize(new LogicalSize(1200, 800));
-        await window.center();
-      } catch (error) {
-        console.error("Failed to resize window:", error);
-      }
-    }
-    resizeWindow();
-  }, []);
-
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  async function loadProjects() {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await invoke<Project[]>("list_projects");
-      setProjects(result);
-    } catch (err) {
-      console.error("Failed to load projects:", err);
-      setError(String(err));
-      // Use empty array on error
-      setProjects([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  function handleSelectProject(project: Project) {
-    if (selectionMode) {
-      toggleProjectSelection(project.id);
-      return;
-    }
-    navigate(`/editor/${project.id}`);
-  }
-
-  function toggleProjectSelection(projectId: string) {
-    setSelectedProjectIds((previous) =>
-      previous.includes(projectId)
-        ? previous.filter((id) => id !== projectId)
-        : [...previous, projectId]
-    );
-  }
-
-  async function handleRenameProject(projectId: string, nextName: string) {
-    const trimmed = nextName.trim();
-    if (!trimmed) return;
-
-    const target = projects.find((project) => project.id === projectId);
-    if (!target || target.name === trimmed) return;
-
-    const updatedProject = { ...target, name: trimmed };
-    setProjects((prev) =>
-      prev.map((project) => (project.id === projectId ? updatedProject : project))
-    );
-
-    try {
-      await invoke("save_project", { project: updatedProject });
-    } catch (err) {
-      console.error("Failed to rename project:", err);
-      setProjects((prev) =>
-        prev.map((project) => (project.id === projectId ? target : project))
-      );
-    }
-  }
-
-  async function handleDeleteProject(projectId: string) {
-    const target = projects.find((project) => project.id === projectId);
-    if (!target) return;
-    const confirmed = window.confirm(`Delete "${target.name}" and all its files?`);
-    if (!confirmed) return;
-
-    setProjects((prev) => prev.filter((project) => project.id !== projectId));
-    setSelectedProjectIds((prev) => prev.filter((id) => id !== projectId));
-
-    try {
-      await invoke("delete_project", { projectId });
-    } catch (err) {
-      console.error("Failed to delete project:", err);
-      setError(`Failed to delete project: ${String(err)}`);
-      await loadProjects();
-    }
-  }
-
-  async function handleOpenProjectInNewWindow(projectId: string) {
-    try {
-      await invoke("open_project_window", { projectId });
-    } catch (err) {
-      console.error("Failed to open project in new window:", err);
-      setError(`Failed to open project in new window: ${String(err)}`);
-    }
-  }
-
-  function handleBack() {
-    if (cameFromEditor && previousProjectId) {
-      navigate(`/editor/${previousProjectId}`);
-    } else {
-      navigate("/recorder");
-    }
-  }
-
-  function handleGoToRecorder() {
-    navigate("/recorder");
-  }
 
   // Loading state
   if (isLoading) {
@@ -192,7 +75,6 @@ export function VideoSelectionPage() {
       </div>
     );
   }
-
   return (
     <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background">
       {/* Atmospheric background */}
@@ -206,15 +88,7 @@ export function VideoSelectionPage() {
         activeExportCount={activeExportCount}
         onBack={handleBack}
         onGoToRecorder={handleGoToRecorder}
-        onToggleSelectionMode={() => {
-          setSelectionMode((active) => {
-            const next = !active;
-            if (!next) {
-              setSelectedProjectIds([]);
-            }
-            return next;
-          });
-        }}
+        onToggleSelectionMode={toggleSelectionMode}
       />
 
       {/* Main content */}
