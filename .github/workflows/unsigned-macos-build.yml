@@ -1,0 +1,91 @@
+name: Build Unsigned macOS DMGs
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-unsigned-dmg:
+    name: Build ${{ matrix.target }} DMG
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned DMG
+        run: pnpm tauri build --bundles dmg --target ${{ matrix.target }}
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openrec-${{ matrix.target }}-dmg
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  upload-release-assets:
+    name: Upload DMGs to GitHub Release
+    if: github.event_name == 'release'
+    needs: build-unsigned-dmg
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all DMG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+
+      - name: Build unsigned changelog note
+        run: |
+          cat > dist-artifacts/UNSIGNED_BUILD_NOTES.md <<'EOF'
+          # Unsigned OpenRec builds
+
+          These binaries are intentionally unsigned (`signingIdentity: null`).
+          On first launch macOS Gatekeeper will block the app; use:
+
+          1. Finder → Applications
+          2. Right-click `Open Rec.app`
+          3. Click **Open** and confirm
+
+          Also grant Screen Recording/Microphone/Camera permissions when prompted.
+
+          For full instructions see `docs/UNSIGNED_MAC_INSTALL.md`.
+          EOF
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          shopt -s globstar nullglob
+          for file in dist-artifacts/**/*.dmg dist-artifacts/UNSIGNED_BUILD_NOTES.md; do
+            echo "Uploading $file"
+            gh release upload "$RELEASE_TAG" "$file" --clobber
+          done
