@@ -3,18 +3,15 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowLeft, Video, FolderOpen, Loader2 } from "lucide-react";
+import { FolderOpen, Video } from "lucide-react";
 import { BrandLogo } from "../../components/BrandLogo";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { ExportOptions, Project } from "../../types/project";
+import { Project } from "../../types/project";
 import { ProjectCard } from "./ProjectCard";
 import { useExportStore } from "../../stores";
 import { useBatchExportQueue } from "./hooks/useBatchExportQueue";
+import { VideoSelectionHeader } from "./components/VideoSelectionHeader";
+import { BatchExportToolbar } from "./components/BatchExportToolbar";
 
 function EmptyState({ onRecord }: { onRecord: () => void }) {
   return (
@@ -202,151 +199,36 @@ export function VideoSelectionPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between border-b border-border/50 bg-card/30 px-4 py-3 backdrop-blur-sm animate-fade-up">
-        <div className="flex items-center gap-3">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleBack}
-                className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <ArrowLeft className="size-5" strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {cameFromEditor ? "Back to editor" : "Back to recorder"}
-            </TooltipContent>
-          </Tooltip>
-          <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
-              <FolderOpen className="size-4 text-primary" strokeWidth={1.75} />
-            </div>
-            <span className="text-sm font-medium text-foreground/80">My Recordings</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleGoToRecorder}
-            disabled={isBatchExporting}
-            className="gap-2"
-          >
-            <Video className="size-4" strokeWidth={1.75} />
-            New Recording
-          </Button>
-          <Button
-            variant={selectionMode ? "default" : "outline"}
-            size="sm"
-            disabled={isBatchExporting}
-            onClick={() => {
-              setSelectionMode((active) => {
-                const next = !active;
-                if (!next) {
-                  setSelectedProjectIds([]);
-                }
-                return next;
-              });
-            }}
-          >
-            {selectionMode ? "Done Selecting" : "Batch Export"}
-          </Button>
-          {activeExportCount > 0 && (
-            <div className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" />
-              {activeExportCount} exporting
-            </div>
-          )}
-        </div>
-      </header>
+      <VideoSelectionHeader
+        cameFromEditor={cameFromEditor}
+        isBatchExporting={isBatchExporting}
+        selectionMode={selectionMode}
+        activeExportCount={activeExportCount}
+        onBack={handleBack}
+        onGoToRecorder={handleGoToRecorder}
+        onToggleSelectionMode={() => {
+          setSelectionMode((active) => {
+            const next = !active;
+            if (!next) {
+              setSelectedProjectIds([]);
+            }
+            return next;
+          });
+        }}
+      />
 
       {/* Main content */}
       <main className="relative z-10 flex flex-1 flex-col overflow-hidden p-4">
         {selectionMode && (
-          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-card/50 px-3 py-2">
-            <span className="text-xs text-muted-foreground">
-              Selected: {selectedProjectIds.length}
-            </span>
-            <select
-              value={batchOptions.format}
-              onChange={(event) =>
-                setBatchOptions((previous) => ({
-                  ...previous,
-                  format: event.target.value as ExportOptions["format"],
-                }))
-              }
-              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
-            >
-              <option value="mp4">MP4</option>
-              <option value="mov">MOV</option>
-              <option value="gif">GIF</option>
-              <option value="mp3">MP3</option>
-              <option value="wav">WAV</option>
-            </select>
-            <select
-              value={batchOptions.resolution}
-              disabled={batchOptions.format === "mp3" || batchOptions.format === "wav"}
-              onChange={(event) =>
-                setBatchOptions((previous) => ({
-                  ...previous,
-                  resolution: event.target.value as ExportOptions["resolution"],
-                }))
-              }
-              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs disabled:opacity-50"
-            >
-              <option value="720p">720p</option>
-              <option value="1080p">1080p</option>
-              <option value="4k">4K</option>
-            </select>
-            <select
-              value={String(batchOptions.frameRate)}
-              disabled={batchOptions.format === "mp3" || batchOptions.format === "wav"}
-              onChange={(event) =>
-                setBatchOptions((previous) => ({
-                  ...previous,
-                  frameRate: Number(event.target.value) as ExportOptions["frameRate"],
-                }))
-              }
-              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs disabled:opacity-50"
-            >
-              <option value="24">24 FPS</option>
-              <option value="30">30 FPS</option>
-              <option value="60">60 FPS</option>
-            </select>
-            <select
-              value={batchOptions.compression}
-              disabled={batchOptions.format !== "mp4" && batchOptions.format !== "mp3"}
-              onChange={(event) =>
-                setBatchOptions((previous) => ({
-                  ...previous,
-                  compression: event.target.value as ExportOptions["compression"],
-                }))
-              }
-              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs disabled:opacity-50"
-            >
-              <option value="minimal">Minimal</option>
-              <option value="social">Social</option>
-              <option value="web">Web</option>
-              <option value="potato">Potato</option>
-            </select>
-            <Button
-              size="sm"
-              disabled={selectedProjectIds.length === 0 || isBatchExporting}
-              onClick={startBatchExport}
-            >
-              {isBatchExporting ? "Exporting..." : "Export Selected"}
-            </Button>
-            {isBatchExporting && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={stopBatchRequested}
-                onClick={stopBatchExport}
-              >
-                {stopBatchRequested ? "Stopping..." : "Stop Queue"}
-              </Button>
-            )}
-          </div>
+          <BatchExportToolbar
+            selectedCount={selectedProjectIds.length}
+            isBatchExporting={isBatchExporting}
+            stopBatchRequested={stopBatchRequested}
+            batchOptions={batchOptions}
+            onBatchOptionsChange={setBatchOptions}
+            onStartBatchExport={startBatchExport}
+            onStopBatchExport={stopBatchExport}
+          />
         )}
         {error && (
           <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive animate-fade-up">
