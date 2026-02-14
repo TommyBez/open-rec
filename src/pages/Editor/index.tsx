@@ -1,14 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { ExportModal } from "../../components/ExportModal";
 import { useProject } from "../../hooks/useProject";
 import { useEditorStore, useExportStore } from "../../stores";
 
-// Extracted components
-import { EditorHeader } from "./components/EditorHeader";
-import { EditorMainPane } from "./components/EditorMainPane";
-import { EditorTimelinePanel } from "./components/EditorTimelinePanel";
+import { EditorPageLayout } from "./components/EditorPageLayout";
 import { useEditorKeyboardShortcuts } from "./hooks/useEditorKeyboardShortcuts";
 import { useVideoPlayback } from "./hooks/useVideoPlayback";
 import { useWaveformData } from "./hooks/useWaveformData";
@@ -20,14 +16,9 @@ import { useEditorBoundedUpdaters } from "./hooks/useEditorBoundedUpdaters";
 import { useEditorSelectionActions } from "./hooks/useEditorSelectionActions";
 import { useEditorViewHandlers } from "./hooks/useEditorViewHandlers";
 
-// Hoisted static JSX elements
-const atmosphericGradient = (
-  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
-);
-
 const loadingSpinner = (
   <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background">
-    {atmosphericGradient}
+    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
     <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3">
       <div className="size-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
       <p className="text-sm text-muted-foreground">Loading project...</p>
@@ -278,116 +269,85 @@ export function EditorPage() {
   if (isLoading || !project) return loadingSpinner;
 
   return (
-    <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background text-foreground">
-      {atmosphericGradient}
-
-      <EditorHeader
-        projectName={project.name}
-        isDirty={isDirty}
-        onRename={renameProject}
-        hasCameraTrack={Boolean(project.cameraVideoPath)}
-        hasMicrophoneTrack={Boolean(project.microphoneAudioPath)}
-        cameraOverlayPosition={project.edits.cameraOverlay.position}
-        cameraOverlayScale={project.edits.cameraOverlay.scale}
-        cameraOverlayMargin={project.edits.cameraOverlay.margin}
-        audioSystemVolume={project.edits.audioMix.systemVolume}
-        audioMicrophoneVolume={project.edits.audioMix.microphoneVolume}
-        microphoneNoiseGate={project.edits.audioMix.microphoneNoiseGate}
-        colorBrightness={project.edits.colorCorrection.brightness}
-        colorContrast={project.edits.colorCorrection.contrast}
-        colorSaturation={project.edits.colorCorrection.saturation}
-        onCameraOverlayPositionChange={handleCameraOverlayPositionChange}
-        onCameraOverlayScaleChange={handleCameraOverlayScaleChange}
-        onCameraOverlayMarginChange={handleCameraOverlayMarginChange}
-        onAudioSystemVolumeChange={handleAudioSystemVolumeChange}
-        onAudioMicrophoneVolumeChange={handleAudioMicrophoneVolumeChange}
-        onMicrophoneNoiseGateChange={handleMicrophoneNoiseGateChange}
-        onColorBrightnessChange={handleColorBrightnessChange}
-        onColorContrastChange={handleColorContrastChange}
-        onColorSaturationChange={handleColorSaturationChange}
-        onResetColorCorrection={handleResetColorCorrection}
-        onBack={handleBack}
-        onExport={handleExport}
-        onOpenVideos={handleOpenVideos}
-        onOpenInNewWindow={handleOpenProjectWindow}
-        activeExportCount={activeExportCount}
-      />
-
-      <EditorMainPane
-        project={project}
-        videoRef={videoRef}
-        videoSrc={videoSrc}
-        videoZoomStyle={videoZoomStyle}
-        activeZoom={activeZoom}
-        activeSpeed={activeSpeed}
-        effectivePlaybackRate={effectivePlaybackRate}
-        currentTime={currentTime}
-        isPlaying={isPlaying}
-        previewFilter={previewFilter}
-        selectedAnnotationId={selectedAnnotationId}
-        cameraSrc={cameraSrc}
-        onAnnotationPositionChange={handleAnnotationPositionChange}
-        onCameraOverlayCustomPositionChange={handleCameraOverlayCustomPositionChange}
-        sourceToEditedTime={sourceToEditedTime}
-        editedDuration={editedDuration}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        canDelete={canDelete}
-        canDeleteZoom={canDeleteZoom}
-        canDeleteSpeed={canDeleteSpeed}
-        canDeleteSegment={!!canDeleteSegment}
-        canDeleteAnnotation={canDeleteAnnotation}
-        annotationInsertMode={annotationInsertMode}
-        selectedTool={selectedTool}
-        onTogglePlay={togglePlay}
-        onSkipBackward={skipBackward}
-        onSkipForward={skipForward}
-        onUndo={undo}
-        onRedo={redo}
-        onDelete={handleDeleteSelected}
-        onToggleTool={toggleTool}
-        selectedZoom={selectedZoom}
-        selectedSpeed={selectedSpeed}
-        selectedAnnotation={selectedAnnotation}
-        onZoomCommit={handleZoomCommit}
-        onCloseZoom={handleCloseZoomInspector}
-        onZoomDraftChange={handleZoomDraftChange}
-        onSpeedCommit={handleSpeedCommit}
-        onCloseSpeed={handleCloseSpeedInspector}
-        onSpeedDraftChange={handleSpeedDraftChange}
-        onAnnotationCommit={handleAnnotationCommit}
-        onDuplicateAnnotation={handleDuplicateSelectedAnnotation}
-        onCloseAnnotation={handleCloseAnnotationInspector}
-      />
-
-      <EditorTimelinePanel
-        project={project}
-        duration={duration}
-        currentTime={currentTime}
-        screenWaveform={screenWaveform}
-        microphoneWaveform={microphoneWaveform}
-        selectedTool={selectedTool}
-        selectedSegmentId={selectedSegmentId}
-        selectedZoomId={selectedZoomId}
-        selectedSpeedId={selectedSpeedId}
-        selectedAnnotationId={selectedAnnotationId}
-        onSeek={handleTimelineClick}
-        onSelectSegment={selectSegment}
-        onSelectZoom={selectZoom}
-        onUpdateZoom={updateZoom}
-        onSelectSpeed={selectSpeed}
-        onUpdateSpeed={updateSpeed}
-        onSelectAnnotation={selectAnnotation}
-        onUpdateAnnotation={updateAnnotation}
-      />
-
-      <ExportModal
-        project={project}
-        editedDuration={editedDuration}
-        open={showExportModal}
-        onOpenChange={setShowExportModal}
-        onSaveProject={saveProject}
-      />
-    </div>
+    <EditorPageLayout
+      project={project}
+      isDirty={isDirty}
+      activeExportCount={activeExportCount}
+      duration={duration}
+      videoRef={videoRef}
+      videoSrc={videoSrc}
+      videoZoomStyle={videoZoomStyle}
+      activeZoom={activeZoom}
+      activeSpeed={activeSpeed}
+      effectivePlaybackRate={effectivePlaybackRate}
+      currentTime={currentTime}
+      isPlaying={isPlaying}
+      previewFilter={previewFilter}
+      selectedAnnotationId={selectedAnnotationId}
+      cameraSrc={cameraSrc}
+      onAnnotationPositionChange={handleAnnotationPositionChange}
+      onCameraOverlayCustomPositionChange={handleCameraOverlayCustomPositionChange}
+      sourceToEditedTime={sourceToEditedTime}
+      editedDuration={editedDuration}
+      canUndo={canUndo}
+      canRedo={canRedo}
+      canDelete={canDelete}
+      canDeleteZoom={canDeleteZoom}
+      canDeleteSpeed={canDeleteSpeed}
+      canDeleteSegment={!!canDeleteSegment}
+      canDeleteAnnotation={canDeleteAnnotation}
+      annotationInsertMode={annotationInsertMode}
+      selectedTool={selectedTool}
+      selectedSegmentId={selectedSegmentId}
+      selectedZoomId={selectedZoomId}
+      selectedSpeedId={selectedSpeedId}
+      screenWaveform={screenWaveform}
+      microphoneWaveform={microphoneWaveform}
+      selectedZoom={selectedZoom}
+      selectedSpeed={selectedSpeed}
+      selectedAnnotation={selectedAnnotation}
+      onRenameProject={renameProject}
+      onBack={handleBack}
+      onExport={handleExport}
+      onOpenVideos={handleOpenVideos}
+      onOpenInNewWindow={handleOpenProjectWindow}
+      onTogglePlay={togglePlay}
+      onSkipBackward={skipBackward}
+      onSkipForward={skipForward}
+      onUndo={undo}
+      onRedo={redo}
+      onDeleteSelected={handleDeleteSelected}
+      onToggleTool={toggleTool}
+      onZoomCommit={handleZoomCommit}
+      onCloseZoom={handleCloseZoomInspector}
+      onZoomDraftChange={handleZoomDraftChange}
+      onSpeedCommit={handleSpeedCommit}
+      onCloseSpeed={handleCloseSpeedInspector}
+      onSpeedDraftChange={handleSpeedDraftChange}
+      onAnnotationCommit={handleAnnotationCommit}
+      onDuplicateAnnotation={handleDuplicateSelectedAnnotation}
+      onCloseAnnotation={handleCloseAnnotationInspector}
+      onSeek={handleTimelineClick}
+      onSelectSegment={selectSegment}
+      onSelectZoom={selectZoom}
+      onUpdateZoom={updateZoom}
+      onSelectSpeed={selectSpeed}
+      onUpdateSpeed={updateSpeed}
+      onSelectAnnotation={selectAnnotation}
+      onUpdateAnnotation={updateAnnotation}
+      onCameraOverlayPositionChange={handleCameraOverlayPositionChange}
+      onCameraOverlayScaleChange={handleCameraOverlayScaleChange}
+      onCameraOverlayMarginChange={handleCameraOverlayMarginChange}
+      onAudioSystemVolumeChange={handleAudioSystemVolumeChange}
+      onAudioMicrophoneVolumeChange={handleAudioMicrophoneVolumeChange}
+      onMicrophoneNoiseGateChange={handleMicrophoneNoiseGateChange}
+      onColorBrightnessChange={handleColorBrightnessChange}
+      onColorContrastChange={handleColorContrastChange}
+      onColorSaturationChange={handleColorSaturationChange}
+      onResetColorCorrection={handleResetColorCorrection}
+      showExportModal={showExportModal}
+      onSetShowExportModal={setShowExportModal}
+      onSaveProject={saveProject}
+    />
   );
 }
