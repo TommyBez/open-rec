@@ -870,9 +870,19 @@ pub fn build_ffmpeg_args(
             let microphone_processed_label = microphone_audio_label.map(|label| {
                 let cleaned_label = "[amicclean]".to_string();
                 filter_parts.push(format!("{}highpass=f=80{}", label, cleaned_label));
+                let gated_label = if project.edits.audio_mix.microphone_noise_gate {
+                    let gated = "[amicgate]".to_string();
+                    filter_parts.push(format!(
+                        "{}agate=threshold=0.02:ratio=4:attack=20:release=250{}",
+                        cleaned_label, gated
+                    ));
+                    gated
+                } else {
+                    cleaned_label
+                };
                 apply_audio_gain(
                     &mut filter_parts,
-                    cleaned_label,
+                    gated_label,
                     project.edits.audio_mix.microphone_volume,
                     "amicvol",
                 )
@@ -1086,9 +1096,19 @@ pub fn build_ffmpeg_args(
             let microphone_processed_label = microphone_audio_label.map(|label| {
                 let cleaned_label = "[amicclean]".to_string();
                 filter_parts.push(format!("{}highpass=f=80{}", label, cleaned_label));
+                let gated_label = if project.edits.audio_mix.microphone_noise_gate {
+                    let gated = "[amicgate]".to_string();
+                    filter_parts.push(format!(
+                        "{}agate=threshold=0.02:ratio=4:attack=20:release=250{}",
+                        cleaned_label, gated
+                    ));
+                    gated
+                } else {
+                    cleaned_label
+                };
                 apply_audio_gain(
                     &mut filter_parts,
-                    cleaned_label,
+                    gated_label,
                     project.edits.audio_mix.microphone_volume,
                     "amicvol",
                 )

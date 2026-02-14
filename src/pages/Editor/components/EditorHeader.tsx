@@ -18,6 +18,7 @@ interface EditorHeaderProps {
   cameraOverlayMargin: number;
   audioSystemVolume: number;
   audioMicrophoneVolume: number;
+  microphoneNoiseGate: boolean;
   colorBrightness: number;
   colorContrast: number;
   colorSaturation: number;
@@ -28,6 +29,7 @@ interface EditorHeaderProps {
   onCameraOverlayMarginChange: (margin: number) => void;
   onAudioSystemVolumeChange: (volume: number) => void;
   onAudioMicrophoneVolumeChange: (volume: number) => void;
+  onMicrophoneNoiseGateChange: (enabled: boolean) => void;
   onColorBrightnessChange: (value: number) => void;
   onColorContrastChange: (value: number) => void;
   onColorSaturationChange: (value: number) => void;
@@ -48,6 +50,7 @@ export const EditorHeader = memo(function EditorHeader({
   cameraOverlayMargin,
   audioSystemVolume,
   audioMicrophoneVolume,
+  microphoneNoiseGate,
   colorBrightness,
   colorContrast,
   colorSaturation,
@@ -56,6 +59,7 @@ export const EditorHeader = memo(function EditorHeader({
   onCameraOverlayMarginChange,
   onAudioSystemVolumeChange,
   onAudioMicrophoneVolumeChange,
+  onMicrophoneNoiseGateChange,
   onColorBrightnessChange,
   onColorContrastChange,
   onColorSaturationChange,
@@ -206,6 +210,17 @@ export const EditorHeader = memo(function EditorHeader({
               }
               className="w-11 bg-transparent text-right text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
               title="Microphone volume"
+            />
+          </label>
+          <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
+            Gate
+            <input
+              type="checkbox"
+              checked={microphoneNoiseGate}
+              disabled={!hasMicrophoneTrack}
+              onChange={(event) => onMicrophoneNoiseGateChange(event.target.checked)}
+              className="size-3.5 accent-primary disabled:cursor-not-allowed"
+              title="Enable microphone noise gate"
             />
           </label>
         </div>

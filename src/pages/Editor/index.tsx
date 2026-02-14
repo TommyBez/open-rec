@@ -55,6 +55,7 @@ function normalizeProject(project: Project): Project {
       audioMix: {
         systemVolume: audioMix?.systemVolume ?? 1,
         microphoneVolume: audioMix?.microphoneVolume ?? 1,
+        microphoneNoiseGate: audioMix?.microphoneNoiseGate ?? false,
       },
       colorCorrection: {
         brightness: colorCorrection?.brightness ?? 0,
@@ -387,6 +388,7 @@ export function EditorPage() {
           audioMix: {
             systemVolume: 1,
             microphoneVolume: 1,
+            microphoneNoiseGate: false,
           },
           colorCorrection: {
             brightness: 0,
@@ -460,6 +462,7 @@ export function EditorPage() {
         cameraOverlayMargin={project.edits.cameraOverlay.margin}
         audioSystemVolume={project.edits.audioMix.systemVolume}
         audioMicrophoneVolume={project.edits.audioMix.microphoneVolume}
+        microphoneNoiseGate={project.edits.audioMix.microphoneNoiseGate}
         colorBrightness={project.edits.colorCorrection.brightness}
         colorContrast={project.edits.colorCorrection.contrast}
         colorSaturation={project.edits.colorCorrection.saturation}
@@ -477,6 +480,9 @@ export function EditorPage() {
         }
         onAudioMicrophoneVolumeChange={(volume) =>
           updateAudioMix({ microphoneVolume: Math.max(0, Math.min(2, volume)) })
+        }
+        onMicrophoneNoiseGateChange={(enabled) =>
+          updateAudioMix({ microphoneNoiseGate: enabled })
         }
         onColorBrightnessChange={(value) =>
           updateColorCorrection({ brightness: Math.max(-1, Math.min(1, value)) })

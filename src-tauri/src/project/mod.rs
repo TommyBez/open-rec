@@ -63,6 +63,8 @@ pub struct AudioMixSettings {
     pub system_volume: f64,
     #[serde(default = "default_microphone_volume")]
     pub microphone_volume: f64,
+    #[serde(default = "default_microphone_noise_gate")]
+    pub microphone_noise_gate: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,6 +104,10 @@ fn default_microphone_volume() -> f64 {
     1.0
 }
 
+fn default_microphone_noise_gate() -> bool {
+    false
+}
+
 fn default_brightness() -> f64 {
     0.0
 }
@@ -131,6 +137,7 @@ impl Default for AudioMixSettings {
         Self {
             system_volume: default_system_volume(),
             microphone_volume: default_microphone_volume(),
+            microphone_noise_gate: default_microphone_noise_gate(),
         }
     }
 }

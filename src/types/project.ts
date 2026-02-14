@@ -40,6 +40,7 @@ export interface CameraOverlaySettings {
 export interface AudioMixSettings {
   systemVolume: number;
   microphoneVolume: number;
+  microphoneNoiseGate: boolean;
 }
 
 export interface ColorCorrectionSettings {
