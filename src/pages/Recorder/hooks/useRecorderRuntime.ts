@@ -17,6 +17,10 @@ import {
   consumeTrayQuickRecordRequest,
   requestTrayQuickRecord,
 } from "../../../lib/trayQuickRecord";
+import {
+  clearStoredCurrentProjectId,
+  setStoredCurrentProjectId,
+} from "../../../lib/currentProjectStorage";
 import { toErrorMessage } from "../../../lib/errorMessage";
 import { withTimeout } from "../../../lib/withTimeout";
 import { useRecordingCountdown } from "./useRecordingCountdown";
@@ -325,7 +329,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setProjectId(result.projectId);
       setRecordingStartTimeMs(result.recordingStartTimeMs);
       startRecording(result.projectId);
-      localStorage.setItem("currentProjectId", result.projectId);
+      setStoredCurrentProjectId(result.projectId);
       setErrorMessage(null);
 
       await invoke("open_recording_widget");
@@ -336,7 +340,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setProjectId(null);
       setRecordingStartTimeMs(null);
       setRecordingState("idle");
-      localStorage.removeItem("currentProjectId");
+      clearStoredCurrentProjectId();
       setErrorMessage(
         toErrorMessage(error, "Failed to start recording. Please try again.")
       );

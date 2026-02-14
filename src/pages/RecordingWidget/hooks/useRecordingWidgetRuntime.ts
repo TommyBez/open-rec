@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useRecordingStore, RecordingState } from "../../../stores";
+import {
+  clearStoredCurrentProjectId,
+  getStoredCurrentProjectId,
+} from "../../../lib/currentProjectStorage";
 import { toErrorMessage } from "../../../lib/errorMessage";
 import { withTimeout } from "../../../lib/withTimeout";
 
@@ -31,7 +35,7 @@ export function useRecordingWidgetRuntime() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storedProjectId = localStorage.getItem("currentProjectId");
+    const storedProjectId = getStoredCurrentProjectId();
     const effectiveProjectId = projectId ?? storedProjectId;
     if (storedProjectId && !projectId) {
       setProjectId(storedProjectId);
@@ -96,7 +100,7 @@ export function useRecordingWidgetRuntime() {
   }, [state]);
 
   async function stopRecording() {
-    const currentProjectId = projectId ?? localStorage.getItem("currentProjectId");
+    const currentProjectId = projectId ?? getStoredCurrentProjectId();
     if (!currentProjectId) return false;
     const fallbackState = state === "paused" ? "paused" : "recording";
     try {
@@ -106,7 +110,7 @@ export function useRecordingWidgetRuntime() {
         STOP_RECORDING_TIMEOUT_MS,
         "Stopping recording timed out."
       );
-      localStorage.removeItem("currentProjectId");
+      clearStoredCurrentProjectId();
       resetRecording();
       setPermissionError(null);
       return true;
@@ -180,7 +184,7 @@ export function useRecordingWidgetRuntime() {
 
   async function togglePause() {
     if (state === "stopping") return;
-    const currentProjectId = projectId ?? localStorage.getItem("currentProjectId");
+    const currentProjectId = projectId ?? getStoredCurrentProjectId();
     if (!currentProjectId) {
       setPermissionError("No active recording session was found.");
       return;
@@ -211,13 +215,13 @@ export function useRecordingWidgetRuntime() {
 
   useEffect(() => {
     const unlistenStartStop = listen("global-shortcut-start-stop", () => {
-      const hasActiveProject = Boolean(projectId ?? localStorage.getItem("currentProjectId"));
+      const hasActiveProject = Boolean(projectId ?? getStoredCurrentProjectId());
       if (hasActiveProject && (state === "recording" || state === "paused")) {
         void stopRecording();
       }
     });
     const unlistenTogglePause = listen("global-shortcut-toggle-pause", () => {
-      const hasActiveProject = Boolean(projectId ?? localStorage.getItem("currentProjectId"));
+      const hasActiveProject = Boolean(projectId ?? getStoredCurrentProjectId());
       if (hasActiveProject && (state === "recording" || state === "paused")) {
         void togglePause();
       }
