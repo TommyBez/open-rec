@@ -40,6 +40,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify frontend constraints
+        run: pnpm run verify:frontend
+
       - name: Build unsigned DMG
         run: pnpm tauri build --bundles dmg --target ${{ matrix.target }}
 
