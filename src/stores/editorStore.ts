@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type EditorTool = "cut" | "zoom" | "speed" | null;
+export type EditorTool = "cut" | "zoom" | "speed" | "annotation" | null;
 
 interface EditorStore {
   // Playback state
@@ -30,7 +30,7 @@ interface EditorStore {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setSelectedTool: (tool: EditorTool) => void;
-  toggleTool: (tool: "cut" | "zoom" | "speed") => void;
+  toggleTool: (tool: "cut" | "zoom" | "speed" | "annotation") => void;
   
   // Selection actions
   selectSegment: (id: string | null) => void;

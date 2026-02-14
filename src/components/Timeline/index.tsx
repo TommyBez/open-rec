@@ -13,7 +13,7 @@ interface TimelineProps {
   screenWaveform?: number[];
   microphoneWaveform?: number[];
   onSeek: (time: number) => void;
-  selectedTool: "cut" | "zoom" | "speed" | null;
+  selectedTool: "cut" | "zoom" | "speed" | "annotation" | null;
   selectedSegmentId: string | null;
   onSelectSegment: (segmentId: string | null) => void;
   selectedZoomId: string | null;
@@ -844,6 +844,8 @@ export function Timeline({
                 ? "Click to add zoom effect"
                 : selectedTool === "speed"
                 ? "Click to add speed effect"
+                : selectedTool === "annotation"
+                ? "Click to add annotation"
                 : "Click to select segment";
               
               return (

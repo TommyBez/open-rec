@@ -374,6 +374,11 @@ export function EditorPage() {
         toggleTool("speed");
       }
 
+      if (e.key === "4") {
+        e.preventDefault();
+        toggleTool("annotation");
+      }
+
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedZoomId || selectedSpeedId || selectedAnnotationId || selectedSegmentId) {
           e.preventDefault();
@@ -465,9 +470,10 @@ export function EditorPage() {
       case "cut": cutAt(time); break;
       case "zoom": addZoom(time, Math.min(time + 5, duration), 1.5); break;
       case "speed": addSpeed(time, Math.min(time + 5, duration), 2.0); break;
+      case "annotation": addAnnotation(time, Math.min(time + 3, duration)); break;
       default: seek(time);
     }
-  }, [project, selectedTool, cutAt, addZoom, addSpeed, duration, seek]);
+  }, [project, selectedTool, cutAt, addZoom, addSpeed, addAnnotation, duration, seek]);
 
   const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => setZoomDraft(draft), [setZoomDraft]);
   const handleSpeedDraftChange = useCallback((draft: { speed: number }) => setSpeedDraft(draft), [setSpeedDraft]);
@@ -489,14 +495,6 @@ export function EditorPage() {
   const handleOpenVideos = useCallback(() => {
     navigate("/videos", { state: { from: "editor", projectId } });
   }, [navigate, projectId]);
-  const handleAddAnnotation = useCallback(() => {
-    if (!project) return;
-    const startTime = Math.max(0, currentTime);
-    const endTime = Math.min(project.duration, startTime + 3);
-    if (endTime - startTime > 0.1) {
-      addAnnotation(startTime, endTime);
-    }
-  }, [addAnnotation, currentTime, project]);
 
   // Derived delete state
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
@@ -591,7 +589,6 @@ export function EditorPage() {
             onRedo={redo}
             onDelete={handleDeleteSelected}
             onToggleTool={toggleTool}
-            onAddAnnotation={handleAddAnnotation}
           />
         </div>
 

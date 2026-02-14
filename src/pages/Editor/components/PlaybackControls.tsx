@@ -27,15 +27,14 @@ interface PlaybackControlsProps {
   canDeleteSpeed: boolean;
   canDeleteSegment: boolean;
   canDeleteAnnotation: boolean;
-  selectedTool: string | null;
+  selectedTool: "cut" | "zoom" | "speed" | "annotation" | null;
   onTogglePlay: () => void;
   onSkipBackward: () => void;
   onSkipForward: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onDelete: () => void;
-  onAddAnnotation: () => void;
-  onToggleTool: (tool: "cut" | "zoom" | "speed") => void;
+  onToggleTool: (tool: "cut" | "zoom" | "speed" | "annotation") => void;
 }
 
 export const PlaybackControls = memo(function PlaybackControls({
@@ -56,7 +55,6 @@ export const PlaybackControls = memo(function PlaybackControls({
   onUndo,
   onRedo,
   onDelete,
-  onAddAnnotation,
   onToggleTool,
 }: PlaybackControlsProps) {
   return (
@@ -180,10 +178,14 @@ export const PlaybackControls = memo(function PlaybackControls({
           tooltip={selectedTool === "speed" ? "Deactivate speed tool (3)" : "Speed tool (3, click on timeline)"}
         />
         <ToolButton
-          active={false}
-          onClick={onAddAnnotation}
+          active={selectedTool === "annotation"}
+          onClick={() => onToggleTool("annotation")}
           icon={<Square className="size-4" strokeWidth={1.75} />}
-          tooltip="Add annotation box (A)"
+          tooltip={
+            selectedTool === "annotation"
+              ? "Deactivate annotation tool (4)"
+              : "Annotation tool (4, click timeline)"
+          }
         />
         
         {/* Separator */}
