@@ -924,16 +924,52 @@ fn recordings_dir_from_managed_state(
     Ok(state_guard.recordings_dir.clone())
 }
 
+fn resolve_project_json_path(project_dir: &Path) -> Result<PathBuf, AppError> {
+    let primary_path = project_dir.join("project.json");
+    if primary_path.exists() {
+        return Ok(primary_path);
+    }
+
+    let entries = std::fs::read_dir(project_dir).map_err(|error| {
+        AppError::Io(format!(
+            "Failed to scan project directory for project.json ({}): {}",
+            project_dir.display(),
+            error
+        ))
+    })?;
+
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            AppError::Io(format!(
+                "Failed to inspect project directory entry ({}): {}",
+                project_dir.display(),
+                error
+            ))
+        })?;
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .eq_ignore_ascii_case("project.json")
+        {
+            return Ok(entry.path());
+        }
+    }
+
+    Err(AppError::Message(format!(
+        "Project metadata file 'project.json' was not found in {}",
+        project_dir.display()
+    )))
+}
+
 fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), AppError> {
     let recordings_dir = recordings_dir_from_state(app)?;
-    let project_file_path = recordings_dir.join(project_id).join("project.json");
-    if !project_file_path.exists() {
-        return Err(AppError::Message(format!(
-            "Project '{}' was not found at {}",
-            project_id,
-            project_file_path.display()
-        )));
-    }
+    let project_dir = recordings_dir.join(project_id);
+    let project_file_path = resolve_project_json_path(&project_dir).map_err(|error| {
+        AppError::Message(format!(
+            "Project '{}' was not found or is invalid: {}",
+            project_id, error
+        ))
+    })?;
 
     let title = {
         let mut resolved_title = None;
@@ -998,49 +1034,14 @@ fn normalize_opened_project_id(raw: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-fn has_project_json_file(path: &Path) -> bool {
-    if path.join("project.json").exists() {
-        return true;
-    }
-
-    match std::fs::read_dir(path) {
-        Ok(entries) => {
-            for entry in entries {
-                match entry {
-                    Ok(entry) => {
-                        if entry
-                            .file_name()
-                            .to_string_lossy()
-                            .eq_ignore_ascii_case("project.json")
-                        {
-                            return true;
-                        }
-                    }
-                    Err(error) => {
-                        eprintln!(
-                            "Failed to inspect opened directory entry while searching for project.json ({}): {}",
-                            path.display(),
-                            error
-                        );
-                    }
-                }
-            }
-            false
-        }
-        Err(error) => {
+fn project_id_from_opened_path(path: &Path) -> Option<String> {
+    if path.is_dir() {
+        if let Err(error) = resolve_project_json_path(path) {
             eprintln!(
-                "Failed to scan opened directory for project.json ({}): {}",
+                "Ignoring opened directory because project metadata could not be resolved ({}): {}",
                 path.display(),
                 error
             );
-            false
-        }
-    }
-}
-
-fn project_id_from_opened_path(path: &Path) -> Option<String> {
-    if path.is_dir() {
-        if !has_project_json_file(path) {
             return None;
         }
         let name = path.file_name()?.to_string_lossy();
@@ -1089,7 +1090,7 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
                         if project_dir_path
                             .file_name()
                             .and_then(|value| value.to_str())
-                            == Some("project.json")
+                            .is_some_and(|value| value.eq_ignore_ascii_case("project.json"))
                         {
                             if let Some(parent_name) = project_dir_path
                                 .parent()
