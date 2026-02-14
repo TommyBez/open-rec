@@ -516,6 +516,37 @@ fn apply_video_annotations(
                 }
                 continue;
             }
+            AnnotationMode::Arrow => {
+                let shaft_label = format!("[vannotshaft{}]", index);
+                let shaft_thickness = thickness.max(2);
+                filter_parts.push(format!(
+                    "{}drawbox=x=iw*{:.6}:y=ih*({:.6}+{:.6}*0.5)-{}*0.5:w=iw*{:.6}:h={}:color={}@{:.3}:t=fill:enable='between(t,{:.6},{:.6})'{}",
+                    current_video_label,
+                    x,
+                    y,
+                    height,
+                    shaft_thickness,
+                    width * 0.78,
+                    shaft_thickness,
+                    color,
+                    opacity,
+                    start_time,
+                    end_time,
+                    shaft_label
+                ));
+                filter_parts.push(format!(
+                    "{}drawtext=text='➜':x=iw*{:.6}:y=ih*{:.6}:fontsize=40:fontcolor={}@{:.3}:enable='between(t,{:.6},{:.6})'{}",
+                    shaft_label,
+                    x + width * 0.78,
+                    y + height * 0.2,
+                    color,
+                    opacity,
+                    start_time,
+                    end_time,
+                    next_label
+                ));
+                current_video_label = next_label;
+            }
             AnnotationMode::Outline => {
                 filter_parts.push(format!(
                     "{}drawbox=x=iw*{:.6}:y=ih*{:.6}:w=iw*{:.6}:h=ih*{:.6}:color={}@{:.3}:t={}:enable='between(t,{:.6},{:.6})'{}",
@@ -600,6 +631,28 @@ fn build_annotation_drawbox_chain(project: &Project) -> String {
                         )
                     })
                     .unwrap_or_default(),
+                AnnotationMode::Arrow => {
+                    let shaft_thickness = thickness.max(2);
+                    format!(
+                        ",drawbox=x=iw*{:.6}:y=ih*({:.6}+{:.6}*0.5)-{}*0.5:w=iw*{:.6}:h={}:color={}@{:.3}:t=fill:enable='between(t,{:.6},{:.6})',drawtext=text='➜':x=iw*{:.6}:y=ih*{:.6}:fontsize=30:fontcolor={}@{:.3}:enable='between(t,{:.6},{:.6})'",
+                        x,
+                        y,
+                        height,
+                        shaft_thickness,
+                        width * 0.78,
+                        shaft_thickness,
+                        color,
+                        opacity,
+                        start_time,
+                        end_time,
+                        x + width * 0.78,
+                        y + height * 0.2,
+                        color,
+                        opacity,
+                        start_time,
+                        end_time
+                    )
+                }
                 AnnotationMode::Outline => format!(
                     ",drawbox=x=iw*{:.6}:y=ih*{:.6}:w=iw*{:.6}:h=ih*{:.6}:color={}@{:.3}:t={}:enable='between(t,{:.6},{:.6})'",
                     x, y, width, height, color, opacity, thickness, start_time, end_time
@@ -607,7 +660,7 @@ fn build_annotation_drawbox_chain(project: &Project) -> String {
             };
 
             Some(base_chain).map(|mut chain| {
-                if chain.is_empty() || matches!(annotation.mode, AnnotationMode::Text) {
+                if chain.is_empty() || matches!(annotation.mode, AnnotationMode::Text | AnnotationMode::Arrow) {
                     return chain;
                 }
                 if let Some(text) = annotation.text.as_ref().map(|value| value.trim()) {

@@ -968,6 +968,8 @@ export function Timeline({
                         ? "bg-gradient-to-r from-slate-500/90 to-slate-600/80"
                         : mode === "text"
                         ? "bg-gradient-to-r from-indigo-500/90 to-violet-600/80"
+                        : mode === "arrow"
+                        ? "bg-gradient-to-r from-rose-500/90 to-red-600/80"
                         : "bg-gradient-to-r from-amber-500/90 to-amber-600/80",
                       !isDraggingThis && "transition-all",
                       isSelected
@@ -1002,7 +1004,13 @@ export function Timeline({
                       }
                     />
                     <span className="pointer-events-none">
-                      {mode === "blur" ? "Blur" : mode === "text" ? "Text" : "Box"}
+                      {mode === "blur"
+                        ? "Blur"
+                        : mode === "text"
+                        ? "Text"
+                        : mode === "arrow"
+                        ? "Arrow"
+                        : "Box"}
                     </span>
                   </div>
                 );

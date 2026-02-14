@@ -76,7 +76,7 @@ export interface Annotation {
   opacity: number;
   thickness: number;
   text?: string;
-  mode?: "outline" | "blur" | "text";
+  mode?: "outline" | "blur" | "text" | "arrow";
 }
 
 // Export options

@@ -178,7 +178,7 @@ export function AnnotationInspector({
           <select
             value={draft.mode ?? "outline"}
             onChange={(event) => {
-              const next = event.target.value as "outline" | "blur" | "text";
+              const next = event.target.value as "outline" | "blur" | "text" | "arrow";
               setDraft((current) => ({ ...current, mode: next }));
               onCommit({ mode: next });
             }}
@@ -187,6 +187,7 @@ export function AnnotationInspector({
             <option value="outline">Outline</option>
             <option value="blur">Blur</option>
             <option value="text">Text only</option>
+            <option value="arrow">Arrow</option>
           </select>
         </label>
 

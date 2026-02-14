@@ -182,6 +182,7 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
           )}
           {activeAnnotations.map((annotation) => {
             const mode = annotation.mode ?? "outline";
+            const arrowStroke = Math.max(2, annotation.thickness);
             return (
               <div
                 key={annotation.id}
@@ -197,8 +198,13 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
                       ? "rgba(255,255,255,0.85)"
                       : mode === "text"
                       ? "transparent"
+                      : mode === "arrow"
+                      ? "transparent"
                       : annotation.color,
-                  borderWidth: mode === "text" ? "0px" : `${Math.max(1, annotation.thickness)}px`,
+                  borderWidth:
+                    mode === "text" || mode === "arrow"
+                      ? "0px"
+                      : `${Math.max(1, annotation.thickness)}px`,
                   opacity: Math.max(0.1, Math.min(1, annotation.opacity)),
                   boxShadow: "0 0 0 1px rgba(0,0,0,0.2)",
                   backdropFilter: mode === "blur" ? "blur(8px)" : undefined,
@@ -207,9 +213,33 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
                       ? "rgba(0,0,0,0.15)"
                       : mode === "text"
                       ? "transparent"
+                      : mode === "arrow"
+                      ? "transparent"
                       : "transparent",
                 }}
               >
+                {mode === "arrow" && (
+                  <>
+                    <div
+                      className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full"
+                      style={{
+                        width: "78%",
+                        height: `${arrowStroke}px`,
+                        backgroundColor: annotation.color,
+                      }}
+                    />
+                    <div
+                      className="absolute right-0 top-1/2 -translate-y-1/2"
+                      style={{
+                        width: 0,
+                        height: 0,
+                        borderTop: `${arrowStroke * 1.6}px solid transparent`,
+                        borderBottom: `${arrowStroke * 1.6}px solid transparent`,
+                        borderLeft: `${arrowStroke * 2.6}px solid ${annotation.color}`,
+                      }}
+                    />
+                  </>
+                )}
                 {annotation.text?.trim() && (
                   <span className="absolute left-1 top-1 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white">
                     {annotation.text}

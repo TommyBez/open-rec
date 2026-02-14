@@ -164,6 +164,7 @@ pub enum AnnotationMode {
     Outline,
     Blur,
     Text,
+    Arrow,
 }
 
 impl Default for AnnotationMode {
