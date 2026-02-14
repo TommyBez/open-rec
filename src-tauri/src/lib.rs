@@ -1348,6 +1348,43 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
     None
 }
 
+#[cfg(test)]
+mod tests {
+    use super::parse_ffmpeg_progress;
+
+    #[test]
+    fn parses_out_time_us_progress() {
+        let parsed = parse_ffmpeg_progress("out_time_us=3500000");
+        assert_eq!(parsed, Some(3.5));
+    }
+
+    #[test]
+    fn parses_out_time_ms_progress() {
+        let parsed = parse_ffmpeg_progress("out_time_ms=4200000");
+        assert_eq!(parsed, Some(4.2));
+    }
+
+    #[test]
+    fn parses_out_time_hhmmss_progress() {
+        let parsed = parse_ffmpeg_progress("out_time=00:01:02.25");
+        assert_eq!(parsed, Some(62.25));
+    }
+
+    #[test]
+    fn parses_legacy_time_progress() {
+        let parsed = parse_ffmpeg_progress(
+            "frame=  32 fps=0.0 q=0.0 size=0kB time=00:00:05.04 bitrate=0.0kbits/s",
+        );
+        assert_eq!(parsed, Some(5.04));
+    }
+
+    #[test]
+    fn ignores_invalid_progress_tokens() {
+        assert_eq!(parse_ffmpeg_progress("out_time_ms=abc"), None);
+        assert_eq!(parse_ffmpeg_progress("time=bad-value"), None);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_result = tauri::Builder::default()
