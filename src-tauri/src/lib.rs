@@ -1174,17 +1174,28 @@ async fn export_project(
     let job_id_for_task = job_id.clone();
     tokio::spawn(async move {
         let started = tokio::time::Instant::now();
+        let mut last_progress_seconds = 0.0_f64;
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stderr(line) => {
                     // Parse ffmpeg progress from stderr
                     let line_str = String::from_utf8_lossy(&line);
-                    let progress = parse_ffmpeg_progress(&line_str).unwrap_or_else(|| {
-                        started
-                            .elapsed()
-                            .as_secs_f64()
-                            .min(expected_duration * 0.98)
-                    });
+                    let fallback_progress = started
+                        .elapsed()
+                        .as_secs_f64()
+                        .min(expected_duration * 0.98);
+                    let parsed_progress =
+                        parse_ffmpeg_progress(&line_str).unwrap_or(fallback_progress);
+                    let bounded_progress = if parsed_progress.is_finite() && parsed_progress >= 0.0
+                    {
+                        parsed_progress.min(expected_duration)
+                    } else {
+                        last_progress_seconds
+                    };
+                    let progress = bounded_progress.max(last_progress_seconds);
+                    if progress > last_progress_seconds {
+                        last_progress_seconds = progress;
+                    }
                     emit_with_log(
                         &app_clone,
                         "export-progress",
@@ -1208,6 +1219,14 @@ async fn export_project(
                     }
 
                     if status.code == Some(0) {
+                        emit_with_log(
+                            &app_clone,
+                            "export-progress",
+                            serde_json::json!({
+                                "jobId": &job_id_for_task,
+                                "progressSeconds": expected_duration
+                            }),
+                        );
                         emit_with_log(
                             &app_clone,
                             "export-complete",
