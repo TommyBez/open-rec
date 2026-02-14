@@ -16,36 +16,50 @@ const defaultBatchOptions: ExportOptions = {
 };
 
 async function waitForExportResult(jobId: string): Promise<{ ok: boolean; message: string }> {
-  return new Promise(async (resolve) => {
+  return new Promise((resolve) => {
     const unlisteners: UnlistenFn[] = [];
+    let timeoutId: number | null = null;
+    let settled = false;
+
     const cleanup = () => {
       unlisteners.forEach((unlisten) => unlisten());
     };
-    const timeoutId = window.setTimeout(() => {
+
+    const settle = (result: { ok: boolean; message: string }) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
       cleanup();
-      resolve({ ok: false, message: "Export timed out" });
+      resolve(result);
+    };
+
+    timeoutId = window.setTimeout(() => {
+      settle({ ok: false, message: "Export timed out" });
     }, 30 * 60 * 1000);
 
-    const onComplete = await listen<{ jobId: string; outputPath: string }>("export-complete", (event) => {
-      if (event.payload.jobId !== jobId) return;
-      cleanup();
-      clearTimeout(timeoutId);
-      resolve({ ok: true, message: event.payload.outputPath });
-    });
-    const onError = await listen<{ jobId: string; message: string }>("export-error", (event) => {
-      if (event.payload.jobId !== jobId) return;
-      cleanup();
-      clearTimeout(timeoutId);
-      resolve({ ok: false, message: event.payload.message });
-    });
-    const onCancelled = await listen<{ jobId: string }>("export-cancelled", (event) => {
-      if (event.payload.jobId !== jobId) return;
-      cleanup();
-      clearTimeout(timeoutId);
-      resolve({ ok: false, message: "Export cancelled" });
-    });
-
-    unlisteners.push(onComplete, onError, onCancelled);
+    void Promise.all([
+      listen<{ jobId: string; outputPath: string }>("export-complete", (event) => {
+        if (event.payload.jobId !== jobId) return;
+        settle({ ok: true, message: event.payload.outputPath });
+      }),
+      listen<{ jobId: string; message: string }>("export-error", (event) => {
+        if (event.payload.jobId !== jobId) return;
+        settle({ ok: false, message: event.payload.message });
+      }),
+      listen<{ jobId: string }>("export-cancelled", (event) => {
+        if (event.payload.jobId !== jobId) return;
+        settle({ ok: false, message: "Export cancelled" });
+      }),
+    ])
+      .then((handles) => {
+        unlisteners.push(...handles);
+      })
+      .catch((error) => {
+        console.error("Failed to attach batch export listeners:", error);
+        settle({ ok: false, message: "Failed to attach export listeners" });
+      });
   });
 }
 
