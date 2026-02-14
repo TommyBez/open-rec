@@ -904,27 +904,32 @@ fn open_recording_widget(app: AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
+fn recordings_dir_from_state(app: &AppHandle) -> Result<PathBuf, AppError> {
+    let state = app
+        .try_state::<SharedRecorderState>()
+        .ok_or_else(|| AppError::Message("Recorder state is unavailable".to_string()))?;
+    let state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    Ok(state_guard.recordings_dir.clone())
+}
+
 fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), AppError> {
+    let recordings_dir = recordings_dir_from_state(app)?;
+    let project_file_path = recordings_dir.join(project_id).join("project.json");
+    if !project_file_path.exists() {
+        return Err(AppError::Message(format!(
+            "Project '{}' was not found at {}",
+            project_id,
+            project_file_path.display()
+        )));
+    }
+
     let title = {
         let mut resolved_title = None;
-        if let Some(state) = app.try_state::<SharedRecorderState>() {
-            let recordings_dir = match state.lock() {
-                Ok(state_guard) => Some(state_guard.recordings_dir.clone()),
-                Err(error) => {
-                    eprintln!(
-                        "Failed to lock recorder state while resolving project title: {}",
-                        error
-                    );
-                    None
-                }
-            };
-            if let Some(recordings_dir) = recordings_dir {
-                let project_file_path = recordings_dir.join(project_id).join("project.json");
-                if let Ok(content) = std::fs::read_to_string(project_file_path) {
-                    if let Ok(project) = serde_json::from_str::<Project>(&content) {
-                        resolved_title = Some(project.name);
-                    }
-                }
+        if let Ok(content) = std::fs::read_to_string(&project_file_path) {
+            if let Ok(project) = serde_json::from_str::<Project>(&content) {
+                resolved_title = Some(project.name);
             }
         }
         format!(
