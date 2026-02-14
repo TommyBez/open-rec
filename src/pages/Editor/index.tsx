@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useCallback, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "motion/react";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
@@ -335,6 +336,28 @@ export function EditorPage() {
     };
     window.addEventListener("beforeunload", flushSave);
     return () => window.removeEventListener("beforeunload", flushSave);
+  }, [isDirty, saveProject]);
+
+  useEffect(() => {
+    const currentWindow = getCurrentWindow();
+    let closeInProgress = false;
+
+    const unlistenClosePromise = currentWindow.onCloseRequested((event) => {
+      if (!isDirty || closeInProgress) {
+        return;
+      }
+      event.preventDefault();
+      closeInProgress = true;
+      saveProject()
+        .catch(console.error)
+        .finally(() => {
+          currentWindow.close().catch(console.error);
+        });
+    });
+
+    return () => {
+      unlistenClosePromise.then((unlisten) => unlisten());
+    };
   }, [isDirty, saveProject]);
 
   const handleDeleteSelected = useCallback(() => {
