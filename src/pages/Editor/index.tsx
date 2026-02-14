@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { useProject } from "../../hooks/useProject";
 import { useEditorStore, useExportStore } from "../../stores";
-import { Annotation, ZoomEffect, SpeedEffect } from "../../types/project";
 
 // Extracted components
 import { EditorHeader } from "./components/EditorHeader";
@@ -21,6 +20,7 @@ import { useEditorProjectLoader } from "./hooks/useEditorProjectLoader";
 import { useEditorPreviewState } from "./hooks/useEditorPreviewState";
 import { useEditorBoundedUpdaters } from "./hooks/useEditorBoundedUpdaters";
 import { useEditorSelectionActions } from "./hooks/useEditorSelectionActions";
+import { useEditorViewHandlers } from "./hooks/useEditorViewHandlers";
 
 // Hoisted static JSX elements
 const atmosphericGradient = (
@@ -153,19 +153,6 @@ export function EditorPage() {
     setProject,
   });
 
-  const createAnnotationAtPlayhead = useCallback(
-    (mode: "outline" | "blur" | "text" | "arrow" = "outline") => {
-      if (!project) return;
-      const startTime = Math.max(0, currentTime);
-      const endTime = Math.min(project.duration, startTime + 3);
-      if (endTime - startTime > 0.1) {
-        addAnnotation(startTime, endTime, mode);
-        setAnnotationInsertMode(mode);
-      }
-    },
-    [addAnnotation, currentTime, project]
-  );
-
   // Load project on mount
   useEffect(() => {
     if (projectId) {
@@ -203,6 +190,47 @@ export function EditorPage() {
     updateAnnotation,
     saveProject,
   });
+  const {
+    createAnnotationAtPlayhead,
+    handleTimelineClick,
+    handleZoomDraftChange,
+    handleSpeedDraftChange,
+    handleZoomCommit,
+    handleSpeedCommit,
+    handleAnnotationCommit,
+    handleCloseZoomInspector,
+    handleCloseSpeedInspector,
+    handleCloseAnnotationInspector,
+    handleBack,
+    handleExport,
+    handleOpenVideos,
+  } = useEditorViewHandlers({
+    project,
+    projectId,
+    currentTime,
+    duration,
+    selectedTool,
+    annotationInsertMode,
+    selectedZoomId,
+    selectedSpeedId,
+    selectedAnnotationId,
+    addAnnotation,
+    addZoom,
+    addSpeed,
+    cutAt,
+    seek,
+    setShowExportModal,
+    setZoomDraft,
+    setSpeedDraft,
+    setAnnotationInsertMode,
+    updateZoom,
+    updateSpeed,
+    updateAnnotation,
+    selectZoom,
+    selectSpeed,
+    selectAnnotation,
+    navigate,
+  });
 
   useEditorKeyboardShortcuts({
     canUndo,
@@ -229,39 +257,6 @@ export function EditorPage() {
     setJklRateMultiplier,
   });
 
-  // Memoized handlers
-  const handleTimelineClick = useCallback((time: number) => {
-    if (!project) { seek(time); return; }
-    
-    switch (selectedTool) {
-      case "cut": cutAt(time); break;
-      case "zoom": addZoom(time, Math.min(time + 5, duration), 1.5); break;
-      case "speed": addSpeed(time, Math.min(time + 5, duration), 2.0); break;
-      case "annotation": addAnnotation(time, Math.min(time + 3, duration), annotationInsertMode); break;
-      default: seek(time);
-    }
-  }, [project, selectedTool, cutAt, addZoom, addSpeed, addAnnotation, annotationInsertMode, duration, seek]);
-
-  const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => setZoomDraft(draft), [setZoomDraft]);
-  const handleSpeedDraftChange = useCallback((draft: { speed: number }) => setSpeedDraft(draft), [setSpeedDraft]);
-  const handleZoomCommit = useCallback((updates: Partial<ZoomEffect>) => { if (selectedZoomId) updateZoom(selectedZoomId, updates); }, [selectedZoomId, updateZoom]);
-  const handleSpeedCommit = useCallback((updates: Partial<SpeedEffect>) => { if (selectedSpeedId) updateSpeed(selectedSpeedId, updates); }, [selectedSpeedId, updateSpeed]);
-  const handleAnnotationCommit = useCallback(
-    (updates: Partial<Annotation>) => {
-      if (selectedAnnotationId) {
-        updateAnnotation(selectedAnnotationId, updates);
-      }
-    },
-    [selectedAnnotationId, updateAnnotation]
-  );
-  const handleCloseZoomInspector = useCallback(() => { selectZoom(null); setZoomDraft(null); }, [selectZoom, setZoomDraft]);
-  const handleCloseSpeedInspector = useCallback(() => { selectSpeed(null); setSpeedDraft(null); }, [selectSpeed, setSpeedDraft]);
-  const handleCloseAnnotationInspector = useCallback(() => selectAnnotation(null), [selectAnnotation]);
-  const handleBack = useCallback(() => navigate("/recorder"), [navigate]);
-  const handleExport = useCallback(() => setShowExportModal(true), [setShowExportModal]);
-  const handleOpenVideos = useCallback(() => {
-    navigate("/videos", { state: { from: "editor", projectId } });
-  }, [navigate, projectId]);
   const {
     handleCameraOverlayPositionChange,
     handleCameraOverlayScaleChange,
