@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Film, Clock, Calendar, Video, Pencil, Trash2 } from "lucide-react";
+import { Film, Clock, Calendar, Video, Pencil, Trash2, SquareArrowOutUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Project } from "../../types/project";
 
@@ -26,6 +26,7 @@ interface ProjectCardProps {
   onSelect: (project: Project) => void;
   onRename: (projectId: string, name: string) => void;
   onDelete: (projectId: string) => void;
+  onOpenInNewWindow?: (projectId: string) => void;
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (projectId: string) => void;
@@ -37,6 +38,7 @@ export function ProjectCard({
   onSelect,
   onRename,
   onDelete,
+  onOpenInNewWindow,
   selectionMode = false,
   selected = false,
   onToggleSelect,
@@ -150,6 +152,17 @@ export function ProjectCard({
                 title="Rename project"
               >
                 <Pencil className="size-3.5" strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (selectionMode) return;
+                  onOpenInNewWindow?.(project.id);
+                }}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                title="Open in new window"
+              >
+                <SquareArrowOutUpRight className="size-3.5" strokeWidth={1.75} />
               </button>
               <button
                 onClick={(event) => {

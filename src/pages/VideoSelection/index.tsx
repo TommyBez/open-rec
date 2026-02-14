@@ -158,6 +158,15 @@ export function VideoSelectionPage() {
     }
   }
 
+  async function handleOpenProjectInNewWindow(projectId: string) {
+    try {
+      await invoke("open_project_window", { projectId });
+    } catch (err) {
+      console.error("Failed to open project in new window:", err);
+      setError(`Failed to open project in new window: ${String(err)}`);
+    }
+  }
+
   function handleBack() {
     if (cameFromEditor && previousProjectId) {
       navigate(`/editor/${previousProjectId}`);
@@ -470,6 +479,7 @@ export function VideoSelectionPage() {
                   onSelect={handleSelectProject}
                   onRename={handleRenameProject}
                   onDelete={handleDeleteProject}
+                  onOpenInNewWindow={handleOpenProjectInNewWindow}
                   selectionMode={selectionMode}
                   selected={selectedProjectIds.includes(project.id)}
                   onToggleSelect={toggleProjectSelection}

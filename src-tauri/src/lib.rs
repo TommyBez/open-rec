@@ -714,6 +714,30 @@ fn open_recording_widget(app: AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Open a project editor in a separate window
+#[tauri::command]
+fn open_project_window(app: AppHandle, project_id: String) -> Result<(), AppError> {
+    let label = format!("editor-{}", Uuid::new_v4());
+    let route = format!("/editor/{}", project_id);
+    let title = format!(
+        "Open Rec — {}",
+        &project_id.chars().take(8).collect::<String>()
+    );
+
+    WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
+        .title(title)
+        .inner_size(1200.0, 800.0)
+        .min_inner_size(900.0, 620.0)
+        .resizable(true)
+        .center()
+        .build()
+        .map_err(|error| {
+            AppError::Message(format!("Failed to create project window: {}", error))
+        })?;
+
+    Ok(())
+}
+
 /// Load a project by ID
 #[tauri::command]
 async fn load_project(
@@ -1100,6 +1124,7 @@ pub fn run() {
             pause_recording,
             resume_recording,
             open_recording_widget,
+            open_project_window,
             load_project,
             save_project,
             list_projects,
