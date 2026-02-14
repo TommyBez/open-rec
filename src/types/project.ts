@@ -57,7 +57,7 @@ export interface SpeedEffect {
 
 // Export options
 export interface ExportOptions {
-  format: "mp4" | "gif" | "mov";
+  format: "mp4" | "gif" | "mov" | "wav" | "mp3";
   frameRate: 24 | 30 | 60;
   compression: "minimal" | "social" | "web" | "potato";
   resolution: "720p" | "1080p" | "4k";

@@ -515,7 +515,7 @@ async fn export_project(
     };
     let project = project::load_project(&recordings_dir, &project_id).await?;
 
-    validate_export_inputs(&project)?;
+    validate_export_inputs(&project, &options)?;
 
     // Get downloads directory
     let downloads_dir = dirs::download_dir().unwrap_or_else(|| PathBuf::from("."));

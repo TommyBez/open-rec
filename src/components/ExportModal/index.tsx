@@ -56,6 +56,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
 
   const displayDuration = editedDuration ?? project.duration;
   const activePreset = detectActivePreset(options);
+  const isAudioOnlyFormat = options.format === "mp3" || options.format === "wav";
 
   useEffect(() => {
     return () => {
@@ -239,7 +240,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
                 }}
                 variant="outline"
               >
-                {(["mp4", "mov", "gif"] as ExportFormat[]).map((format) => (
+                {(["mp4", "mov", "gif", "mp3", "wav"] as ExportFormat[]).map((format) => (
                   <ToggleGroupItem key={format} value={format} className="px-4">
                     {format.toUpperCase()}
                   </ToggleGroupItem>
@@ -252,6 +253,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
               <Label className="text-muted-foreground text-xs">Frame rate</Label>
               <Select
                 value={String(options.frameRate)}
+                disabled={isAudioOnlyFormat}
                 onValueChange={(value) =>
                   setOptions({ ...options, frameRate: Number(value) as FrameRate })
                 }
@@ -289,23 +291,29 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
           </div>
 
           {/* Resolution */}
-          <div className="flex flex-col gap-2.5">
-            <Label className="text-muted-foreground text-xs">Resolution</Label>
-            <ToggleGroup
-              type="single"
-              value={options.resolution}
-              onValueChange={(value) => {
-                if (value) setOptions({ ...options, resolution: value as Resolution });
-              }}
-              variant="outline"
-            >
-              {(["720p", "1080p", "4k"] as Resolution[]).map((res) => (
-                <ToggleGroupItem key={res} value={res} className="px-4">
-                  {res}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
+          {!isAudioOnlyFormat ? (
+            <div className="flex flex-col gap-2.5">
+              <Label className="text-muted-foreground text-xs">Resolution</Label>
+              <ToggleGroup
+                type="single"
+                value={options.resolution}
+                onValueChange={(value) => {
+                  if (value) setOptions({ ...options, resolution: value as Resolution });
+                }}
+                variant="outline"
+              >
+                {(["720p", "1080p", "4k"] as Resolution[]).map((res) => (
+                  <ToggleGroupItem key={res} value={res} className="px-4">
+                    {res}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Audio-only export selected: video tracks will be skipped.
+            </div>
+          )}
         </div>
 
         <DialogFooter className="flex-col gap-4 sm:flex-col">
@@ -393,7 +401,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
                     {formatDuration(displayDuration)}
                   </span>
                   <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    {options.format} • {options.resolution}
+                    {options.format}{isAudioOnlyFormat ? "" : ` • ${options.resolution}`}
                   </span>
                 </div>
               </motion.div>
@@ -513,6 +521,21 @@ function calculateEstimatedSize(duration: number, options: ExportOptionsType): s
     const sizeMB = (duration * proresBitrates[options.resolution]) / 8;
     return sizeMB >= 1000 ? `${(sizeMB / 1000).toFixed(2)} GB` : `${sizeMB.toFixed(2)} MB`;
   }
+  if (options.format === "wav") {
+    const wavBitrateMbps = 1.536; // 48kHz 16-bit stereo PCM
+    const sizeMB = (duration * wavBitrateMbps) / 8;
+    return sizeMB >= 1000 ? `${(sizeMB / 1000).toFixed(2)} GB` : `${sizeMB.toFixed(2)} MB`;
+  }
+  if (options.format === "mp3") {
+    const audioBitrates: Record<Compression, number> = {
+      minimal: 0.32,
+      social: 0.192,
+      web: 0.128,
+      potato: 0.096,
+    };
+    const sizeMB = (duration * audioBitrates[options.compression]) / 8;
+    return sizeMB >= 1000 ? `${(sizeMB / 1000).toFixed(2)} GB` : `${sizeMB.toFixed(2)} MB`;
+  }
 
   const bitrates: Record<Compression, number> = {
     minimal: 20, // Mbps
@@ -532,6 +555,16 @@ function calculateEstimatedSize(duration: number, options: ExportOptionsType): s
 
 function calculateEstimatedTime(duration: number, options: ExportOptionsType): string {
   // Rough estimate: export time is roughly 0.5-2x the video duration
+  if (options.format === "wav" || options.format === "mp3") {
+    const seconds = Math.ceil(duration * 0.2);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins > 0) {
+      return `${mins}:${secs.toString().padStart(2, "0")}`;
+    }
+    return `${secs}s`;
+  }
+
   const multipliers: Record<Resolution, number> = {
     "720p": 0.3,
     "1080p": 0.5,

@@ -20,6 +20,8 @@ pub enum ExportFormat {
     Mp4,
     Gif,
     Mov,
+    Wav,
+    Mp3,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -134,7 +136,7 @@ fn has_audio_stream(path: &str) -> bool {
     }
 }
 
-pub fn validate_export_inputs(project: &Project) -> Result<(), AppError> {
+pub fn validate_export_inputs(project: &Project, options: &ExportOptions) -> Result<(), AppError> {
     let screen_path = std::path::Path::new(&project.screen_video_path);
     if !screen_path.exists() {
         return Err(AppError::Message(format!(
@@ -165,6 +167,21 @@ pub fn validate_export_inputs(project: &Project) -> Result<(), AppError> {
         return Err(AppError::Message(
             "No enabled timeline segments to export".to_string(),
         ));
+    }
+
+    if matches!(options.format, ExportFormat::Wav | ExportFormat::Mp3) {
+        let has_screen_audio = has_audio_stream(&project.screen_video_path);
+        let has_microphone_audio = project
+            .microphone_audio_path
+            .as_ref()
+            .map(|mic_path| std::path::Path::new(mic_path).exists())
+            .unwrap_or(false);
+        if !has_screen_audio && !has_microphone_audio {
+            return Err(AppError::Message(
+                "Audio export requires at least one audio source (system or microphone)"
+                    .to_string(),
+            ));
+        }
     }
 
     Ok(())
@@ -399,7 +416,7 @@ pub fn build_ffmpeg_args(
     options: &ExportOptions,
     output_path: &PathBuf,
 ) -> Vec<String> {
-    let _ = validate_export_inputs(project);
+    let _ = validate_export_inputs(project, options);
 
     let camera_path = project.camera_video_path.as_ref().cloned();
     let microphone_path = project.microphone_audio_path.as_ref().cloned();
@@ -676,6 +693,90 @@ pub fn build_ffmpeg_args(
                 ));
             }
         }
+        ExportFormat::Wav | ExportFormat::Mp3 => {
+            let mut filter_parts: Vec<String> = Vec::new();
+            let mut audio_labels: Vec<String> = Vec::new();
+
+            if screen_has_audio {
+                let (audio_filters, audio_label) =
+                    build_audio_timeline_filter("[0:a]", &timeline_pieces, "ascreen");
+                filter_parts.extend(audio_filters);
+                audio_labels.push(audio_label);
+            }
+
+            if let Some(idx) = mic_index {
+                let input_label = format!("[{}:a]", idx);
+                let (offset_filters, offset_label) = apply_audio_offset(
+                    &input_label,
+                    project.microphone_offset_ms.unwrap_or(0),
+                    "amic",
+                );
+                filter_parts.extend(offset_filters);
+                let (mic_filters, mic_label) =
+                    build_audio_timeline_filter(&offset_label, &timeline_pieces, "amicpiece");
+                filter_parts.extend(mic_filters);
+                audio_labels.push(mic_label);
+            }
+
+            let audio_output_label = if audio_labels.is_empty() {
+                None
+            } else if audio_labels.len() == 1 {
+                Some(audio_labels[0].clone())
+            } else {
+                let mixed_label = "[aout]".to_string();
+                filter_parts.push(format!(
+                    "{}amix=inputs={}:duration=longest:dropout_transition=0{}",
+                    audio_labels.join(""),
+                    audio_labels.len(),
+                    mixed_label
+                ));
+                Some(mixed_label)
+            };
+
+            args.push("-vn".to_string());
+            match options.format {
+                ExportFormat::Wav => {
+                    args.push("-c:a".to_string());
+                    args.push("pcm_s16le".to_string());
+                }
+                ExportFormat::Mp3 => {
+                    args.push("-c:a".to_string());
+                    args.push("libmp3lame".to_string());
+                    args.push("-b:a".to_string());
+                    args.push(format!("{}k", options.compression.audio_bitrate()));
+                }
+                _ => {}
+            }
+
+            if let Some(audio_label) = audio_output_label {
+                if !filter_parts.is_empty() {
+                    args.push("-filter_complex".to_string());
+                    args.push(filter_parts.join(";"));
+                    args.push("-map".to_string());
+                    if audio_label == "[0:a]" {
+                        args.push("0:a?".to_string());
+                    } else if audio_label.starts_with('[')
+                        && audio_label.ends_with(":a]")
+                        && audio_label.len() >= 5
+                    {
+                        let stream = audio_label.trim_start_matches('[').trim_end_matches(']');
+                        args.push(stream.to_string());
+                    } else {
+                        args.push(audio_label);
+                    }
+                } else if audio_label == "[0:a]" {
+                    args.push("-map".to_string());
+                    args.push("0:a?".to_string());
+                } else if audio_label.starts_with('[')
+                    && audio_label.ends_with(":a]")
+                    && audio_label.len() >= 5
+                {
+                    let stream = audio_label.trim_start_matches('[').trim_end_matches(']');
+                    args.push("-map".to_string());
+                    args.push(stream.to_string());
+                }
+            }
+        }
     }
 
     args.push("-y".to_string());
@@ -694,6 +795,8 @@ pub fn get_export_output_path(
         ExportFormat::Mp4 => "mp4",
         ExportFormat::Gif => "gif",
         ExportFormat::Mov => "mov",
+        ExportFormat::Wav => "wav",
+        ExportFormat::Mp3 => "mp3",
     };
 
     let filename = format!(
