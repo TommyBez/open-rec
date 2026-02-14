@@ -1032,7 +1032,12 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
                     if let Some(project_dir) =
                         json.get("projectDir").and_then(|value| value.as_str())
                     {
-                        let project_dir_path = PathBuf::from(project_dir);
+                        let mut project_dir_path = PathBuf::from(project_dir);
+                        if project_dir_path.is_relative() {
+                            if let Some(association_parent) = path.parent() {
+                                project_dir_path = association_parent.join(project_dir_path);
+                            }
+                        }
                         if project_dir_path
                             .file_name()
                             .and_then(|value| value.to_str())
@@ -1546,6 +1551,44 @@ mod tests {
 
         let resolved = project_id_from_opened_path(&association_path);
         assert_eq!(resolved.as_deref(), Some("json-fallback-project"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_project_id_from_relative_openrec_project_dir() {
+        let root = create_test_dir("openrec-relative-project-dir");
+        let project_dir = root.join("relative-fallback-project");
+        std::fs::create_dir_all(&project_dir).expect("failed to create fallback project directory");
+        let association_path = root.join("relative-association.openrec");
+        let payload = serde_json::json!({
+            "projectDir": "relative-fallback-project"
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("relative-fallback-project"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_project_id_from_relative_openrec_project_json_path() {
+        let root = create_test_dir("openrec-relative-project-json");
+        let project_dir = root.join("relative-json-project");
+        std::fs::create_dir_all(&project_dir).expect("failed to create fallback project directory");
+        std::fs::write(project_dir.join("project.json"), "{}")
+            .expect("failed to write fallback project json");
+        let association_path = root.join("relative-json-association.openrec");
+        let payload = serde_json::json!({
+            "projectDir": "relative-json-project/project.json"
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("relative-json-project"));
 
         let _ = std::fs::remove_dir_all(root);
     }
