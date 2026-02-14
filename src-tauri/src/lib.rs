@@ -1307,8 +1307,18 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
     }
 
     // FFmpeg can emit either:
-    // 1) key/value progress (`out_time_ms=1234567`, `out_time=00:00:01.23`)
+    // 1) key/value progress (`out_time_us=1234567`, `out_time_ms=1234567`, `out_time=00:00:01.23`)
     // 2) human stderr status (`... time=00:00:01.23 ...`)
+    if let Some(out_time_us_idx) = line.find("out_time_us=") {
+        let value = &line[out_time_us_idx + "out_time_us=".len()..];
+        let raw = value.split_whitespace().next().unwrap_or_default().trim();
+        if let Ok(microseconds) = raw.parse::<f64>() {
+            if microseconds >= 0.0 {
+                return Some(microseconds / 1_000_000.0);
+            }
+        }
+    }
+
     if let Some(out_time_ms_idx) = line.find("out_time_ms=") {
         let value = &line[out_time_ms_idx + "out_time_ms=".len()..];
         let raw = value.split_whitespace().next().unwrap_or_default().trim();
