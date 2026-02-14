@@ -1,6 +1,8 @@
+mod error;
 mod export;
 mod project;
 mod recording;
+use error::AppError;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -22,28 +24,30 @@ use uuid::Uuid;
 
 type SharedExportJobs = Arc<Mutex<HashMap<String, u32>>>;
 
-async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), String> {
+async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), AppError> {
     let shell = app.shell();
     let (mut rx, _child) = shell
         .sidecar("ffmpeg")
         .unwrap_or_else(|_| shell.command("ffmpeg"))
         .args(args)
         .spawn()
-        .map_err(|e| format!("Failed to spawn ffmpeg: {}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to spawn ffmpeg: {}", e)))?;
 
     while let Some(event) = rx.recv().await {
         if let CommandEvent::Terminated(status) = event {
             if status.code == Some(0) {
                 return Ok(());
             }
-            return Err(format!(
+            return Err(AppError::Message(format!(
                 "ffmpeg failed with exit code: {:?}",
                 status.code.unwrap_or(-1)
-            ));
+            )));
         }
     }
 
-    Err("ffmpeg process terminated unexpectedly".to_string())
+    Err(AppError::Message(
+        "ffmpeg process terminated unexpectedly".to_string(),
+    ))
 }
 
 fn escape_concat_path(path: &PathBuf) -> String {
@@ -53,7 +57,7 @@ fn escape_concat_path(path: &PathBuf) -> String {
 async fn concatenate_screen_segments(
     app: &AppHandle,
     stop_result: &StopRecordingResult,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if stop_result.screen_segment_paths.len() <= 1 {
         return Ok(());
     }
@@ -61,7 +65,7 @@ async fn concatenate_screen_segments(
     let project_dir = stop_result
         .screen_video_path
         .parent()
-        .ok_or("Invalid screen video path")?;
+        .ok_or_else(|| AppError::Message("Invalid screen video path".to_string()))?;
     let concat_list_path = project_dir.join("segments_concat.txt");
     let merged_path = project_dir.join("screen_merged.mp4");
 
@@ -73,7 +77,7 @@ async fn concatenate_screen_segments(
         .join("\n");
     tokio::fs::write(&concat_list_path, concat_manifest)
         .await
-        .map_err(|e| format!("Failed to write concat manifest: {}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to write concat manifest: {}", e)))?;
 
     let args = vec![
         "-f".to_string(),
@@ -96,11 +100,13 @@ async fn concatenate_screen_segments(
     {
         tokio::fs::remove_file(&stop_result.screen_video_path)
             .await
-            .map_err(|e| format!("Failed to remove old screen recording: {}", e))?;
+            .map_err(|e| {
+                AppError::Message(format!("Failed to remove old screen recording: {}", e))
+            })?;
     }
     tokio::fs::rename(&merged_path, &stop_result.screen_video_path)
         .await
-        .map_err(|e| format!("Failed to finalize merged recording: {}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to finalize merged recording: {}", e)))?;
 
     let _ = tokio::fs::remove_file(&concat_list_path).await;
     for path in &stop_result.screen_segment_paths {
@@ -171,8 +177,8 @@ fn request_permission() -> bool {
 
 /// List available capture sources (displays or windows)
 #[tauri::command]
-fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, String> {
-    recording::list_capture_sources(source_type)
+fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, AppError> {
+    recording::list_capture_sources(source_type).map_err(AppError::from)
 }
 
 /// Start screen recording
@@ -181,12 +187,14 @@ fn start_screen_recording(
     app: AppHandle,
     state: tauri::State<SharedRecorderState>,
     options: RecordingOptions,
-) -> Result<StartRecordingResult, String> {
+) -> Result<StartRecordingResult, AppError> {
     if !check_screen_recording_permission() {
-        return Err("Screen recording permission is not granted".to_string());
+        return Err(AppError::PermissionDenied(
+            "Screen recording permission is not granted".to_string(),
+        ));
     }
 
-    let result = do_start_recording(&state, options)?;
+    let result = do_start_recording(&state, options).map_err(AppError::from)?;
 
     // Emit event to notify frontend
     let _ = app.emit("recording-started", &result);
@@ -200,8 +208,8 @@ async fn stop_screen_recording(
     app: AppHandle,
     state: tauri::State<SharedRecorderState>,
     project_id: String,
-) -> Result<(), String> {
-    let stop_result = do_stop_recording(&state, &project_id)?;
+) -> Result<(), AppError> {
+    let stop_result = do_stop_recording(&state, &project_id).map_err(AppError::from)?;
 
     let _ = app.emit(
         "recording-finalizing",
@@ -215,7 +223,9 @@ async fn stop_screen_recording(
 
     // Get the recordings directory from state
     let recordings_dir = {
-        let state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let state_guard = state
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
 
@@ -237,7 +247,7 @@ async fn stop_screen_recording(
         stop_result.camera_offset_ms,
         stop_result.microphone_offset_ms,
     );
-    project::save_project(&recordings_dir, &project)?;
+    project::save_project(&recordings_dir, &project).map_err(AppError::from)?;
 
     // First, show and prepare the main window BEFORE emitting events
     if let Some(main_window) = app.get_webview_window("main") {
@@ -269,8 +279,9 @@ fn set_recording_media_offsets(
     project_id: String,
     camera_offset_ms: Option<i64>,
     microphone_offset_ms: Option<i64>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     do_set_media_offsets(&state, &project_id, camera_offset_ms, microphone_offset_ms)
+        .map_err(AppError::from)
 }
 
 /// Pause screen recording
@@ -279,12 +290,14 @@ fn pause_recording(
     app: AppHandle,
     state: tauri::State<SharedRecorderState>,
     project_id: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if !check_screen_recording_permission() {
-        return Err("Screen recording permission was revoked".to_string());
+        return Err(AppError::PermissionDenied(
+            "Screen recording permission was revoked".to_string(),
+        ));
     }
 
-    do_pause_recording(&state, &project_id)?;
+    do_pause_recording(&state, &project_id).map_err(AppError::from)?;
 
     app.emit(
         "recording-state-changed",
@@ -293,7 +306,7 @@ fn pause_recording(
             "projectId": project_id
         }),
     )
-    .map_err(|e| format!("Failed to emit pause event: {}", e))?;
+    .map_err(|e| AppError::Message(format!("Failed to emit pause event: {}", e)))?;
 
     Ok(())
 }
@@ -304,12 +317,14 @@ fn resume_recording(
     app: AppHandle,
     state: tauri::State<SharedRecorderState>,
     project_id: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if !check_screen_recording_permission() {
-        return Err("Screen recording permission was revoked".to_string());
+        return Err(AppError::PermissionDenied(
+            "Screen recording permission was revoked".to_string(),
+        ));
     }
 
-    do_resume_recording(&state, &project_id)?;
+    do_resume_recording(&state, &project_id).map_err(AppError::from)?;
 
     app.emit(
         "recording-state-changed",
@@ -318,14 +333,14 @@ fn resume_recording(
             "projectId": project_id
         }),
     )
-    .map_err(|e| format!("Failed to emit resume event: {}", e))?;
+    .map_err(|e| AppError::Message(format!("Failed to emit resume event: {}", e)))?;
 
     Ok(())
 }
 
 /// Open the recording widget window
 #[tauri::command]
-fn open_recording_widget(app: AppHandle) -> Result<(), String> {
+fn open_recording_widget(app: AppHandle) -> Result<(), AppError> {
     // Check if widget already exists
     if app.get_webview_window("recording-widget").is_some() {
         return Ok(());
@@ -344,7 +359,7 @@ fn open_recording_widget(app: AppHandle) -> Result<(), String> {
     .always_on_top(true)
     .skip_taskbar(true)
     .build()
-    .map_err(|e| format!("Failed to create widget window: {}", e))?;
+    .map_err(|e| AppError::Message(format!("Failed to create widget window: {}", e)))?;
 
     Ok(())
 }
@@ -354,32 +369,41 @@ fn open_recording_widget(app: AppHandle) -> Result<(), String> {
 fn load_project(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
-) -> Result<Project, String> {
+) -> Result<Project, AppError> {
     let recordings_dir = {
-        let state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let state_guard = state
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::load_project(&recordings_dir, &project_id)
+    project::load_project(&recordings_dir, &project_id).map_err(AppError::from)
 }
 
 /// Save a project
 #[tauri::command]
-fn save_project(state: tauri::State<SharedRecorderState>, project: Project) -> Result<(), String> {
+fn save_project(
+    state: tauri::State<SharedRecorderState>,
+    project: Project,
+) -> Result<(), AppError> {
     let recordings_dir = {
-        let state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let state_guard = state
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::save_project(&recordings_dir, &project)
+    project::save_project(&recordings_dir, &project).map_err(AppError::from)
 }
 
 /// List all projects
 #[tauri::command]
-fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<Project>, String> {
+fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<Project>, AppError> {
     let recordings_dir = {
-        let state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let state_guard = state
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::list_projects(&recordings_dir)
+    project::list_projects(&recordings_dir).map_err(AppError::from)
 }
 
 /// Export a project
@@ -390,16 +414,19 @@ async fn export_project(
     export_jobs: tauri::State<'_, SharedExportJobs>,
     project_id: String,
     options: ExportOptions,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     // Load the project
     let (_recordings_dir, project) = {
-        let state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let state_guard = state
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         let recordings_dir = state_guard.recordings_dir.clone();
-        let project = project::load_project(&recordings_dir, &project_id)?;
+        let project =
+            project::load_project(&recordings_dir, &project_id).map_err(AppError::from)?;
         (recordings_dir, project)
     };
 
-    validate_export_inputs(&project)?;
+    validate_export_inputs(&project).map_err(AppError::from)?;
 
     // Get downloads directory
     let downloads_dir = dirs::download_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -419,7 +446,7 @@ async fn export_project(
         .unwrap_or_else(|_| shell.command("ffmpeg"))
         .args(&args)
         .spawn()
-        .map_err(|e| format!("Failed to spawn ffmpeg: {}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to spawn ffmpeg: {}", e)))?;
 
     // Clone output_path for use in async block
     let output_path_for_event = output_path.clone();
@@ -431,7 +458,7 @@ async fn export_project(
     {
         let mut jobs = export_jobs
             .lock()
-            .map_err(|e| format!("Failed to lock export jobs state: {}", e))?;
+            .map_err(|e| AppError::Lock(format!("Failed to lock export jobs state: {}", e)))?;
         jobs.insert(job_id.clone(), job_pid);
     }
     let _ = app.emit(
@@ -490,12 +517,13 @@ fn cancel_export(
     app: AppHandle,
     export_jobs: tauri::State<'_, SharedExportJobs>,
     job_id: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let pid = {
         let mut jobs = export_jobs
             .lock()
-            .map_err(|e| format!("Failed to lock export jobs state: {}", e))?;
-        jobs.remove(&job_id).ok_or("Export job not found")?
+            .map_err(|e| AppError::Lock(format!("Failed to lock export jobs state: {}", e)))?;
+        jobs.remove(&job_id)
+            .ok_or_else(|| AppError::Message("Export job not found".to_string()))?
     };
 
     #[cfg(unix)]
@@ -504,9 +532,11 @@ fn cancel_export(
             .arg("-TERM")
             .arg(pid.to_string())
             .status()
-            .map_err(|e| format!("Failed to cancel export process: {}", e))?;
+            .map_err(|e| AppError::Message(format!("Failed to cancel export process: {}", e)))?;
         if !status.success() {
-            return Err("Failed to cancel export process".to_string());
+            return Err(AppError::Message(
+                "Failed to cancel export process".to_string(),
+            ));
         }
     }
 
@@ -517,9 +547,11 @@ fn cancel_export(
             .arg(pid.to_string())
             .arg("/F")
             .status()
-            .map_err(|e| format!("Failed to cancel export process: {}", e))?;
+            .map_err(|e| AppError::Message(format!("Failed to cancel export process: {}", e)))?;
         if !status.success() {
-            return Err("Failed to cancel export process".to_string());
+            return Err(AppError::Message(
+                "Failed to cancel export process".to_string(),
+            ));
         }
     }
 
