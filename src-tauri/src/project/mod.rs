@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::error::AppError;
+const PROJECT_ASSOCIATION_EXTENSION: &str = "openrec";
 
 /// Project metadata and edit decision list
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,7 +294,20 @@ pub async fn save_project(recordings_dir: &PathBuf, project: &Project) -> Result
     tokio::fs::create_dir_all(&project_dir)
         .await
         .map_err(|e| AppError::Io(format!("Failed to create project directory: {}", e)))?;
-    project.save(&project_dir).await
+    project.save(&project_dir).await?;
+
+    let association_path =
+        recordings_dir.join(format!("{}.{}", &project.id, PROJECT_ASSOCIATION_EXTENSION));
+    let association_payload = serde_json::json!({
+        "projectId": project.id,
+        "projectDir": project_dir.to_string_lossy().to_string()
+    });
+    let association_content = serde_json::to_string_pretty(&association_payload).map_err(|e| {
+        AppError::Message(format!("Failed to serialize project association: {}", e))
+    })?;
+    tokio::fs::write(&association_path, association_content)
+        .await
+        .map_err(|e| AppError::Io(format!("Failed to write project association file: {}", e)))
 }
 
 /// List all projects
@@ -335,11 +349,24 @@ pub async fn list_projects(recordings_dir: &PathBuf) -> Result<Vec<Project>, App
 /// Delete project by ID (directory + files)
 pub async fn delete_project(recordings_dir: &PathBuf, project_id: &str) -> Result<(), AppError> {
     let project_dir = recordings_dir.join(project_id);
-    if tokio::fs::metadata(&project_dir).await.is_err() {
-        return Ok(());
+    if tokio::fs::metadata(&project_dir).await.is_ok() {
+        tokio::fs::remove_dir_all(&project_dir)
+            .await
+            .map_err(|e| AppError::Io(format!("Failed to delete project directory: {}", e)))?;
     }
 
-    tokio::fs::remove_dir_all(&project_dir)
-        .await
-        .map_err(|e| AppError::Io(format!("Failed to delete project directory: {}", e)))
+    let association_path =
+        recordings_dir.join(format!("{}.{}", project_id, PROJECT_ASSOCIATION_EXTENSION));
+    match tokio::fs::remove_file(&association_path).await {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(AppError::Io(format!(
+                "Failed to delete project association file: {}",
+                error
+            )));
+        }
+    }
+
+    Ok(())
 }

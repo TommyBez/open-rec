@@ -764,6 +764,15 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
     }
 
     if path.extension().and_then(|ext| ext.to_str()) == Some("openrec") {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(project_id) = json.get("projectId").and_then(|value| value.as_str()) {
+                    if let Some(normalized) = normalize_opened_project_id(project_id) {
+                        return Some(normalized);
+                    }
+                }
+            }
+        }
         let stem = path.file_stem()?.to_string_lossy();
         return normalize_opened_project_id(&stem);
     }
@@ -792,11 +801,12 @@ fn collect_startup_opened_paths() -> Vec<PathBuf> {
         .skip(1)
         .filter(|arg| !arg.starts_with('-'))
         .map(|arg| {
-            if let Some(path) = arg.strip_prefix("file://") {
-                PathBuf::from(path)
-            } else {
-                PathBuf::from(arg)
+            if let Ok(url) = url::Url::parse(&arg) {
+                if let Ok(path) = url.to_file_path() {
+                    return path;
+                }
             }
+            PathBuf::from(arg)
         })
         .collect()
 }
