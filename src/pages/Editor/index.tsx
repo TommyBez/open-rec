@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { useProject } from "../../hooks/useProject";
@@ -20,6 +20,7 @@ import { useEditorAutosaveLifecycle } from "./hooks/useEditorAutosaveLifecycle";
 import { useEditorProjectLoader } from "./hooks/useEditorProjectLoader";
 import { useEditorPreviewState } from "./hooks/useEditorPreviewState";
 import { useEditorBoundedUpdaters } from "./hooks/useEditorBoundedUpdaters";
+import { useEditorSelectionActions } from "./hooks/useEditorSelectionActions";
 
 // Hoisted static JSX elements
 const atmosphericGradient = (
@@ -173,40 +174,35 @@ export function EditorPage() {
   }, [projectId, loadProject]);
 
   useEditorAutosaveLifecycle({ project, isDirty, saveProject });
-
-  const handleDeleteSelected = useCallback(() => {
-    if (selectedZoomId) { deleteZoom(selectedZoomId); selectZoom(null); }
-    else if (selectedSpeedId) { deleteSpeed(selectedSpeedId); selectSpeed(null); }
-    else if (selectedAnnotationId) { deleteAnnotation(selectedAnnotationId); selectAnnotation(null); }
-    else if (selectedSegmentId && project && project.edits.segments.length > 1) {
-      deleteSegment(selectedSegmentId);
-      selectSegment(null);
-    }
-  }, [selectedZoomId, selectedSpeedId, selectedAnnotationId, selectedSegmentId, project, deleteZoom, deleteSpeed, deleteAnnotation, deleteSegment, selectZoom, selectSpeed, selectAnnotation, selectSegment]);
-  const handleDuplicateSelectedAnnotation = useCallback(() => {
-    if (!selectedAnnotationId) return;
-    duplicateAnnotation(selectedAnnotationId);
-  }, [duplicateAnnotation, selectedAnnotationId]);
-  const handleNudgeSelectedAnnotation = useCallback(
-    (deltaX: number, deltaY: number) => {
-      if (!selectedAnnotationId || !project) return;
-      const annotation = project.edits.annotations.find((item) => item.id === selectedAnnotationId);
-      if (!annotation) return;
-      const width = Math.max(0.02, Math.min(1, annotation.width));
-      const height = Math.max(0.02, Math.min(1, annotation.height));
-      const nextX = Math.max(0, Math.min(1 - width, annotation.x + deltaX));
-      const nextY = Math.max(0, Math.min(1 - height, annotation.y + deltaY));
-      updateAnnotation(selectedAnnotationId, { x: nextX, y: nextY });
-    },
-    [selectedAnnotationId, project, updateAnnotation]
-  );
-  const handleManualSaveShortcut = useCallback(() => {
-    saveProject().catch(console.error);
-  }, [saveProject]);
-  const handleOpenProjectWindow = useCallback(() => {
-    if (!project) return;
-    invoke("open_project_window", { projectId: project.id }).catch(console.error);
-  }, [project]);
+  const {
+    handleDeleteSelected,
+    handleDuplicateSelectedAnnotation,
+    handleNudgeSelectedAnnotation,
+    handleManualSaveShortcut,
+    handleOpenProjectWindow,
+    canDeleteSegment,
+    canDeleteZoom,
+    canDeleteSpeed,
+    canDeleteAnnotation,
+    canDelete,
+  } = useEditorSelectionActions({
+    project,
+    selectedZoomId,
+    selectedSpeedId,
+    selectedAnnotationId,
+    selectedSegmentId,
+    deleteZoom,
+    deleteSpeed,
+    deleteAnnotation,
+    deleteSegment,
+    selectZoom,
+    selectSpeed,
+    selectAnnotation,
+    selectSegment,
+    duplicateAnnotation,
+    updateAnnotation,
+    saveProject,
+  });
 
   useEditorKeyboardShortcuts({
     canUndo,
@@ -285,13 +281,6 @@ export function EditorPage() {
     updateColorCorrection,
     updateAnnotation,
   });
-
-  // Derived delete state
-  const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
-  const canDeleteZoom = selectedZoomId !== null;
-  const canDeleteSpeed = selectedSpeedId !== null;
-  const canDeleteAnnotation = selectedAnnotationId !== null;
-  const canDelete = canDeleteSegment || canDeleteZoom || canDeleteSpeed || canDeleteAnnotation;
 
   if (isLoading || !project) return loadingSpinner;
 
