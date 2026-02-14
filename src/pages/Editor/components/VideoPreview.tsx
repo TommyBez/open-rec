@@ -1,4 +1,4 @@
-import { memo, forwardRef, CSSProperties, useEffect, useMemo, useRef } from "react";
+import { memo, forwardRef, CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { ZoomIn, Gauge, Film } from "lucide-react";
 import { Annotation, ZoomEffect, SpeedEffect } from "../../../types/project";
 import { useCameraOverlayDrag } from "../hooks/useCameraOverlayDrag";
@@ -12,6 +12,8 @@ interface VideoPreviewProps {
   currentSourceTime: number;
   isPlaying: boolean;
   annotations: Annotation[];
+  selectedAnnotationId?: string | null;
+  onAnnotationPositionChange?: (annotationId: string, x: number, y: number) => void;
   resolution: { width: number; height: number };
   cameraSrc?: string;
   cameraOverlayPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom";
@@ -34,6 +36,8 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
       currentSourceTime,
       isPlaying,
       annotations,
+      selectedAnnotationId,
+      onAnnotationPositionChange,
       resolution,
       cameraSrc,
       cameraOverlayPosition,
@@ -48,6 +52,18 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
   ) {
     const previewFrameRef = useRef<HTMLDivElement>(null);
     const cameraVideoRef = useRef<HTMLVideoElement>(null);
+    const annotationDragRef = useRef<{
+      annotationId: string;
+      offsetX: number;
+      offsetY: number;
+      width: number;
+      height: number;
+    } | null>(null);
+    const [annotationDragPosition, setAnnotationDragPosition] = useState<{
+      annotationId: string;
+      x: number;
+      y: number;
+    } | null>(null);
     const cameraOffsetSeconds = (cameraOffsetMs ?? 0) / 1000;
     const cameraTime = currentSourceTime - cameraOffsetSeconds;
     const showCamera = Boolean(cameraSrc) && cameraTime >= 0;
@@ -86,6 +102,53 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
         camera.currentTime = Math.max(0, cameraTime);
       }
     }, [cameraSrc, cameraTime, showCamera]);
+
+    useEffect(() => {
+      if (!annotationDragRef.current) return;
+
+      function handlePointerMove(event: PointerEvent) {
+        const dragState = annotationDragRef.current;
+        if (!dragState) return;
+        const containerRect = previewFrameRef.current?.getBoundingClientRect();
+        if (!containerRect) return;
+        const maxLeft = Math.max(containerRect.width - dragState.width, 0);
+        const maxTop = Math.max(containerRect.height - dragState.height, 0);
+        const rawLeft = event.clientX - containerRect.left - dragState.offsetX;
+        const rawTop = event.clientY - containerRect.top - dragState.offsetY;
+        const clampedLeft = Math.min(Math.max(rawLeft, 0), maxLeft);
+        const clampedTop = Math.min(Math.max(rawTop, 0), maxTop);
+        setAnnotationDragPosition({
+          annotationId: dragState.annotationId,
+          x: maxLeft > 0 ? clampedLeft / maxLeft : 0,
+          y: maxTop > 0 ? clampedTop / maxTop : 0,
+        });
+      }
+
+      function handlePointerUp() {
+        const pending = annotationDragPosition;
+        annotationDragRef.current = null;
+        setAnnotationDragPosition(null);
+        if (
+          pending &&
+          typeof onAnnotationPositionChange === "function" &&
+          Number.isFinite(pending.x) &&
+          Number.isFinite(pending.y)
+        ) {
+          onAnnotationPositionChange(
+            pending.annotationId,
+            Math.min(1, Math.max(0, pending.x)),
+            Math.min(1, Math.max(0, pending.y))
+          );
+        }
+      }
+
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", handlePointerUp, { once: true });
+      return () => {
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", handlePointerUp);
+      };
+    }, [annotationDragPosition, onAnnotationPositionChange]);
 
     useEffect(() => {
       const camera = cameraVideoRef.current;
@@ -183,13 +246,17 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
           {activeAnnotations.map((annotation) => {
             const mode = annotation.mode ?? "outline";
             const arrowStroke = Math.max(2, annotation.thickness);
+            const isSelected = selectedAnnotationId === annotation.id;
+            const isDragging = annotationDragPosition?.annotationId === annotation.id;
+            const renderX = isDragging ? annotationDragPosition.x : annotation.x;
+            const renderY = isDragging ? annotationDragPosition.y : annotation.y;
             return (
               <div
                 key={annotation.id}
-                className="pointer-events-none absolute"
+                className={isSelected ? "pointer-events-auto absolute" : "pointer-events-none absolute"}
                 style={{
-                  left: `${Math.max(0, Math.min(1, annotation.x)) * 100}%`,
-                  top: `${Math.max(0, Math.min(1, annotation.y)) * 100}%`,
+                  left: `${Math.max(0, Math.min(1, renderX)) * 100}%`,
+                  top: `${Math.max(0, Math.min(1, renderY)) * 100}%`,
                   width: `${Math.max(0.02, Math.min(1, annotation.width)) * 100}%`,
                   height: `${Math.max(0.02, Math.min(1, annotation.height)) * 100}%`,
                   borderStyle: "solid",
@@ -216,6 +283,26 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
                       : mode === "arrow"
                       ? "transparent"
                       : "transparent",
+                  cursor: isSelected ? "grab" : "default",
+                }}
+                onPointerDown={(event) => {
+                  if (!isSelected) return;
+                  const containerRect = previewFrameRef.current?.getBoundingClientRect();
+                  const annotationRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                  if (!containerRect) return;
+                  annotationDragRef.current = {
+                    annotationId: annotation.id,
+                    offsetX: event.clientX - annotationRect.left,
+                    offsetY: event.clientY - annotationRect.top,
+                    width: annotationRect.width,
+                    height: annotationRect.height,
+                  };
+                  setAnnotationDragPosition({
+                    annotationId: annotation.id,
+                    x: annotation.x,
+                    y: annotation.y,
+                  });
+                  event.preventDefault();
                 }}
               >
                 {mode === "arrow" && (

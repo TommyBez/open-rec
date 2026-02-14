@@ -516,6 +516,14 @@ export function EditorPage() {
             currentPlaybackRate={effectivePlaybackRate}
             currentSourceTime={currentTime}
             isPlaying={isPlaying}
+            annotations={project.edits.annotations}
+            selectedAnnotationId={selectedAnnotationId}
+            onAnnotationPositionChange={(annotationId, x, y) =>
+              updateAnnotation(annotationId, {
+                x: Math.max(0, Math.min(1, x)),
+                y: Math.max(0, Math.min(1, y)),
+              })
+            }
             resolution={project.resolution}
             cameraSrc={cameraSrc}
             cameraOverlayPosition={project.edits.cameraOverlay.position}
@@ -530,7 +538,6 @@ export function EditorPage() {
                 customY: Math.min(1, Math.max(0, y)),
               })
             }
-            annotations={project.edits.annotations}
             cameraOffsetMs={project.cameraOffsetMs}
           />
           
