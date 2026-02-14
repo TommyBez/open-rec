@@ -1537,6 +1537,31 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn falls_back_to_stem_for_invalid_openrec_payload() {
+        let root = create_test_dir("openrec-invalid-json");
+        let association_path = root.join("fallback-stem.openrec");
+        std::fs::write(&association_path, "{invalid-json")
+            .expect("failed to write invalid payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("fallback-stem"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ignores_directory_without_project_file() {
+        let root = create_test_dir("openrec-missing-project-json");
+        let empty_dir = root.join("not-a-project");
+        std::fs::create_dir_all(&empty_dir).expect("failed to create empty directory");
+
+        let resolved = project_id_from_opened_path(&empty_dir);
+        assert_eq!(resolved, None);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
