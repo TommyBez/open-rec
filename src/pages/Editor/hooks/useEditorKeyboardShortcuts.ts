@@ -17,6 +17,7 @@ interface UseEditorKeyboardShortcutsOptions {
   selectedSegmentId: string | null;
   handleDeleteSelected: () => void;
   duplicateSelectedAnnotation: () => void;
+  openProjectWindow: () => void;
   nudgeSelectedAnnotation: (deltaX: number, deltaY: number) => void;
   currentTime: number;
   duration: number;
@@ -41,6 +42,7 @@ export function useEditorKeyboardShortcuts({
   selectedSegmentId,
   handleDeleteSelected,
   duplicateSelectedAnnotation,
+  openProjectWindow,
   nudgeSelectedAnnotation,
   currentTime,
   duration,
@@ -80,6 +82,10 @@ export function useEditorKeyboardShortcuts({
       if (isModifier && e.key.toLowerCase() === "d" && selectedAnnotationId) {
         e.preventDefault();
         duplicateSelectedAnnotation();
+      }
+      if (isModifier && e.shiftKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        openProjectWindow();
       }
       if (isModifier) return;
 
@@ -177,6 +183,7 @@ export function useEditorKeyboardShortcuts({
     selectedSegmentId,
     handleDeleteSelected,
     duplicateSelectedAnnotation,
+    openProjectWindow,
     nudgeSelectedAnnotation,
     currentTime,
     duration,

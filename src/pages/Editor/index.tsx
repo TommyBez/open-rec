@@ -399,6 +399,10 @@ export function EditorPage() {
   const handleManualSaveShortcut = useCallback(() => {
     saveProject().catch(console.error);
   }, [saveProject]);
+  const handleOpenProjectWindow = useCallback(() => {
+    if (!project) return;
+    invoke("open_project_window", { projectId: project.id }).catch(console.error);
+  }, [project]);
 
   useEditorKeyboardShortcuts({
     canUndo,
@@ -416,6 +420,7 @@ export function EditorPage() {
     selectedSegmentId,
     handleDeleteSelected,
     duplicateSelectedAnnotation: handleDuplicateSelectedAnnotation,
+    openProjectWindow: handleOpenProjectWindow,
     nudgeSelectedAnnotation: handleNudgeSelectedAnnotation,
     currentTime,
     duration,
@@ -570,6 +575,7 @@ export function EditorPage() {
         onBack={handleBack}
         onExport={handleExport}
         onOpenVideos={handleOpenVideos}
+        onOpenInNewWindow={handleOpenProjectWindow}
         activeExportCount={activeExportCount}
       />
 

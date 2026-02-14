@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { ArrowLeft, Film, Download, FolderOpen, Keyboard, Loader2, RotateCcw } from "lucide-react";
+import { ArrowLeft, Film, Download, FolderOpen, Keyboard, Loader2, RotateCcw, SquareArrowOutUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -37,6 +37,7 @@ interface EditorHeaderProps {
   onBack: () => void;
   onExport: () => void;
   onOpenVideos: () => void;
+  onOpenInNewWindow: () => void;
   activeExportCount: number;
 }
 
@@ -68,6 +69,7 @@ export const EditorHeader = memo(function EditorHeader({
   onBack,
   onExport,
   onOpenVideos,
+  onOpenInNewWindow,
   activeExportCount,
 }: EditorHeaderProps) {
   const [isRenaming, setIsRenaming] = useState(false);
@@ -302,6 +304,18 @@ export const EditorHeader = memo(function EditorHeader({
         <Tooltip>
           <TooltipTrigger asChild>
             <button
+              onClick={onOpenInNewWindow}
+              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Open in new window"
+            >
+              <SquareArrowOutUpRight className="size-4.5" strokeWidth={1.75} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Open in new window (⌘⇧N)</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
               className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Keyboard shortcuts"
             >
@@ -313,6 +327,7 @@ export const EditorHeader = memo(function EditorHeader({
               <p>J/K/L transport · ←/→ frame step</p>
               <p>1/2/3/4 tools · A/B/T/⇧A annotations</p>
               <p>⌥ + arrows nudge selected annotation</p>
+              <p>⌘⇧N open window</p>
               <p>⌘S save · ⌘D duplicate annotation</p>
             </div>
           </TooltipContent>
