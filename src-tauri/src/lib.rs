@@ -1004,12 +1004,29 @@ fn has_project_json_file(path: &Path) -> bool {
     }
 
     match std::fs::read_dir(path) {
-        Ok(entries) => entries.flatten().any(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("project.json")
-        }),
+        Ok(entries) => {
+            for entry in entries {
+                match entry {
+                    Ok(entry) => {
+                        if entry
+                            .file_name()
+                            .to_string_lossy()
+                            .eq_ignore_ascii_case("project.json")
+                        {
+                            return true;
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "Failed to inspect opened directory entry while searching for project.json ({}): {}",
+                            path.display(),
+                            error
+                        );
+                    }
+                }
+            }
+            false
+        }
         Err(error) => {
             eprintln!(
                 "Failed to scan opened directory for project.json ({}): {}",
