@@ -57,6 +57,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
   const displayDuration = editedDuration ?? project.duration;
   const activePreset = detectActivePreset(options);
   const isAudioOnlyFormat = options.format === "mp3" || options.format === "wav";
+  const usesCompression = options.format === "mp4" || options.format === "mp3";
 
   useEffect(() => {
     return () => {
@@ -270,21 +271,28 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
           {/* Compression */}
           <div className="flex flex-col gap-2.5">
             <Label className="text-muted-foreground text-xs">Compression</Label>
-            <ToggleGroup
-              type="single"
-              value={options.compression}
-              onValueChange={(value) => {
-                if (value) setOptions({ ...options, compression: value as Compression });
-              }}
-              variant="outline"
-            >
-              {(["minimal", "social", "web", "potato"] as Compression[]).map((comp) => (
-                <ToggleGroupItem key={comp} value={comp} className="px-4">
-                  {comp.charAt(0).toUpperCase() + comp.slice(1)}
-                  {comp === "social" && " Media"}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+            <div className={!usesCompression ? "pointer-events-none opacity-60" : ""}>
+              <ToggleGroup
+                type="single"
+                value={options.compression}
+                onValueChange={(value) => {
+                  if (value) setOptions({ ...options, compression: value as Compression });
+                }}
+                variant="outline"
+              >
+                {(["minimal", "social", "web", "potato"] as Compression[]).map((comp) => (
+                  <ToggleGroupItem key={comp} value={comp} className="px-4">
+                    {comp.charAt(0).toUpperCase() + comp.slice(1)}
+                    {comp === "social" && " Media"}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+            {!usesCompression && (
+              <p className="text-[11px] text-muted-foreground">
+                Compression settings are not used for {options.format.toUpperCase()} exports.
+              </p>
+            )}
           </div>
 
           {/* Resolution */}
