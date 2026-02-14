@@ -12,6 +12,16 @@ import { RecordingWidget } from "./pages/RecordingWidget";
 import { VideoSelectionPage } from "./pages/VideoSelection";
 import { useExportStore } from "./stores";
 
+interface ExportCompleteEvent {
+  jobId: string;
+  outputPath: string;
+}
+
+interface ExportErrorEvent {
+  jobId: string;
+  message: string;
+}
+
 function App() {
   const { incrementActiveExports, decrementActiveExports } = useExportStore();
 
@@ -25,18 +35,18 @@ function App() {
     }
 
     ensureNotificationPermission().catch(console.error);
-    const unlistenCompletePromise = listen<string>("export-complete", (event) => {
+    const unlistenCompletePromise = listen<ExportCompleteEvent>("export-complete", (event) => {
       decrementActiveExports();
       sendNotification({
         title: "Export complete",
-        body: event.payload.split("/").pop() ?? "Your file is ready.",
+        body: event.payload.outputPath.split("/").pop() ?? "Your file is ready.",
       });
     });
-    const unlistenErrorPromise = listen<string>("export-error", (event) => {
+    const unlistenErrorPromise = listen<ExportErrorEvent>("export-error", (event) => {
       decrementActiveExports();
       sendNotification({
         title: "Export failed",
-        body: event.payload,
+        body: event.payload.message,
       });
     });
     const unlistenStartedPromise = listen("export-started", () => {

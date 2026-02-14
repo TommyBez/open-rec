@@ -25,10 +25,21 @@ interface ProjectCardProps {
   project: Project;
   onSelect: (project: Project) => void;
   onRename: (projectId: string, name: string) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (projectId: string) => void;
   index: number;
 }
 
-export function ProjectCard({ project, onSelect, onRename, index }: ProjectCardProps) {
+export function ProjectCard({
+  project,
+  onSelect,
+  onRename,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
+  index,
+}: ProjectCardProps) {
   const [thumbnailError, setThumbnailError] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [draftName, setDraftName] = useState(project.name);
@@ -49,12 +60,19 @@ export function ProjectCard({ project, onSelect, onRename, index }: ProjectCardP
 
   return (
     <button
-      onClick={() => onSelect(project)}
+      onClick={() => {
+        if (selectionMode && onToggleSelect) {
+          onToggleSelect(project.id);
+          return;
+        }
+        onSelect(project);
+      }}
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm",
         "transition-all duration-200 hover:border-primary/30 hover:bg-card/80 hover:shadow-lg hover:shadow-primary/5",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-        "animate-fade-up"
+        "animate-fade-up",
+        selectionMode && selected && "border-primary/60 ring-1 ring-primary/40"
       )}
       style={{ animationDelay: `${index * 50}ms` }}
     >
@@ -79,11 +97,17 @@ export function ProjectCard({ project, onSelect, onRename, index }: ProjectCardP
           {formatDuration(project.duration)}
         </div>
 
+        {selectionMode && (
+          <div className="absolute left-2 top-2 rounded-md bg-background/85 px-2 py-1 text-[11px] font-medium text-foreground">
+            {selected ? "Selected" : "Select"}
+          </div>
+        )}
+
         {/* Hover overlay */}
         <div className="absolute inset-0 flex items-center justify-center bg-primary/0 opacity-0 transition-all duration-200 group-hover:bg-primary/10 group-hover:opacity-100">
           <div className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg">
             <Film className="size-4" strokeWidth={2} />
-            Open
+            {selectionMode ? (selected ? "Deselect" : "Select") : "Open"}
           </div>
         </div>
       </div>
@@ -117,6 +141,7 @@ export function ProjectCard({ project, onSelect, onRename, index }: ProjectCardP
               <button
                 onClick={(event) => {
                   event.stopPropagation();
+                  if (selectionMode) return;
                   setIsRenaming(true);
                 }}
                 className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"

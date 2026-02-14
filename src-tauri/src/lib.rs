@@ -30,6 +30,13 @@ const MIN_RECORDING_FREE_SPACE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ExportStartResult {
+    job_id: String,
+    output_path: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DiskSpaceStatus {
     free_bytes: u64,
     minimum_required_bytes: u64,
@@ -506,7 +513,7 @@ async fn export_project(
     export_jobs: tauri::State<'_, SharedExportJobs>,
     project_id: String,
     options: ExportOptions,
-) -> Result<String, AppError> {
+) -> Result<ExportStartResult, AppError> {
     let recordings_dir = {
         let state_guard = state
             .lock()
@@ -572,7 +579,13 @@ async fn export_project(
                             .as_secs_f64()
                             .min(expected_duration * 0.98)
                     });
-                    let _ = app_clone.emit("export-progress", progress);
+                    let _ = app_clone.emit(
+                        "export-progress",
+                        serde_json::json!({
+                            "jobId": &job_id_for_task,
+                            "progressSeconds": progress
+                        }),
+                    );
                 }
                 CommandEvent::Terminated(status) => {
                     let was_registered = export_jobs_clone
@@ -585,9 +598,21 @@ async fn export_project(
                     }
 
                     if status.code == Some(0) {
-                        let _ = app_clone.emit("export-complete", &output_path_for_event);
+                        let _ = app_clone.emit(
+                            "export-complete",
+                            serde_json::json!({
+                                "jobId": &job_id_for_task,
+                                "outputPath": output_path_for_event.to_string_lossy().to_string()
+                            }),
+                        );
                     } else {
-                        let _ = app_clone.emit("export-error", "Export failed");
+                        let _ = app_clone.emit(
+                            "export-error",
+                            serde_json::json!({
+                                "jobId": &job_id_for_task,
+                                "message": "Export failed"
+                            }),
+                        );
                     }
                 }
                 _ => {}
@@ -595,7 +620,10 @@ async fn export_project(
         }
     });
 
-    Ok(output_path_str)
+    Ok(ExportStartResult {
+        job_id,
+        output_path: output_path_str,
+    })
 }
 
 /// Cancel an active export job

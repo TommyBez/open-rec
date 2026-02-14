@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ArrowLeft, Video, FolderOpen } from "lucide-react";
@@ -11,7 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Project } from "../../types/project";
+import { ExportOptions, Project } from "../../types/project";
 import { ProjectCard } from "./ProjectCard";
 
 function EmptyState({ onRecord }: { onRecord: () => void }) {
@@ -46,6 +47,16 @@ export function VideoSelectionPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [isBatchExporting, setIsBatchExporting] = useState(false);
+  const [batchStatus, setBatchStatus] = useState<string | null>(null);
+  const [batchOptions, setBatchOptions] = useState<ExportOptions>({
+    format: "mp4",
+    frameRate: 30,
+    compression: "social",
+    resolution: "1080p",
+  });
 
   // Determine where we came from for the back button
   const cameFromEditor = location.state?.from === "editor";
@@ -86,7 +97,19 @@ export function VideoSelectionPage() {
   }
 
   function handleSelectProject(project: Project) {
+    if (selectionMode) {
+      toggleProjectSelection(project.id);
+      return;
+    }
     navigate(`/editor/${project.id}`);
+  }
+
+  function toggleProjectSelection(projectId: string) {
+    setSelectedProjectIds((previous) =>
+      previous.includes(projectId)
+        ? previous.filter((id) => id !== projectId)
+        : [...previous, projectId]
+    );
   }
 
   async function handleRenameProject(projectId: string, nextName: string) {
@@ -121,6 +144,71 @@ export function VideoSelectionPage() {
 
   function handleGoToRecorder() {
     navigate("/recorder");
+  }
+
+  async function waitForExportResult(jobId: string): Promise<{ ok: boolean; message: string }> {
+    return new Promise(async (resolve) => {
+      const unlisteners: UnlistenFn[] = [];
+      const cleanup = () => {
+        unlisteners.forEach((unlisten) => unlisten());
+      };
+
+      const onComplete = await listen<{ jobId: string; outputPath: string }>(
+        "export-complete",
+        (event) => {
+          if (event.payload.jobId !== jobId) return;
+          cleanup();
+          resolve({ ok: true, message: event.payload.outputPath });
+        }
+      );
+      const onError = await listen<{ jobId: string; message: string }>(
+        "export-error",
+        (event) => {
+          if (event.payload.jobId !== jobId) return;
+          cleanup();
+          resolve({ ok: false, message: event.payload.message });
+        }
+      );
+      const onCancelled = await listen<{ jobId: string }>("export-cancelled", (event) => {
+        if (event.payload.jobId !== jobId) return;
+        cleanup();
+        resolve({ ok: false, message: "Export cancelled" });
+      });
+
+      unlisteners.push(onComplete, onError, onCancelled);
+    });
+  }
+
+  async function handleBatchExport() {
+    if (selectedProjectIds.length === 0 || isBatchExporting) return;
+    setIsBatchExporting(true);
+    setBatchStatus(`Preparing batch export (0/${selectedProjectIds.length})...`);
+
+    let completed = 0;
+    let failed = 0;
+
+    for (let i = 0; i < selectedProjectIds.length; i++) {
+      const projectId = selectedProjectIds[i];
+      setBatchStatus(`Exporting ${i + 1}/${selectedProjectIds.length}...`);
+      try {
+        const started = await invoke<{ jobId: string }>("export_project", {
+          projectId,
+          options: batchOptions,
+        });
+        const result = await waitForExportResult(started.jobId);
+        if (result.ok) {
+          completed += 1;
+        } else {
+          failed += 1;
+        }
+      } catch (err) {
+        failed += 1;
+        console.error("Batch export failed for project:", projectId, err);
+      }
+    }
+
+    setBatchStatus(`Batch export finished: ${completed} succeeded, ${failed} failed.`);
+    setIsBatchExporting(false);
   }
 
   // Loading state
@@ -171,18 +259,85 @@ export function VideoSelectionPage() {
           variant="outline"
           size="sm"
           onClick={handleGoToRecorder}
+          disabled={isBatchExporting}
           className="gap-2"
         >
           <Video className="size-4" strokeWidth={1.75} />
           New Recording
         </Button>
+        <Button
+          variant={selectionMode ? "default" : "outline"}
+          size="sm"
+          disabled={isBatchExporting}
+          onClick={() => {
+            setSelectionMode((active) => {
+              const next = !active;
+              if (!next) {
+                setSelectedProjectIds([]);
+              }
+              return next;
+            });
+          }}
+        >
+          {selectionMode ? "Done Selecting" : "Batch Export"}
+        </Button>
       </header>
 
       {/* Main content */}
       <main className="relative z-10 flex flex-1 flex-col overflow-hidden p-4">
+        {selectionMode && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-card/50 px-3 py-2">
+            <span className="text-xs text-muted-foreground">
+              Selected: {selectedProjectIds.length}
+            </span>
+            <select
+              value={batchOptions.format}
+              onChange={(event) =>
+                setBatchOptions((previous) => ({
+                  ...previous,
+                  format: event.target.value as ExportOptions["format"],
+                }))
+              }
+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
+            >
+              <option value="mp4">MP4</option>
+              <option value="mov">MOV</option>
+              <option value="gif">GIF</option>
+              <option value="mp3">MP3</option>
+              <option value="wav">WAV</option>
+            </select>
+            <select
+              value={batchOptions.resolution}
+              disabled={batchOptions.format === "mp3" || batchOptions.format === "wav"}
+              onChange={(event) =>
+                setBatchOptions((previous) => ({
+                  ...previous,
+                  resolution: event.target.value as ExportOptions["resolution"],
+                }))
+              }
+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs disabled:opacity-50"
+            >
+              <option value="720p">720p</option>
+              <option value="1080p">1080p</option>
+              <option value="4k">4K</option>
+            </select>
+            <Button
+              size="sm"
+              disabled={selectedProjectIds.length === 0 || isBatchExporting}
+              onClick={handleBatchExport}
+            >
+              {isBatchExporting ? "Exporting..." : "Export Selected"}
+            </Button>
+          </div>
+        )}
         {error && (
           <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive animate-fade-up">
             {error}
+          </div>
+        )}
+        {batchStatus && (
+          <div className="mb-3 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            {batchStatus}
           </div>
         )}
 
@@ -197,6 +352,9 @@ export function VideoSelectionPage() {
                   project={project}
                   onSelect={handleSelectProject}
                   onRename={handleRenameProject}
+                  selectionMode={selectionMode}
+                  selected={selectedProjectIds.includes(project.id)}
+                  onToggleSelect={toggleProjectSelection}
                   index={index}
                 />
               ))}
