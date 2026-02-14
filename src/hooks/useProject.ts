@@ -505,8 +505,12 @@ export function useProject(initialProject: Project | null) {
 
   const updateAnnotation = useCallback((annotationId: string, updates: Partial<Annotation>) => {
     updateProject((p) => {
-      const hasAnnotation = p.edits.annotations.some((annotation) => annotation.id === annotationId);
-      if (!hasAnnotation) return p;
+      const targetAnnotation = p.edits.annotations.find((annotation) => annotation.id === annotationId);
+      if (!targetAnnotation) return p;
+      const hasChanges = Object.entries(updates).some(
+        ([key, value]) => targetAnnotation[key as keyof Annotation] !== value
+      );
+      if (!hasChanges) return p;
       return {
         ...p,
         edits: {
