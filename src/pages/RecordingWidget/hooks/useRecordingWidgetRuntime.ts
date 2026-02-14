@@ -143,7 +143,11 @@ export function useRecordingWidgetRuntime() {
 
   async function stopRecording() {
     const currentProjectId = projectId ?? getStoredCurrentProjectId();
-    if (!currentProjectId) return false;
+    if (!currentProjectId) {
+      setPermissionError("No active recording session was found.");
+      resetRecording();
+      return false;
+    }
     const fallbackState = state === "paused" ? "paused" : "recording";
     try {
       beginRecordingStop();
