@@ -87,6 +87,11 @@ export function useRecordingWidgetRuntime() {
       "recording-state-changed",
       (event) => {
         setRecordingState(event.payload.state);
+        if (event.payload.state === "idle") {
+          clearStoredCurrentProjectId();
+          setProjectId(null);
+          return;
+        }
         if (event.payload.projectId) {
           setProjectId(event.payload.projectId);
         }
