@@ -651,6 +651,7 @@ export function EditorPage() {
             >
               <AnnotationInspector
                 annotation={selectedAnnotation}
+                maxDuration={project.duration}
                 onCommit={handleAnnotationCommit}
                 onClose={handleCloseAnnotationInspector}
               />
