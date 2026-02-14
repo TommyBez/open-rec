@@ -2,6 +2,7 @@ mod export;
 mod project;
 mod recording;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -17,6 +18,9 @@ use recording::{
     stop_recording as do_stop_recording, CaptureSource, RecorderState, RecordingOptions,
     SharedRecorderState, SourceType, StartRecordingResult, StopRecordingResult,
 };
+use uuid::Uuid;
+
+type SharedExportJobs = Arc<Mutex<HashMap<String, u32>>>;
 
 async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), String> {
     let shell = app.shell();
@@ -383,6 +387,7 @@ fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<Project
 async fn export_project(
     app: AppHandle,
     state: tauri::State<'_, SharedRecorderState>,
+    export_jobs: tauri::State<'_, SharedExportJobs>,
     project_id: String,
     options: ExportOptions,
 ) -> Result<String, String> {
@@ -409,7 +414,7 @@ async fn export_project(
     let shell = app.shell();
 
     // Try to use bundled ffmpeg sidecar, fallback to system ffmpeg
-    let (mut rx, _child) = shell
+    let (mut rx, child) = shell
         .sidecar("ffmpeg")
         .unwrap_or_else(|_| shell.command("ffmpeg"))
         .args(&args)
@@ -420,9 +425,24 @@ async fn export_project(
     let output_path_for_event = output_path.clone();
     let output_path_str = output_path.to_string_lossy().to_string();
     let expected_duration = project.duration.max(1.0);
+    let job_id = Uuid::new_v4().to_string();
+    let job_pid = child.pid();
+
+    {
+        let mut jobs = export_jobs
+            .lock()
+            .map_err(|e| format!("Failed to lock export jobs state: {}", e))?;
+        jobs.insert(job_id.clone(), job_pid);
+    }
+    let _ = app.emit(
+        "export-started",
+        serde_json::json!({ "jobId": job_id, "pid": job_pid }),
+    );
 
     // Process output for progress
     let app_clone = app.clone();
+    let export_jobs_clone = export_jobs.inner().clone();
+    let job_id_for_task = job_id.clone();
     tokio::spawn(async move {
         let started = tokio::time::Instant::now();
         while let Some(event) = rx.recv().await {
@@ -439,6 +459,15 @@ async fn export_project(
                     app_clone.emit("export-progress", progress).ok();
                 }
                 CommandEvent::Terminated(status) => {
+                    let was_registered = export_jobs_clone
+                        .lock()
+                        .map(|mut jobs| jobs.remove(&job_id_for_task).is_some())
+                        .unwrap_or(false);
+
+                    if !was_registered {
+                        break;
+                    }
+
                     if status.code == Some(0) {
                         app_clone
                             .emit("export-complete", &output_path_for_event)
@@ -453,6 +482,55 @@ async fn export_project(
     });
 
     Ok(output_path_str)
+}
+
+/// Cancel an active export job
+#[tauri::command]
+fn cancel_export(
+    app: AppHandle,
+    export_jobs: tauri::State<'_, SharedExportJobs>,
+    job_id: String,
+) -> Result<(), String> {
+    let pid = {
+        let mut jobs = export_jobs
+            .lock()
+            .map_err(|e| format!("Failed to lock export jobs state: {}", e))?;
+        jobs.remove(&job_id).ok_or("Export job not found")?
+    };
+
+    #[cfg(unix)]
+    {
+        let status = std::process::Command::new("kill")
+            .arg("-TERM")
+            .arg(pid.to_string())
+            .status()
+            .map_err(|e| format!("Failed to cancel export process: {}", e))?;
+        if !status.success() {
+            return Err("Failed to cancel export process".to_string());
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let status = std::process::Command::new("taskkill")
+            .arg("/PID")
+            .arg(pid.to_string())
+            .arg("/F")
+            .status()
+            .map_err(|e| format!("Failed to cancel export process: {}", e))?;
+        if !status.success() {
+            return Err("Failed to cancel export process".to_string());
+        }
+    }
+
+    let _ = app.emit(
+        "export-cancelled",
+        serde_json::json!({
+            "jobId": job_id
+        }),
+    );
+
+    Ok(())
 }
 
 /// Parse ffmpeg progress from stderr line
@@ -489,6 +567,8 @@ pub fn run() {
                 .expect("Failed to get app data directory");
             let recorder_state = Arc::new(Mutex::new(RecorderState::new(app_data_dir)));
             app.manage(recorder_state);
+            let export_jobs: SharedExportJobs = Arc::new(Mutex::new(HashMap::new()));
+            app.manage(export_jobs);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -505,6 +585,7 @@ pub fn run() {
             save_project,
             list_projects,
             export_project,
+            cancel_export,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

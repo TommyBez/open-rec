@@ -50,6 +50,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
   const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [outputPath, setOutputPath] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
 
   const displayDuration = editedDuration ?? project.duration;
@@ -68,6 +69,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
       setCurrentTime(0);
       setError(null);
       setOutputPath(null);
+      setJobId(null);
     }
   }, [open]);
 
@@ -97,18 +99,34 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
       });
       unlistenRefs.current.push(unlistenProgress);
 
+      const unlistenStarted = await listen<{ jobId: string }>("export-started", (event) => {
+        setJobId(event.payload.jobId);
+      });
+      unlistenRefs.current.push(unlistenStarted);
+
       const unlistenComplete = await listen<string>("export-complete", (event) => {
         setProgress(100);
         setExportStatus("complete");
         setOutputPath(event.payload);
+        setJobId(null);
       });
       unlistenRefs.current.push(unlistenComplete);
 
       const unlistenError = await listen<string>("export-error", (event) => {
         setExportStatus("error");
         setError(event.payload);
+        setJobId(null);
       });
       unlistenRefs.current.push(unlistenError);
+
+      const unlistenCancelled = await listen<{ jobId: string }>("export-cancelled", () => {
+        setExportStatus("idle");
+        setProgress(0);
+        setCurrentTime(0);
+        setError("Export cancelled");
+        setJobId(null);
+      });
+      unlistenRefs.current.push(unlistenCancelled);
 
       await invoke("export_project", {
         projectId: project.id,
@@ -122,6 +140,17 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
     } catch (err) {
       setExportStatus("error");
       setError(err instanceof Error ? err.message : "Export failed");
+      setJobId(null);
+    }
+  }
+
+  async function handleCancelExport() {
+    if (!jobId) return;
+    try {
+      await invoke("cancel_export", { jobId });
+    } catch (err) {
+      setExportStatus("error");
+      setError(err instanceof Error ? err.message : "Failed to cancel export");
     }
   }
 
@@ -415,7 +444,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
 
           {exportStatus === "exporting" && (
             <div className="flex w-full justify-end">
-              <Button variant="outline" onClick={handleClose} disabled>
+              <Button variant="outline" onClick={handleCancelExport} disabled={!jobId}>
                 Cancel
               </Button>
             </div>
