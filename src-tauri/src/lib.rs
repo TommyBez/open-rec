@@ -7,7 +7,11 @@ use error::AppError;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
+};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
@@ -27,6 +31,12 @@ type SharedExportJobs = Arc<Mutex<HashMap<String, u32>>>;
 const START_STOP_SHORTCUT: &str = "CmdOrCtrl+Shift+2";
 const PAUSE_RESUME_SHORTCUT: &str = "CmdOrCtrl+Shift+P";
 const MIN_RECORDING_FREE_SPACE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+const TRAY_MENU_OPEN_RECORDER: &str = "tray.open-recorder";
+const TRAY_MENU_OPEN_PROJECTS: &str = "tray.open-projects";
+const TRAY_MENU_START_STOP: &str = "tray.start-stop";
+const TRAY_MENU_PAUSE_RESUME: &str = "tray.pause-resume";
+const TRAY_MENU_QUIT: &str = "tray.quit";
+const TRAY_MENU_RECENT_PREFIX: &str = "tray.recent.";
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,6 +51,69 @@ struct DiskSpaceStatus {
     free_bytes: u64,
     minimum_required_bytes: u64,
     sufficient: bool,
+}
+
+fn show_main_window(app_handle: &AppHandle) {
+    if let Some(main_window) = app_handle.get_webview_window("main") {
+        let _ = main_window.show();
+        let _ = main_window.set_focus();
+    }
+}
+
+fn truncate_tray_label(value: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+
+    let mut chars = value.chars();
+    let mut output = String::new();
+    for _ in 0..max_chars {
+        if let Some(ch) = chars.next() {
+            output.push(ch);
+        } else {
+            return output;
+        }
+    }
+    if chars.next().is_some() {
+        output.push('…');
+    }
+    output
+}
+
+fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> Vec<Project> {
+    if max_items == 0 || std::fs::metadata(recordings_dir).is_err() {
+        return Vec::new();
+    }
+
+    let mut projects = Vec::new();
+    let entries = match std::fs::read_dir(recordings_dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            eprintln!(
+                "Failed to read recordings directory for tray recent projects: {}",
+                error
+            );
+            return projects;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let project_file = path.join("project.json");
+        let content = match std::fs::read_to_string(project_file) {
+            Ok(content) => content,
+            Err(_) => continue,
+        };
+        if let Ok(project) = serde_json::from_str::<Project>(&content) {
+            projects.push(project);
+        }
+    }
+
+    projects.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    projects.into_iter().take(max_items).collect()
 }
 
 fn recording_disk_space_status(recordings_dir: &PathBuf) -> Result<DiskSpaceStatus, AppError> {
@@ -818,6 +891,134 @@ pub fn run() {
                         }
                     },
                 )
+                .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
+
+            let recordings_dir = app_data_dir.join("recordings");
+            let recent_projects = load_recent_projects_for_tray(&recordings_dir, 6);
+            let open_recorder_item = MenuItem::with_id(
+                app,
+                TRAY_MENU_OPEN_RECORDER,
+                "Open Recorder",
+                true,
+                None::<&str>,
+            )?;
+            let open_projects_item = MenuItem::with_id(
+                app,
+                TRAY_MENU_OPEN_PROJECTS,
+                "Open Projects",
+                true,
+                None::<&str>,
+            )?;
+            let start_stop_item = MenuItem::with_id(
+                app,
+                TRAY_MENU_START_STOP,
+                "Start/Stop Recording",
+                true,
+                Some(START_STOP_SHORTCUT),
+            )?;
+            let pause_resume_item = MenuItem::with_id(
+                app,
+                TRAY_MENU_PAUSE_RESUME,
+                "Pause/Resume Recording",
+                true,
+                Some(PAUSE_RESUME_SHORTCUT),
+            )?;
+            let quit_item =
+                MenuItem::with_id(app, TRAY_MENU_QUIT, "Quit OpenRec", true, None::<&str>)?;
+
+            let recent_submenu = if recent_projects.is_empty() {
+                let no_recent_item = MenuItem::with_id(
+                    app,
+                    "tray.recent.none",
+                    "No recent projects",
+                    false,
+                    None::<&str>,
+                )?;
+                Submenu::with_items(app, "Recent Projects", true, &[&no_recent_item])?
+            } else {
+                let recent_items = recent_projects
+                    .iter()
+                    .map(|project| {
+                        MenuItem::with_id(
+                            app,
+                            format!("{TRAY_MENU_RECENT_PREFIX}{}", project.id),
+                            truncate_tray_label(&project.name, 28),
+                            true,
+                            None::<&str>,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let recent_item_refs = recent_items.iter().collect::<Vec<_>>();
+                Submenu::with_items(app, "Recent Projects", true, &recent_item_refs)?
+            };
+
+            let separator_top = PredefinedMenuItem::separator(app)?;
+            let separator_bottom = PredefinedMenuItem::separator(app)?;
+            let tray_menu = Menu::with_items(
+                app,
+                &[
+                    &open_recorder_item,
+                    &open_projects_item,
+                    &recent_submenu,
+                    &separator_top,
+                    &start_stop_item,
+                    &pause_resume_item,
+                    &separator_bottom,
+                    &quit_item,
+                ],
+            )?;
+
+            let mut tray_builder = TrayIconBuilder::with_id("open-rec-tray")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(true)
+                .on_menu_event(|app_handle, event| match event.id.as_ref() {
+                    TRAY_MENU_OPEN_RECORDER => {
+                        show_main_window(app_handle);
+                        let _ = app_handle.emit("tray-open-recorder", ());
+                    }
+                    TRAY_MENU_OPEN_PROJECTS => {
+                        show_main_window(app_handle);
+                        let _ = app_handle.emit("tray-open-projects", ());
+                    }
+                    TRAY_MENU_START_STOP => {
+                        let _ = app_handle.emit("global-shortcut-start-stop", ());
+                    }
+                    TRAY_MENU_PAUSE_RESUME => {
+                        let _ = app_handle.emit("global-shortcut-toggle-pause", ());
+                    }
+                    TRAY_MENU_QUIT => {
+                        app_handle.exit(0);
+                    }
+                    other_id => {
+                        if let Some(project_id) = other_id.strip_prefix(TRAY_MENU_RECENT_PREFIX) {
+                            if project_id != "none" {
+                                show_main_window(app_handle);
+                                let _ = app_handle.emit(
+                                    "tray-open-project",
+                                    serde_json::json!({ "projectId": project_id }),
+                                );
+                            }
+                        }
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app_handle = tray.app_handle();
+                        show_main_window(app_handle);
+                    }
+                });
+
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            }
+
+            tray_builder
+                .build(app)
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
             Ok(())
         })

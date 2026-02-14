@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   isPermissionGranted,
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { RecorderPage } from "./pages/Recorder";
 import { EditorPage } from "./pages/Editor";
 import { RecordingWidget } from "./pages/RecordingWidget";
@@ -22,7 +23,13 @@ interface ExportErrorEvent {
   message: string;
 }
 
+interface TrayOpenProjectEvent {
+  projectId: string;
+}
+
 function App() {
+  const navigate = useNavigate();
+  const isMainWindow = getCurrentWindow().label === "main";
   const { incrementActiveExports, decrementActiveExports } = useExportStore();
 
   useEffect(() => {
@@ -55,6 +62,24 @@ function App() {
     const unlistenCancelledPromise = listen("export-cancelled", () => {
       decrementActiveExports();
     });
+    const unlistenTrayRecorderPromise = isMainWindow
+      ? listen("tray-open-recorder", () => {
+          navigate("/recorder");
+        })
+      : Promise.resolve(() => undefined);
+    const unlistenTrayProjectsPromise = isMainWindow
+      ? listen("tray-open-projects", () => {
+          navigate("/videos");
+        })
+      : Promise.resolve(() => undefined);
+    const unlistenTrayProjectPromise = isMainWindow
+      ? listen<TrayOpenProjectEvent>("tray-open-project", (event) => {
+          const projectId = event.payload?.projectId;
+          if (projectId) {
+            navigate(`/editor/${projectId}`);
+          }
+        })
+      : Promise.resolve(() => undefined);
 
     return () => {
       cancelled = true;
@@ -62,8 +87,11 @@ function App() {
       unlistenErrorPromise.then((unlisten) => unlisten());
       unlistenStartedPromise.then((unlisten) => unlisten());
       unlistenCancelledPromise.then((unlisten) => unlisten());
+      unlistenTrayRecorderPromise.then((unlisten) => unlisten());
+      unlistenTrayProjectsPromise.then((unlisten) => unlisten());
+      unlistenTrayProjectPromise.then((unlisten) => unlisten());
     };
-  }, [incrementActiveExports, decrementActiveExports]);
+  }, [decrementActiveExports, incrementActiveExports, isMainWindow, navigate]);
 
   return (
     <Routes>
