@@ -184,7 +184,7 @@ export const PlaybackControls = memo(function PlaybackControls({
           tooltip={
             selectedTool === "annotation"
               ? "Deactivate annotation tool (4)"
-              : "Annotation tool (4, click timeline)"
+              : "Annotation tool (4). Quick add: A/Shift+A/B/T"
           }
         />
         
