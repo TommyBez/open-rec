@@ -25,7 +25,11 @@ async function run() {
   await Promise.all(
     files.map(async (filePath) => {
       const content = await readFile(filePath, "utf8")
-      const lineCount = content.split(/\r?\n/).length
+      const rawLines = content.split(/\r?\n/)
+      const lineCount =
+        rawLines.length > 0 && rawLines[rawLines.length - 1] === ""
+          ? rawLines.length - 1
+          : rawLines.length
       if (lineCount > MAX_COMPONENT_LINES) {
         violations.push({
           path: relative(process.cwd(), filePath),
