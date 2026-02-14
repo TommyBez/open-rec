@@ -72,7 +72,13 @@ pub struct RecorderState {
 impl RecorderState {
     pub fn new(app_data_dir: PathBuf) -> Self {
         let recordings_dir = app_data_dir.join("recordings");
-        std::fs::create_dir_all(&recordings_dir).ok();
+        if let Err(error) = std::fs::create_dir_all(&recordings_dir) {
+            eprintln!(
+                "Failed to ensure recordings directory exists ({}): {}",
+                recordings_dir.to_string_lossy(),
+                error
+            );
+        }
         Self {
             sessions: HashMap::new(),
             recordings_dir,
