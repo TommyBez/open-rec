@@ -8,7 +8,11 @@ Unsigned builds work, but macOS Gatekeeper will warn on first launch.
 1. Download the `.dmg` for your Mac:
    - `aarch64-apple-darwin` for Apple Silicon (M1/M2/M3)
    - `x86_64-apple-darwin` for Intel Macs
-2. Open the DMG and drag **Open Rec.app** into **Applications**.
+2. (Optional) verify the SHA256 checksum from the matching `.sha256` file:
+   ```bash
+   shasum -a 256 -c OpenRec-<target>.dmg.sha256
+   ```
+3. Open the DMG and drag **Open Rec.app** into **Applications**.
 
 The DMG now ships with a pre-arranged drag-and-drop layout (app icon + Applications link)
 and branded background image so install instructions are visible at first open.
