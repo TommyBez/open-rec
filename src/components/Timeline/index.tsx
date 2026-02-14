@@ -3,6 +3,7 @@ import { ZoomIn, Film, Timer } from "lucide-react";
 import type { Segment, ZoomEffect, SpeedEffect, Annotation } from "../../types/project";
 import { cn } from "@/lib/utils";
 import { useTimelineDisplayMetrics } from "./hooks/useTimelineDisplayMetrics";
+import { useRangeTrackDrag } from "./hooks/useRangeTrackDrag";
 
 interface TimelineProps {
   duration: number;
@@ -27,8 +28,6 @@ interface TimelineProps {
   onSelectAnnotation: (annotationId: string | null) => void;
   onUpdateAnnotation?: (annotationId: string, updates: Partial<Annotation>) => void;
 }
-
-type DragMode = "move" | "resize-start" | "resize-end" | null;
 
 export function Timeline({
   duration,
@@ -55,30 +54,6 @@ export function Timeline({
 }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  
-  // Zoom drag state
-  const [zoomDragMode, setZoomDragMode] = useState<DragMode>(null);
-  const [draggingZoomId, setDraggingZoomId] = useState<string | null>(null);
-  const zoomDragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
-  const zoomHasDraggedRef = useRef(false);
-  
-  // Speed drag state
-  const [speedDragMode, setSpeedDragMode] = useState<DragMode>(null);
-  const [draggingSpeedId, setDraggingSpeedId] = useState<string | null>(null);
-  const speedDragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
-  const speedHasDraggedRef = useRef(false);
-
-  // Annotation drag state
-  const [annotationDragMode, setAnnotationDragMode] = useState<DragMode>(null);
-  const [draggingAnnotationId, setDraggingAnnotationId] = useState<string | null>(null);
-  const annotationDragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
-  const annotationHasDraggedRef = useRef(false);
-  
-  // Optimistic local state for smooth dragging (avoids parent re-renders during drag)
-  const [localZoomOverride, setLocalZoomOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
-  const [localSpeedOverride, setLocalSpeedOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
-  const [localAnnotationOverride, setLocalAnnotationOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
-  const rafIdRef = useRef<number | null>(null);
 
   const {
     segmentDisplayInfo,
@@ -122,6 +97,45 @@ export function Timeline({
     () => buildWaveformBars(microphoneWaveform),
     [buildWaveformBars, microphoneWaveform]
   );
+
+  const zoomDrag = useRangeTrackDrag({
+    items: zoom,
+    timelineRef,
+    timelineDuration,
+    duration,
+    minDuration: 0.5,
+    sourceToDisplayTime,
+    displayToSourceTime,
+    getSnappedDisplayTime,
+    onCommit: onUpdateZoom,
+    onDraggedSelectionReset: () => onSelectZoom(null),
+  });
+
+  const speedDrag = useRangeTrackDrag({
+    items: speed,
+    timelineRef,
+    timelineDuration,
+    duration,
+    minDuration: 0.5,
+    sourceToDisplayTime,
+    displayToSourceTime,
+    getSnappedDisplayTime,
+    onCommit: onUpdateSpeed,
+    onDraggedSelectionReset: () => onSelectSpeed(null),
+  });
+
+  const annotationDrag = useRangeTrackDrag({
+    items: annotations,
+    timelineRef,
+    timelineDuration,
+    duration,
+    minDuration: 0.1,
+    sourceToDisplayTime,
+    displayToSourceTime,
+    getSnappedDisplayTime,
+    onCommit: onUpdateAnnotation,
+    onDraggedSelectionReset: () => onSelectAnnotation(null),
+  });
 
   function handleTimelineClick(e: React.MouseEvent) {
     if (!timelineRef.current) return;
@@ -177,490 +191,36 @@ export function Timeline({
     e.stopPropagation();
   }
 
-  // Zoom segment click handler (selection)
-  function handleZoomClick(e: React.MouseEvent, zoomId: string) {
-    e.stopPropagation();
-    // Only select if we didn't just drag (dragging deselects on end)
-    if (zoomHasDraggedRef.current) {
-      zoomHasDraggedRef.current = false;
-      return;
-    }
-    // Select the zoom
-    onSelectZoom(zoomId);
-  }
-
-  // Zoom segment mouse down for drag/resize
-  function handleZoomMouseDown(e: React.MouseEvent, zoomId: string, mode: DragMode) {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    const zoomEffect = zoom.find(z => z.id === zoomId);
-    if (!zoomEffect || !timelineRef.current) return;
-    
-    zoomHasDraggedRef.current = false; // Reset drag flag
-    setDraggingZoomId(zoomId);
-    setZoomDragMode(mode);
-    zoomDragStartRef.current = {
-      x: e.clientX,
-      startTime: zoomEffect.startTime,
-      endTime: zoomEffect.endTime,
-    };
-  }
-
-  // Speed segment click handler (selection)
-  function handleSpeedClick(e: React.MouseEvent, speedId: string) {
-    e.stopPropagation();
-    // Only select if we didn't just drag (dragging deselects on end)
-    if (speedHasDraggedRef.current) {
-      speedHasDraggedRef.current = false;
-      return;
-    }
-    // Select the speed
-    onSelectSpeed(speedId);
-  }
-
-  // Speed segment mouse down for drag/resize
-  function handleSpeedMouseDown(e: React.MouseEvent, speedId: string, mode: DragMode) {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    const speedEffect = speed.find(s => s.id === speedId);
-    if (!speedEffect || !timelineRef.current) return;
-    
-    speedHasDraggedRef.current = false; // Reset drag flag
-    setDraggingSpeedId(speedId);
-    setSpeedDragMode(mode);
-    speedDragStartRef.current = {
-      x: e.clientX,
-      startTime: speedEffect.startTime,
-      endTime: speedEffect.endTime,
-    };
-  }
-
-  // Annotation segment click handler (selection)
-  function handleAnnotationClick(e: React.MouseEvent, annotationId: string) {
-    e.stopPropagation();
-    if (annotationHasDraggedRef.current) {
-      annotationHasDraggedRef.current = false;
-      return;
-    }
-    onSelectAnnotation(selectedAnnotationId === annotationId ? null : annotationId);
-  }
-
-  // Annotation segment mouse down for drag/resize
-  function handleAnnotationMouseDown(e: React.MouseEvent, annotationId: string, mode: DragMode) {
-    e.stopPropagation();
-    e.preventDefault();
-
-    const annotation = annotations.find((item) => item.id === annotationId);
-    if (!annotation || !timelineRef.current) return;
-
-    annotationHasDraggedRef.current = false;
-    setDraggingAnnotationId(annotationId);
-    setAnnotationDragMode(mode);
-    annotationDragStartRef.current = {
-      x: e.clientX,
-      startTime: annotation.startTime,
-      endTime: annotation.endTime,
-    };
-  }
-
-  // Handle zoom drag/resize move - uses RAF and local state for smooth dragging
-  const handleZoomDragMove = useCallback((e: MouseEvent) => {
-    if (!draggingZoomId || !zoomDragMode || !zoomDragStartRef.current || !timelineRef.current) return;
-    
-    // Cancel any pending RAF to avoid stacking
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-    }
-    
-    const clientX = e.clientX;
-    
-    rafIdRef.current = requestAnimationFrame(() => {
-      if (!zoomDragStartRef.current || !timelineRef.current) return;
-      
-      const rect = timelineRef.current.getBoundingClientRect();
-      const deltaX = clientX - zoomDragStartRef.current.x;
-      
-      // Mark that we actually dragged (mouse moved significantly)
-      if (Math.abs(deltaX) > 2) {
-        zoomHasDraggedRef.current = true;
-      }
-      
-      // Convert deltaX to display time delta
-      const deltaDisplayTime = (deltaX / rect.width) * timelineDuration;
-      
-      const { startTime: origStart, endTime: origEnd } = zoomDragStartRef.current;
-      const sourceDuration = origEnd - origStart; // Preserve source duration for move
-      const minDuration = 0.5; // Minimum 0.5 seconds in source time
-      
-      // Convert original source times to display positions
-      const origDisplayStart = sourceToDisplayTime(origStart);
-      const origDisplayEnd = sourceToDisplayTime(origEnd);
-      
-      let newStart: number;
-      let newEnd: number;
-      
-      switch (zoomDragMode) {
-        case "move": {
-          // Calculate new display start position
-          let newDisplayStart = origDisplayStart + deltaDisplayTime;
-          
-          // Clamp display position to timeline bounds
-          newDisplayStart = Math.max(0, Math.min(timelineDuration, newDisplayStart));
-          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
-          
-          // Convert display position back to source time
-          newStart = displayToSourceTime(newDisplayStart);
-          
-          // Preserve source duration and clamp to video bounds
-          newEnd = newStart + sourceDuration;
-          if (newEnd > duration) {
-            newEnd = duration;
-            newStart = Math.max(0, newEnd - sourceDuration);
-          }
-          break;
-        }
-        case "resize-start": {
-          // Calculate new display start position
-          let newDisplayStart = origDisplayStart + deltaDisplayTime;
-          
-          // Clamp to valid display range (can't go past end edge minus some margin)
-          newDisplayStart = Math.max(0, newDisplayStart);
-          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
-          
-          // Convert back to source time
-          newStart = displayToSourceTime(newDisplayStart);
-          newEnd = origEnd;
-          
-          // Apply minimum duration constraint in source-time space
-          if (newEnd - newStart < minDuration) {
-            newStart = newEnd - minDuration;
-          }
-          
-          // Final clamp to source bounds
-          newStart = Math.max(0, newStart);
-          break;
-        }
-        case "resize-end": {
-          // Calculate new display end position
-          let newDisplayEnd = origDisplayEnd + deltaDisplayTime;
-          
-          // Clamp to valid display range
-          newDisplayEnd = Math.min(timelineDuration, newDisplayEnd);
-          newDisplayEnd = getSnappedDisplayTime(newDisplayEnd);
-          
-          // Convert back to source time
-          newStart = origStart;
-          newEnd = displayToSourceTime(newDisplayEnd);
-          
-          // Apply minimum duration constraint in source-time space
-          if (newEnd - newStart < minDuration) {
-            newEnd = newStart + minDuration;
-          }
-          
-          // Final clamp to source bounds
-          newEnd = Math.min(duration, newEnd);
-          break;
-        }
-        default:
-          newStart = origStart;
-          newEnd = origEnd;
-      }
-      
-      // Update local state for immediate visual feedback (no parent re-render)
-      setLocalZoomOverride({ id: draggingZoomId, startTime: newStart, endTime: newEnd });
-    });
-  }, [draggingZoomId, zoomDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime, getSnappedDisplayTime]);
-
-  // Handle speed drag/resize move - uses RAF and local state for smooth dragging
-  const handleSpeedDragMove = useCallback((e: MouseEvent) => {
-    if (!draggingSpeedId || !speedDragMode || !speedDragStartRef.current || !timelineRef.current) return;
-    
-    // Cancel any pending RAF to avoid stacking
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-    }
-    
-    const clientX = e.clientX;
-    
-    rafIdRef.current = requestAnimationFrame(() => {
-      if (!speedDragStartRef.current || !timelineRef.current) return;
-      
-      const rect = timelineRef.current.getBoundingClientRect();
-      const deltaX = clientX - speedDragStartRef.current.x;
-      
-      // Mark that we actually dragged (mouse moved significantly)
-      if (Math.abs(deltaX) > 2) {
-        speedHasDraggedRef.current = true;
-      }
-      
-      // Convert deltaX to display time delta
-      const deltaDisplayTime = (deltaX / rect.width) * timelineDuration;
-      
-      const { startTime: origStart, endTime: origEnd } = speedDragStartRef.current;
-      const sourceDuration = origEnd - origStart; // Preserve source duration for move
-      const minDuration = 0.5; // Minimum 0.5 seconds in source time
-      
-      // Convert original source times to display positions
-      const origDisplayStart = sourceToDisplayTime(origStart);
-      const origDisplayEnd = sourceToDisplayTime(origEnd);
-      
-      let newStart: number;
-      let newEnd: number;
-      
-      switch (speedDragMode) {
-        case "move": {
-          // Calculate new display start position
-          let newDisplayStart = origDisplayStart + deltaDisplayTime;
-          
-          // Clamp display position to timeline bounds
-          newDisplayStart = Math.max(0, Math.min(timelineDuration, newDisplayStart));
-          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
-          
-          // Convert display position back to source time
-          newStart = displayToSourceTime(newDisplayStart);
-          
-          // Preserve source duration and clamp to video bounds
-          newEnd = newStart + sourceDuration;
-          if (newEnd > duration) {
-            newEnd = duration;
-            newStart = Math.max(0, newEnd - sourceDuration);
-          }
-          break;
-        }
-        case "resize-start": {
-          // Calculate new display start position
-          let newDisplayStart = origDisplayStart + deltaDisplayTime;
-          
-          // Clamp to valid display range (can't go past end edge minus some margin)
-          newDisplayStart = Math.max(0, newDisplayStart);
-          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
-          
-          // Convert back to source time
-          newStart = displayToSourceTime(newDisplayStart);
-          newEnd = origEnd;
-          
-          // Apply minimum duration constraint in source-time space
-          if (newEnd - newStart < minDuration) {
-            newStart = newEnd - minDuration;
-          }
-          
-          // Final clamp to source bounds
-          newStart = Math.max(0, newStart);
-          break;
-        }
-        case "resize-end": {
-          // Calculate new display end position
-          let newDisplayEnd = origDisplayEnd + deltaDisplayTime;
-          
-          // Clamp to valid display range
-          newDisplayEnd = Math.min(timelineDuration, newDisplayEnd);
-          newDisplayEnd = getSnappedDisplayTime(newDisplayEnd);
-          
-          // Convert back to source time
-          newStart = origStart;
-          newEnd = displayToSourceTime(newDisplayEnd);
-          
-          // Apply minimum duration constraint in source-time space
-          if (newEnd - newStart < minDuration) {
-            newEnd = newStart + minDuration;
-          }
-          
-          // Final clamp to source bounds
-          newEnd = Math.min(duration, newEnd);
-          break;
-        }
-        default:
-          newStart = origStart;
-          newEnd = origEnd;
-      }
-      
-      // Update local state for immediate visual feedback (no parent re-render)
-      setLocalSpeedOverride({ id: draggingSpeedId, startTime: newStart, endTime: newEnd });
-    });
-  }, [draggingSpeedId, speedDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime, getSnappedDisplayTime]);
-
-  // Handle annotation drag/resize move - uses RAF and local state for smooth dragging
-  const handleAnnotationDragMove = useCallback((e: MouseEvent) => {
-    if (!draggingAnnotationId || !annotationDragMode || !annotationDragStartRef.current || !timelineRef.current) return;
-
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-    }
-
-    const clientX = e.clientX;
-
-    rafIdRef.current = requestAnimationFrame(() => {
-      if (!annotationDragStartRef.current || !timelineRef.current) return;
-
-      const rect = timelineRef.current.getBoundingClientRect();
-      const deltaX = clientX - annotationDragStartRef.current.x;
-
-      if (Math.abs(deltaX) > 2) {
-        annotationHasDraggedRef.current = true;
-      }
-
-      const deltaDisplayTime = (deltaX / rect.width) * timelineDuration;
-      const { startTime: origStart, endTime: origEnd } = annotationDragStartRef.current;
-      const sourceDuration = origEnd - origStart;
-      const minDuration = 0.1;
-
-      const origDisplayStart = sourceToDisplayTime(origStart);
-      const origDisplayEnd = sourceToDisplayTime(origEnd);
-
-      let newStart: number;
-      let newEnd: number;
-
-      switch (annotationDragMode) {
-        case "move": {
-          let newDisplayStart = origDisplayStart + deltaDisplayTime;
-          newDisplayStart = Math.max(0, Math.min(timelineDuration, newDisplayStart));
-          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
-
-          newStart = displayToSourceTime(newDisplayStart);
-          newEnd = newStart + sourceDuration;
-          if (newEnd > duration) {
-            newEnd = duration;
-            newStart = Math.max(0, newEnd - sourceDuration);
-          }
-          break;
-        }
-        case "resize-start": {
-          let newDisplayStart = origDisplayStart + deltaDisplayTime;
-          newDisplayStart = Math.max(0, newDisplayStart);
-          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
-
-          newStart = displayToSourceTime(newDisplayStart);
-          newEnd = origEnd;
-          if (newEnd - newStart < minDuration) {
-            newStart = newEnd - minDuration;
-          }
-          newStart = Math.max(0, newStart);
-          break;
-        }
-        case "resize-end": {
-          let newDisplayEnd = origDisplayEnd + deltaDisplayTime;
-          newDisplayEnd = Math.min(timelineDuration, newDisplayEnd);
-          newDisplayEnd = getSnappedDisplayTime(newDisplayEnd);
-
-          newStart = origStart;
-          newEnd = displayToSourceTime(newDisplayEnd);
-          if (newEnd - newStart < minDuration) {
-            newEnd = newStart + minDuration;
-          }
-          newEnd = Math.min(duration, newEnd);
-          break;
-        }
-        default:
-          newStart = origStart;
-          newEnd = origEnd;
-      }
-
-      setLocalAnnotationOverride({
-        id: draggingAnnotationId,
-        startTime: newStart,
-        endTime: newEnd,
-      });
-    });
-  }, [draggingAnnotationId, annotationDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime, getSnappedDisplayTime]);
-
-  // Handle zoom drag end - commit local state to parent
-  const handleZoomDragEnd = useCallback(() => {
-    // Cancel any pending RAF
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
-    
-    // Commit local override to parent state
-    if (localZoomOverride && onUpdateZoom) {
-      onUpdateZoom(localZoomOverride.id, { 
-        startTime: localZoomOverride.startTime, 
-        endTime: localZoomOverride.endTime 
-      });
-    }
-    
-    // If we actually dragged/resized, deselect the zoom
-    if (zoomHasDraggedRef.current) {
-      onSelectZoom(null);
-    }
-    
-    setLocalZoomOverride(null);
-    setDraggingZoomId(null);
-    setZoomDragMode(null);
-    zoomDragStartRef.current = null;
-  }, [onSelectZoom, localZoomOverride, onUpdateZoom]);
-
-  // Handle speed drag end - commit local state to parent
-  const handleSpeedDragEnd = useCallback(() => {
-    // Cancel any pending RAF
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
-    
-    // Commit local override to parent state
-    if (localSpeedOverride && onUpdateSpeed) {
-      onUpdateSpeed(localSpeedOverride.id, { 
-        startTime: localSpeedOverride.startTime, 
-        endTime: localSpeedOverride.endTime 
-      });
-    }
-    
-    // If we actually dragged/resized, deselect the speed
-    if (speedHasDraggedRef.current) {
-      onSelectSpeed(null);
-    }
-    
-    setLocalSpeedOverride(null);
-    setDraggingSpeedId(null);
-    setSpeedDragMode(null);
-    speedDragStartRef.current = null;
-  }, [onSelectSpeed, localSpeedOverride, onUpdateSpeed]);
-
-  // Handle annotation drag end - commit local state to parent
-  const handleAnnotationDragEnd = useCallback(() => {
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
-
-    if (localAnnotationOverride && onUpdateAnnotation) {
-      onUpdateAnnotation(localAnnotationOverride.id, {
-        startTime: localAnnotationOverride.startTime,
-        endTime: localAnnotationOverride.endTime,
-      });
-    }
-
-    if (annotationHasDraggedRef.current) {
-      onSelectAnnotation(null);
-    }
-
-    setLocalAnnotationOverride(null);
-    setDraggingAnnotationId(null);
-    setAnnotationDragMode(null);
-    annotationDragStartRef.current = null;
-  }, [onSelectAnnotation, localAnnotationOverride, onUpdateAnnotation]);
+  const handleZoomClick = useCallback(
+    (event: React.MouseEvent, zoomId: string) =>
+      zoomDrag.handleItemClick(event, zoomId, onSelectZoom),
+    [onSelectZoom, zoomDrag]
+  );
+  const handleSpeedClick = useCallback(
+    (event: React.MouseEvent, speedId: string) =>
+      speedDrag.handleItemClick(event, speedId, onSelectSpeed),
+    [onSelectSpeed, speedDrag]
+  );
+  const handleAnnotationClick = useCallback(
+    (event: React.MouseEvent, annotationId: string) =>
+      annotationDrag.handleItemClick(event, annotationId, (id) => {
+        onSelectAnnotation(selectedAnnotationId === id ? null : id);
+      }),
+    [annotationDrag, onSelectAnnotation, selectedAnnotationId]
+  );
 
   useEffect(() => {
     function handleGlobalMouseUp() {
       setIsDragging(false);
-      handleZoomDragEnd();
-      handleSpeedDragEnd();
-      handleAnnotationDragEnd();
+      zoomDrag.handleGlobalMouseUp();
+      speedDrag.handleGlobalMouseUp();
+      annotationDrag.handleGlobalMouseUp();
     }
     
     function handleGlobalMouseMove(e: MouseEvent) {
-      if (draggingZoomId && zoomDragMode) {
-        handleZoomDragMove(e);
-      }
-      if (draggingSpeedId && speedDragMode) {
-        handleSpeedDragMove(e);
-      }
-      if (draggingAnnotationId && annotationDragMode) {
-        handleAnnotationDragMove(e);
-      }
+      zoomDrag.handleGlobalMouseMove(e);
+      speedDrag.handleGlobalMouseMove(e);
+      annotationDrag.handleGlobalMouseMove(e);
     }
     
     window.addEventListener("mouseup", handleGlobalMouseUp);
@@ -668,12 +228,15 @@ export function Timeline({
     return () => {
       window.removeEventListener("mouseup", handleGlobalMouseUp);
       window.removeEventListener("mousemove", handleGlobalMouseMove);
-      // Clean up any pending RAF on unmount
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
     };
-  }, [draggingZoomId, zoomDragMode, handleZoomDragMove, handleZoomDragEnd, draggingSpeedId, speedDragMode, handleSpeedDragMove, handleSpeedDragEnd, draggingAnnotationId, annotationDragMode, handleAnnotationDragMove, handleAnnotationDragEnd]);
+  }, [
+    annotationDrag.handleGlobalMouseMove,
+    annotationDrag.handleGlobalMouseUp,
+    speedDrag.handleGlobalMouseMove,
+    speedDrag.handleGlobalMouseUp,
+    zoomDrag.handleGlobalMouseMove,
+    zoomDrag.handleGlobalMouseUp,
+  ]);
 
   // Convert source time to display time for playhead position
   const displayTime = sourceToDisplayTime(currentTime);
@@ -769,11 +332,11 @@ export function Timeline({
           <div className="relative h-10 w-full overflow-hidden rounded-lg bg-muted/30">
             {zoom.length > 0 ? (
               zoom.map((effect) => {
-                const isDraggingThis = draggingZoomId === effect.id;
+                const isDraggingThis = zoomDrag.draggingId === effect.id;
                 
                 // Use local override for the element being dragged (smooth visual feedback)
-                const effectTimes = isDraggingThis && localZoomOverride
-                  ? { startTime: localZoomOverride.startTime, endTime: localZoomOverride.endTime }
+                const effectTimes = isDraggingThis && zoomDrag.localOverride
+                  ? { startTime: zoomDrag.localOverride.startTime, endTime: zoomDrag.localOverride.endTime }
                   : { startTime: effect.startTime, endTime: effect.endTime };
                 
                 // Convert zoom effect times to display positions
@@ -805,19 +368,19 @@ export function Timeline({
                     {/* Left resize handle */}
                     <div
                       className="absolute left-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
-                      onMouseDown={(e) => handleZoomMouseDown(e, effect.id, "resize-start")}
+                      onMouseDown={(e) => zoomDrag.handleItemMouseDown(e, effect.id, "resize-start")}
                     />
                     
                     {/* Center drag area */}
                     <div
                       className="absolute inset-x-2 inset-y-0 cursor-grab active:cursor-grabbing"
-                      onMouseDown={(e) => handleZoomMouseDown(e, effect.id, "move")}
+                      onMouseDown={(e) => zoomDrag.handleItemMouseDown(e, effect.id, "move")}
                     />
                     
                     {/* Right resize handle */}
                     <div
                       className="absolute right-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
-                      onMouseDown={(e) => handleZoomMouseDown(e, effect.id, "resize-end")}
+                      onMouseDown={(e) => zoomDrag.handleItemMouseDown(e, effect.id, "resize-end")}
                     />
                     
                     {/* Content (non-interactive, pointer-events-none) */}
@@ -836,13 +399,13 @@ export function Timeline({
           {annotations.length > 0 && (
             <div className="relative h-10 w-full overflow-hidden rounded-lg bg-amber-500/10">
               {annotations.map((annotation) => {
-                const isDraggingThis = draggingAnnotationId === annotation.id;
+                const isDraggingThis = annotationDrag.draggingId === annotation.id;
                 const mode = annotation.mode ?? "outline";
                 const annotationTimes =
-                  isDraggingThis && localAnnotationOverride
+                  isDraggingThis && annotationDrag.localOverride
                     ? {
-                        startTime: localAnnotationOverride.startTime,
-                        endTime: localAnnotationOverride.endTime,
+                        startTime: annotationDrag.localOverride.startTime,
+                        endTime: annotationDrag.localOverride.endTime,
                       }
                     : {
                         startTime: annotation.startTime,
@@ -881,19 +444,19 @@ export function Timeline({
                     <div
                       className="absolute left-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
                       onMouseDown={(event) =>
-                        handleAnnotationMouseDown(event, annotation.id, "resize-start")
+                        annotationDrag.handleItemMouseDown(event, annotation.id, "resize-start")
                       }
                     />
                     <div
                       className="absolute inset-x-2 inset-y-0 cursor-grab active:cursor-grabbing"
                       onMouseDown={(event) =>
-                        handleAnnotationMouseDown(event, annotation.id, "move")
+                        annotationDrag.handleItemMouseDown(event, annotation.id, "move")
                       }
                     />
                     <div
                       className="absolute right-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
                       onMouseDown={(event) =>
-                        handleAnnotationMouseDown(event, annotation.id, "resize-end")
+                        annotationDrag.handleItemMouseDown(event, annotation.id, "resize-end")
                       }
                     />
                     <span className="pointer-events-none">
@@ -915,11 +478,11 @@ export function Timeline({
           <div className="relative h-10 w-full overflow-hidden rounded-lg bg-muted/30">
             {speed.length > 0 ? (
               speed.map((effect) => {
-                const isDraggingThis = draggingSpeedId === effect.id;
+                const isDraggingThis = speedDrag.draggingId === effect.id;
                 
                 // Use local override for the element being dragged (smooth visual feedback)
-                const effectTimes = isDraggingThis && localSpeedOverride
-                  ? { startTime: localSpeedOverride.startTime, endTime: localSpeedOverride.endTime }
+                const effectTimes = isDraggingThis && speedDrag.localOverride
+                  ? { startTime: speedDrag.localOverride.startTime, endTime: speedDrag.localOverride.endTime }
                   : { startTime: effect.startTime, endTime: effect.endTime };
                 
                 // Convert speed effect times to display positions
@@ -951,19 +514,19 @@ export function Timeline({
                     {/* Left resize handle */}
                     <div
                       className="absolute left-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
-                      onMouseDown={(e) => handleSpeedMouseDown(e, effect.id, "resize-start")}
+                      onMouseDown={(e) => speedDrag.handleItemMouseDown(e, effect.id, "resize-start")}
                     />
                     
                     {/* Center drag area */}
                     <div
                       className="absolute inset-x-2 inset-y-0 cursor-grab active:cursor-grabbing"
-                      onMouseDown={(e) => handleSpeedMouseDown(e, effect.id, "move")}
+                      onMouseDown={(e) => speedDrag.handleItemMouseDown(e, effect.id, "move")}
                     />
                     
                     {/* Right resize handle */}
                     <div
                       className="absolute right-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
-                      onMouseDown={(e) => handleSpeedMouseDown(e, effect.id, "resize-end")}
+                      onMouseDown={(e) => speedDrag.handleItemMouseDown(e, effect.id, "resize-end")}
                     />
                     
                     {/* Content (non-interactive, pointer-events-none) */}
