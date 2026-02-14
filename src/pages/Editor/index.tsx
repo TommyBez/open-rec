@@ -624,6 +624,7 @@ export function EditorPage() {
                 annotation={selectedAnnotation}
                 maxDuration={project.duration}
                 onCommit={handleAnnotationCommit}
+                onDuplicate={handleDuplicateSelectedAnnotation}
                 onClose={handleCloseAnnotationInspector}
               />
             </motion.aside>

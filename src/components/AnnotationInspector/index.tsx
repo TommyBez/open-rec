@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Square } from "lucide-react";
+import { X, Square, Copy } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import type { Annotation } from "../../types/project";
 
@@ -7,6 +7,7 @@ interface AnnotationInspectorProps {
   annotation: Annotation;
   maxDuration: number;
   onCommit: (updates: Partial<Annotation>) => void;
+  onDuplicate: () => void;
   onClose: () => void;
 }
 
@@ -19,6 +20,7 @@ export function AnnotationInspector({
   annotation,
   maxDuration,
   onCommit,
+  onDuplicate,
   onClose,
 }: AnnotationInspectorProps) {
   const [draft, setDraft] = useState(annotation);
@@ -36,12 +38,21 @@ export function AnnotationInspector({
           </div>
           <span className="text-sm font-medium text-foreground/80">Annotation</span>
         </div>
-        <button
-          onClick={onClose}
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <X className="size-4" strokeWidth={1.75} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onDuplicate}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title="Duplicate annotation (⌘D)"
+          >
+            <Copy className="size-3.5" strokeWidth={1.75} />
+          </button>
+          <button
+            onClick={onClose}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="size-4" strokeWidth={1.75} />
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-4 p-4">
