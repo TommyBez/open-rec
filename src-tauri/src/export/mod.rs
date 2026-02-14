@@ -83,6 +83,22 @@ impl ResolutionPreset {
     }
 }
 
+fn target_video_bitrate_kbps(options: &ExportOptions) -> u32 {
+    let base = match options.resolution {
+        ResolutionPreset::P720 => 5_000.0,
+        ResolutionPreset::P1080 => 8_000.0,
+        ResolutionPreset::P4K => 24_000.0,
+    };
+    let multiplier = match options.compression {
+        CompressionPreset::Minimal => 1.6,
+        CompressionPreset::Social => 1.0,
+        CompressionPreset::Web => 0.72,
+        CompressionPreset::Potato => 0.5,
+    };
+
+    (base * multiplier).round() as u32
+}
+
 #[derive(Debug, Clone)]
 struct ActiveZoom {
     scale: f64,
@@ -556,17 +572,23 @@ pub fn build_ffmpeg_args(
                 Some("[vout]".to_string())
             };
 
-            // Video codec
+            // Video codec (prefer macOS hardware acceleration when available)
             args.push("-c:v".to_string());
-            args.push("libx264".to_string());
-
-            // CRF
-            args.push("-crf".to_string());
-            args.push(options.compression.crf().to_string());
-
-            // Preset
-            args.push("-preset".to_string());
-            args.push(options.compression.preset().to_string());
+            if cfg!(target_os = "macos") {
+                args.push("h264_videotoolbox".to_string());
+                args.push("-b:v".to_string());
+                args.push(format!("{}k", target_video_bitrate_kbps(options)));
+                args.push("-allow_sw".to_string());
+                args.push("1".to_string());
+            } else {
+                args.push("libx264".to_string());
+                args.push("-crf".to_string());
+                args.push(options.compression.crf().to_string());
+                args.push("-preset".to_string());
+                args.push(options.compression.preset().to_string());
+            }
+            args.push("-pix_fmt".to_string());
+            args.push("yuv420p".to_string());
 
             // Audio codec
             args.push("-c:a".to_string());
