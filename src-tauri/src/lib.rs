@@ -38,6 +38,7 @@ const TRAY_MENU_START_STOP: &str = "tray.start-stop";
 const TRAY_MENU_PAUSE_RESUME: &str = "tray.pause-resume";
 const TRAY_MENU_QUIT: &str = "tray.quit";
 const TRAY_MENU_RECENT_PREFIX: &str = "tray.recent.";
+const APP_MENU_NEW_WINDOW: &str = "app.new-window";
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,6 +80,69 @@ fn truncate_tray_label(value: &str, max_chars: usize) -> String {
         output.push('…');
     }
     output
+}
+
+fn open_videos_library_window(app: &AppHandle) -> Result<(), AppError> {
+    let label = format!("library-{}", Uuid::new_v4());
+    WebviewWindowBuilder::new(app, label, WebviewUrl::App("/videos".into()))
+        .title("Open Rec — Library")
+        .inner_size(1120.0, 760.0)
+        .min_inner_size(900.0, 620.0)
+        .resizable(true)
+        .center()
+        .build()
+        .map_err(|error| {
+            AppError::Message(format!("Failed to create library window: {}", error))
+        })?;
+    Ok(())
+}
+
+fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> Result<Menu<R>, AppError> {
+    let new_window_item = MenuItem::with_id(
+        manager,
+        APP_MENU_NEW_WINDOW,
+        "New Window",
+        true,
+        Some("CmdOrCtrl+Shift+N"),
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+    let open_recorder_item = MenuItem::with_id(
+        manager,
+        TRAY_MENU_OPEN_RECORDER,
+        "Open Recorder",
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+    let open_projects_item = MenuItem::with_id(
+        manager,
+        TRAY_MENU_OPEN_PROJECTS,
+        "Open Projects",
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+    let quit_item = MenuItem::with_id(manager, TRAY_MENU_QUIT, "Quit OpenRec", true, None::<&str>)
+        .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+    let separator = PredefinedMenuItem::separator(manager)
+        .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+
+    let file_submenu = Submenu::with_items(
+        manager,
+        "File",
+        true,
+        &[
+            &new_window_item,
+            &open_recorder_item,
+            &open_projects_item,
+            &separator,
+            &quit_item,
+        ],
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+
+    Menu::with_items(manager, &[&file_submenu])
+        .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))
 }
 
 fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> Vec<Project> {
@@ -1136,6 +1200,11 @@ pub fn run() {
                 .menu(&tray_menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app_handle, event| match event.id.as_ref() {
+                    APP_MENU_NEW_WINDOW => {
+                        if let Err(error) = open_videos_library_window(app_handle) {
+                            eprintln!("Failed to open new window from app menu: {}", error);
+                        }
+                    }
                     TRAY_MENU_OPEN_RECORDER => {
                         show_main_window(app_handle);
                         let _ = app_handle.emit("tray-open-recorder", ());
@@ -1201,6 +1270,11 @@ pub fn run() {
 
             tray_builder
                 .build(app)
+                .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
+
+            let app_menu = build_app_menu(app)
+                .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
+            app.set_menu(app_menu)
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
 
             #[cfg(any(target_os = "windows", target_os = "linux"))]
