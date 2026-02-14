@@ -35,10 +35,17 @@ export interface CaptureSource {
   thumbnail?: string;
 }
 
+interface DiskSpaceStatus {
+  freeBytes: number;
+  minimumRequiredBytes: number;
+  sufficient: boolean;
+}
+
 export function RecorderPage() {
   const navigate = useNavigate();
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [diskWarning, setDiskWarning] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
   
@@ -96,6 +103,14 @@ export function RecorderPage() {
   // Check permission on mount
   useEffect(() => {
     checkPermission();
+    void checkDiskSpace();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void checkDiskSpace();
+    }, 10000);
+    return () => clearInterval(intervalId);
   }, []);
 
   // Hydrate persisted recording preferences from plugin store
@@ -180,6 +195,21 @@ export function RecorderPage() {
     } catch (error) {
       console.error("Failed to request permission:", error);
       setErrorMessage("Unable to request screen recording permission.");
+    }
+  }
+
+  async function checkDiskSpace() {
+    try {
+      const status = await invoke<DiskSpaceStatus>("check_recording_disk_space");
+      if (!status.sufficient) {
+        setDiskWarning(
+          `Low disk space: ${(status.freeBytes / (1024 ** 3)).toFixed(2)} GB available. Recording requires at least 5 GB free.`
+        );
+      } else {
+        setDiskWarning(null);
+      }
+    } catch (error) {
+      console.error("Failed to check disk space:", error);
     }
   }
 
@@ -293,6 +323,17 @@ export function RecorderPage() {
 
   async function handleStartRecording() {
     if (countdown !== null || !selectedSource) return;
+    try {
+      const status = await invoke<DiskSpaceStatus>("check_recording_disk_space");
+      if (!status.sufficient) {
+        setErrorMessage(
+          `Insufficient disk space. ${(status.freeBytes / (1024 ** 3)).toFixed(2)} GB available, 5 GB required.`
+        );
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to check disk space before recording:", error);
+    }
 
     setCountdown(3);
     let value = 3;
@@ -419,6 +460,11 @@ export function RecorderPage() {
         {errorMessage && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {errorMessage}
+          </div>
+        )}
+        {diskWarning && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+            {diskWarning}
           </div>
         )}
         {/* Source Selector Panel */}
