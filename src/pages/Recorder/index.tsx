@@ -46,6 +46,7 @@ export function RecorderPage() {
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [diskWarning, setDiskWarning] = useState<string | null>(null);
+  const [preferredSourceId, setPreferredSourceId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
   
@@ -125,6 +126,7 @@ export function RecorderPage() {
       }
 
       setSourceType(persisted.sourceType);
+      setPreferredSourceId(persisted.selectedSourceId ?? null);
       setCaptureCamera(persisted.captureCamera);
       setCaptureMicrophone(persisted.captureMicrophone);
       setCaptureSystemAudio(persisted.captureSystemAudio);
@@ -151,6 +153,7 @@ export function RecorderPage() {
     if (!preferencesLoaded) return;
     void saveRecordingPreferences({
       sourceType,
+      selectedSourceId: selectedSource?.id ?? null,
       captureCamera,
       captureMicrophone,
       captureSystemAudio,
@@ -160,6 +163,7 @@ export function RecorderPage() {
   }, [
     preferencesLoaded,
     sourceType,
+    selectedSource,
     captureCamera,
     captureMicrophone,
     captureSystemAudio,
@@ -167,12 +171,12 @@ export function RecorderPage() {
     codec,
   ]);
 
-  // Load capture sources when permission is granted and source type changes
+  // Load capture sources when permission/source type/preferred source change
   useEffect(() => {
     if (hasPermission) {
       loadSources();
     }
-  }, [sourceType, hasPermission]);
+  }, [sourceType, hasPermission, preferredSourceId]);
 
   async function checkPermission() {
     try {
@@ -250,8 +254,13 @@ export function RecorderPage() {
       const stillAvailable = selectedSource
         ? result.find((source) => source.id === selectedSource.id)
         : undefined;
+      const preferredSource = preferredSourceId
+        ? result.find((source) => source.id === preferredSourceId)
+        : undefined;
       if (stillAvailable) {
         setSelectedSource(stillAvailable);
+      } else if (preferredSource) {
+        setSelectedSource(preferredSource);
       } else if (result.length > 0) {
         setSelectedSource(result[0]);
       } else {
@@ -270,7 +279,10 @@ export function RecorderPage() {
           ];
       setSources(mockSources);
       if (mockSources.length > 0 && !selectedSource) {
-        setSelectedSource(mockSources[0]);
+        const preferredMock = preferredSourceId
+          ? mockSources.find((source) => source.id === preferredSourceId)
+          : undefined;
+        setSelectedSource(preferredMock ?? mockSources[0]);
       }
     } finally {
       setIsLoadingSources(false);

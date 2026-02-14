@@ -2,6 +2,7 @@ import { LazyStore } from "@tauri-apps/plugin-store";
 
 export interface RecordingPreferences {
   sourceType: "display" | "window";
+  selectedSourceId?: string | null;
   captureCamera: boolean;
   captureMicrophone: boolean;
   captureSystemAudio: boolean;
