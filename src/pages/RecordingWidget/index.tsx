@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Pause, Play, Square } from "lucide-react";
+import { Loader2, Pause, Play, Square } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -19,6 +19,7 @@ export function RecordingWidget() {
     setRecordingState,
     incrementElapsedTime,
     setProjectId,
+    beginRecordingStop,
     resetRecording,
   } = useRecordingStore();
   
@@ -95,6 +96,7 @@ export function RecordingWidget() {
   }, [state]);
 
   async function togglePause() {
+    if (state === "stopping") return;
     try {
       if (state === "recording") {
         await invoke("pause_recording", { projectId });
@@ -116,6 +118,7 @@ export function RecordingWidget() {
     console.log("[RecordingWidget] Stopping recording, projectId:", currentProjectId);
     
     try {
+      beginRecordingStop();
       // Call backend to stop recording
       // The backend will:
       // 1. Stop the recording
@@ -133,6 +136,7 @@ export function RecordingWidget() {
       setPermissionError(null);
     } catch (error) {
       console.error("[RecordingWidget] Failed to stop recording:", error);
+      setRecordingState("paused");
     }
   }
 
@@ -148,6 +152,8 @@ export function RecordingWidget() {
   }
 
   const isRecording = state === "recording";
+  const isStopping = state === "stopping";
+  const statusLabel = isStopping ? "Stopping" : isRecording ? "Live" : "Paused";
 
   return (
     <div
@@ -197,12 +203,12 @@ export function RecordingWidget() {
           <span 
             className={cn(
               "text-[9px] font-semibold uppercase tracking-widest transition-colors duration-300",
-              isRecording 
+              isRecording
                 ? "text-primary" 
                 : "text-accent"
             )}
           >
-            {isRecording ? "Live" : "Paused"}
+            {statusLabel}
           </span>
         </div>
 
@@ -216,11 +222,13 @@ export function RecordingWidget() {
             <TooltipTrigger asChild>
               <button
                 onClick={togglePause}
+                disabled={isStopping}
                 className={cn(
                   "flex size-8 items-center justify-center rounded-md transition-all duration-200",
                   isRecording
                     ? "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    : "bg-accent/20 text-accent hover:bg-accent/30"
+                    : "bg-accent/20 text-accent hover:bg-accent/30",
+                  isStopping && "cursor-not-allowed opacity-40"
                 )}
               >
                 {isRecording ? (
@@ -240,9 +248,17 @@ export function RecordingWidget() {
             <TooltipTrigger asChild>
               <button
                 onClick={stopRecording}
-                className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-[0_0_12px_oklch(0.62_0.24_25/0.4)] transition-all duration-200 hover:bg-primary/90 hover:shadow-[0_0_16px_oklch(0.62_0.24_25/0.6)] active:scale-95"
+                disabled={isStopping}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-[0_0_12px_oklch(0.62_0.24_25/0.4)] transition-all duration-200 hover:bg-primary/90 hover:shadow-[0_0_16px_oklch(0.62_0.24_25/0.6)] active:scale-95",
+                  isStopping && "cursor-not-allowed opacity-70"
+                )}
               >
-                <Square className="size-3.5" strokeWidth={2.5} fill="currentColor" />
+                {isStopping ? (
+                  <Loader2 className="size-3.5 animate-spin" strokeWidth={2.5} />
+                ) : (
+                  <Square className="size-3.5" strokeWidth={2.5} fill="currentColor" />
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">

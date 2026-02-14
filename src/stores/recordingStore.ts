@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { CaptureSource } from "../types/project";
 
-export type RecordingState = "idle" | "starting" | "recording" | "paused";
+export type RecordingState = "idle" | "starting" | "recording" | "paused" | "stopping";
 
 interface RecordingStore {
   // Recording state
@@ -49,6 +49,7 @@ interface RecordingStore {
   
   // Composite actions
   beginRecordingStart: () => void;
+  beginRecordingStop: () => void;
   startRecording: (projectId: string) => void;
   stopRecording: () => void;
   resetRecording: () => void;
@@ -93,6 +94,10 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
   // Composite actions
   beginRecordingStart: () => set({
     state: "starting",
+  }),
+
+  beginRecordingStop: () => set({
+    state: "stopping",
   }),
 
   startRecording: (projectId) => set({
