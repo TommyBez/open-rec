@@ -1388,7 +1388,7 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_ffmpeg_progress, project_id_from_opened_path};
+    use super::{normalize_opened_project_id, parse_ffmpeg_progress, project_id_from_opened_path};
     use std::path::PathBuf;
     use uuid::Uuid;
 
@@ -1428,6 +1428,20 @@ mod tests {
     fn ignores_invalid_progress_tokens() {
         assert_eq!(parse_ffmpeg_progress("out_time_ms=abc"), None);
         assert_eq!(parse_ffmpeg_progress("time=bad-value"), None);
+    }
+
+    #[test]
+    fn normalizes_opened_project_ids() {
+        assert_eq!(normalize_opened_project_id(""), None);
+        assert_eq!(normalize_opened_project_id("   "), None);
+        assert_eq!(
+            normalize_opened_project_id("example-project.openrec").as_deref(),
+            Some("example-project")
+        );
+        assert_eq!(
+            normalize_opened_project_id("already-normalized").as_deref(),
+            Some("already-normalized")
+        );
     }
 
     #[test]
