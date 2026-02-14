@@ -31,6 +31,7 @@ import { RecorderHeader } from "./components/RecorderHeader";
 import { RecorderInputSources } from "./components/RecorderInputSources";
 import { RecorderQualityControls } from "./components/RecorderQualityControls";
 import { CountdownOverlay } from "./components/CountdownOverlay";
+import { useRecordingCountdown } from "./hooks/useRecordingCountdown";
 
 interface DiskSpaceStatus {
   freeBytes: number;
@@ -44,9 +45,8 @@ export function RecorderPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [diskWarning, setDiskWarning] = useState<string | null>(null);
   const [preferredSourceId, setPreferredSourceId] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const countdownIntervalRef = useRef<number | null>(null);
   const pendingTrayQuickRecordRef = useRef(false);
+  const { countdown, startCountdown } = useRecordingCountdown();
   
   // Use zustand store for state management
   const {
@@ -376,44 +376,8 @@ export function RecorderPage() {
       console.error("Failed to check disk space before recording:", error);
     }
 
-    setCountdown(3);
-    let value = 3;
-    countdownIntervalRef.current = window.setInterval(async () => {
-      value -= 1;
-      if (value <= 0) {
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
-        setCountdown(null);
-        await startRecordingSession();
-      } else {
-        setCountdown(value);
-      }
-    }, 1000);
+    startCountdown(startRecordingSession);
   }
-
-  useEffect(() => {
-    return () => {
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (countdown === null) return;
-    function handleCancelCountdown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-        countdownIntervalRef.current = null;
-      }
-      setCountdown(null);
-    }
-    window.addEventListener("keydown", handleCancelCountdown);
-    return () => window.removeEventListener("keydown", handleCancelCountdown);
-  }, [countdown]);
 
   // Show permission request UI if permission not granted
   if (hasPermission === false) {
