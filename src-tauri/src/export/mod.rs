@@ -475,40 +475,65 @@ fn apply_video_annotations(
             .collect::<String>();
 
         let next_label = format!("[vannot{}]", index);
-        if matches!(annotation.mode, AnnotationMode::Blur) {
-            let base_label = format!("[vannotbase{}]", index);
-            let blur_source_label = format!("[vannotsrc{}]", index);
-            let blur_label = format!("[vannotblur{}]", index);
+        match annotation.mode {
+            AnnotationMode::Blur => {
+                let base_label = format!("[vannotbase{}]", index);
+                let blur_source_label = format!("[vannotsrc{}]", index);
+                let blur_label = format!("[vannotblur{}]", index);
 
-            filter_parts.push(format!(
-                "{}split{}{}",
-                current_video_label, base_label, blur_source_label
-            ));
-            filter_parts.push(format!(
-                "{}crop=w=iw*{:.6}:h=ih*{:.6}:x=iw*{:.6}:y=ih*{:.6},boxblur=luma_radius=20:luma_power=1{}",
-                blur_source_label, width, height, x, y, blur_label
-            ));
-            filter_parts.push(format!(
-                "{}{}overlay=x=iw*{:.6}:y=ih*{:.6}:enable='between(t,{:.6},{:.6})'{}",
-                base_label, blur_label, x, y, start_time, end_time, next_label
-            ));
-        } else {
-            filter_parts.push(format!(
-                "{}drawbox=x=iw*{:.6}:y=ih*{:.6}:w=iw*{:.6}:h=ih*{:.6}:color={}@{:.3}:t={}:enable='between(t,{:.6},{:.6})'{}",
-                current_video_label,
-                x,
-                y,
-                width,
-                height,
-                color,
-                opacity,
-                thickness,
-                start_time,
-                end_time,
-                next_label
-            ));
+                filter_parts.push(format!(
+                    "{}split{}{}",
+                    current_video_label, base_label, blur_source_label
+                ));
+                filter_parts.push(format!(
+                    "{}crop=w=iw*{:.6}:h=ih*{:.6}:x=iw*{:.6}:y=ih*{:.6},boxblur=luma_radius=20:luma_power=1{}",
+                    blur_source_label, width, height, x, y, blur_label
+                ));
+                filter_parts.push(format!(
+                    "{}{}overlay=x=iw*{:.6}:y=ih*{:.6}:enable='between(t,{:.6},{:.6})'{}",
+                    base_label, blur_label, x, y, start_time, end_time, next_label
+                ));
+                current_video_label = next_label;
+            }
+            AnnotationMode::Text => {
+                if let Some(text) = annotation.text.as_ref().map(|value| value.trim()) {
+                    if !text.is_empty() {
+                        let escaped_text = escape_drawtext_text(text);
+                        filter_parts.push(format!(
+                            "{}drawtext=text='{}':x=iw*{:.6}:y=ih*{:.6}:fontsize=30:fontcolor={}@{:.3}:box=1:boxcolor=black@0.35:enable='between(t,{:.6},{:.6})'{}",
+                            current_video_label,
+                            escaped_text,
+                            x,
+                            y,
+                            color,
+                            opacity,
+                            start_time,
+                            end_time,
+                            next_label
+                        ));
+                        current_video_label = next_label;
+                    }
+                }
+                continue;
+            }
+            AnnotationMode::Outline => {
+                filter_parts.push(format!(
+                    "{}drawbox=x=iw*{:.6}:y=ih*{:.6}:w=iw*{:.6}:h=ih*{:.6}:color={}@{:.3}:t={}:enable='between(t,{:.6},{:.6})'{}",
+                    current_video_label,
+                    x,
+                    y,
+                    width,
+                    height,
+                    color,
+                    opacity,
+                    thickness,
+                    start_time,
+                    end_time,
+                    next_label
+                ));
+                current_video_label = next_label;
+            }
         }
-        current_video_label = next_label;
 
         if let Some(text) = annotation.text.as_ref().map(|value| value.trim()) {
             if !text.is_empty() {
@@ -557,20 +582,34 @@ fn build_annotation_drawbox_chain(project: &Project) -> String {
                 .filter(|character| !character.is_whitespace())
                 .collect::<String>();
 
-            let base_chain = if matches!(annotation.mode, AnnotationMode::Blur) {
-                format!(
+            let base_chain = match annotation.mode {
+                AnnotationMode::Blur => format!(
                     ",drawbox=x=iw*{:.6}:y=ih*{:.6}:w=iw*{:.6}:h=ih*{:.6}:color=black@0.35:t=fill:enable='between(t,{:.6},{:.6})'",
                     x, y, width, height, start_time, end_time
-                )
-            } else {
-                format!(
+                ),
+                AnnotationMode::Text => annotation
+                    .text
+                    .as_ref()
+                    .map(|value| value.trim())
+                    .filter(|text| !text.is_empty())
+                    .map(|text| {
+                        let escaped_text = escape_drawtext_text(text);
+                        format!(
+                            ",drawtext=text='{}':x=iw*{:.6}:y=ih*{:.6}:fontsize=22:fontcolor={}@{:.3}:box=1:boxcolor=black@0.35:enable='between(t,{:.6},{:.6})'",
+                            escaped_text, x, y, color, opacity, start_time, end_time
+                        )
+                    })
+                    .unwrap_or_default(),
+                AnnotationMode::Outline => format!(
                     ",drawbox=x=iw*{:.6}:y=ih*{:.6}:w=iw*{:.6}:h=ih*{:.6}:color={}@{:.3}:t={}:enable='between(t,{:.6},{:.6})'",
                     x, y, width, height, color, opacity, thickness, start_time, end_time
-                )
+                ),
             };
 
-            Some(base_chain)
-            .map(|mut chain| {
+            Some(base_chain).map(|mut chain| {
+                if chain.is_empty() || matches!(annotation.mode, AnnotationMode::Text) {
+                    return chain;
+                }
                 if let Some(text) = annotation.text.as_ref().map(|value| value.trim()) {
                     if !text.is_empty() {
                         let escaped_text = escape_drawtext_text(text);

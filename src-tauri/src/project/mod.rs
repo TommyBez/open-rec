@@ -163,6 +163,7 @@ pub struct Annotation {
 pub enum AnnotationMode {
     Outline,
     Blur,
+    Text,
 }
 
 impl Default for AnnotationMode {

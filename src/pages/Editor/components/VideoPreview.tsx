@@ -192,12 +192,22 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
                   width: `${Math.max(0.02, Math.min(1, annotation.width)) * 100}%`,
                   height: `${Math.max(0.02, Math.min(1, annotation.height)) * 100}%`,
                   borderStyle: "solid",
-                  borderColor: mode === "blur" ? "rgba(255,255,255,0.85)" : annotation.color,
-                  borderWidth: `${Math.max(1, annotation.thickness)}px`,
+                  borderColor:
+                    mode === "blur"
+                      ? "rgba(255,255,255,0.85)"
+                      : mode === "text"
+                      ? "transparent"
+                      : annotation.color,
+                  borderWidth: mode === "text" ? "0px" : `${Math.max(1, annotation.thickness)}px`,
                   opacity: Math.max(0.1, Math.min(1, annotation.opacity)),
                   boxShadow: "0 0 0 1px rgba(0,0,0,0.2)",
                   backdropFilter: mode === "blur" ? "blur(8px)" : undefined,
-                  backgroundColor: mode === "blur" ? "rgba(0,0,0,0.15)" : "transparent",
+                  backgroundColor:
+                    mode === "blur"
+                      ? "rgba(0,0,0,0.15)"
+                      : mode === "text"
+                      ? "transparent"
+                      : "transparent",
                 }}
               >
                 {annotation.text?.trim() && (
