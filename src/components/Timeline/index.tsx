@@ -335,6 +335,7 @@ export function Timeline({
           
           // Clamp display position to timeline bounds
           newDisplayStart = Math.max(0, Math.min(timelineDuration, newDisplayStart));
+          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
           
           // Convert display position back to source time
           newStart = displayToSourceTime(newDisplayStart);
@@ -353,6 +354,7 @@ export function Timeline({
           
           // Clamp to valid display range (can't go past end edge minus some margin)
           newDisplayStart = Math.max(0, newDisplayStart);
+          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
           
           // Convert back to source time
           newStart = displayToSourceTime(newDisplayStart);
@@ -373,6 +375,7 @@ export function Timeline({
           
           // Clamp to valid display range
           newDisplayEnd = Math.min(timelineDuration, newDisplayEnd);
+          newDisplayEnd = getSnappedDisplayTime(newDisplayEnd);
           
           // Convert back to source time
           newStart = origStart;
@@ -395,7 +398,7 @@ export function Timeline({
       // Update local state for immediate visual feedback (no parent re-render)
       setLocalZoomOverride({ id: draggingZoomId, startTime: newStart, endTime: newEnd });
     });
-  }, [draggingZoomId, zoomDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime]);
+  }, [draggingZoomId, zoomDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime, getSnappedDisplayTime]);
 
   // Handle speed drag/resize move - uses RAF and local state for smooth dragging
   const handleSpeedDragMove = useCallback((e: MouseEvent) => {
@@ -440,6 +443,7 @@ export function Timeline({
           
           // Clamp display position to timeline bounds
           newDisplayStart = Math.max(0, Math.min(timelineDuration, newDisplayStart));
+          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
           
           // Convert display position back to source time
           newStart = displayToSourceTime(newDisplayStart);
@@ -458,6 +462,7 @@ export function Timeline({
           
           // Clamp to valid display range (can't go past end edge minus some margin)
           newDisplayStart = Math.max(0, newDisplayStart);
+          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
           
           // Convert back to source time
           newStart = displayToSourceTime(newDisplayStart);
@@ -478,6 +483,7 @@ export function Timeline({
           
           // Clamp to valid display range
           newDisplayEnd = Math.min(timelineDuration, newDisplayEnd);
+          newDisplayEnd = getSnappedDisplayTime(newDisplayEnd);
           
           // Convert back to source time
           newStart = origStart;
@@ -500,7 +506,7 @@ export function Timeline({
       // Update local state for immediate visual feedback (no parent re-render)
       setLocalSpeedOverride({ id: draggingSpeedId, startTime: newStart, endTime: newEnd });
     });
-  }, [draggingSpeedId, speedDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime]);
+  }, [draggingSpeedId, speedDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime, getSnappedDisplayTime]);
 
   // Handle zoom drag end - commit local state to parent
   const handleZoomDragEnd = useCallback(() => {
