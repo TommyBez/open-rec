@@ -38,7 +38,7 @@ async function run() {
   violations.sort((a, b) => b.lineCount - a.lineCount || a.path.localeCompare(b.path))
 
   if (violations.length > 0) {
-    console.error(`Component line limit violations (${violations.length}):`)
+    console.error(`Component line limit violations (must be < 150 lines): ${violations.length}`)
     for (const violation of violations) {
       console.error(`- ${violation.path}: ${violation.lineCount} lines`)
     }
@@ -46,7 +46,7 @@ async function run() {
     return
   }
 
-  console.log(`All ${files.length} TSX files are within ${MAX_COMPONENT_LINES + 1}-line limit.`)
+  console.log(`All ${files.length} TSX files are under 150 lines.`)
 }
 
 run().catch((error) => {
