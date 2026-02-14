@@ -176,12 +176,17 @@ export function VideoSelectionPage() {
       const cleanup = () => {
         unlisteners.forEach((unlisten) => unlisten());
       };
+      const timeoutId = window.setTimeout(() => {
+        cleanup();
+        resolve({ ok: false, message: "Export timed out" });
+      }, 30 * 60 * 1000);
 
       const onComplete = await listen<{ jobId: string; outputPath: string }>(
         "export-complete",
         (event) => {
           if (event.payload.jobId !== jobId) return;
           cleanup();
+          clearTimeout(timeoutId);
           resolve({ ok: true, message: event.payload.outputPath });
         }
       );
@@ -190,12 +195,14 @@ export function VideoSelectionPage() {
         (event) => {
           if (event.payload.jobId !== jobId) return;
           cleanup();
+          clearTimeout(timeoutId);
           resolve({ ok: false, message: event.payload.message });
         }
       );
       const onCancelled = await listen<{ jobId: string }>("export-cancelled", (event) => {
         if (event.payload.jobId !== jobId) return;
         cleanup();
+        clearTimeout(timeoutId);
         resolve({ ok: false, message: "Export cancelled" });
       });
 
