@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback, useState } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "motion/react";
@@ -21,6 +21,7 @@ import { useWaveformData } from "./hooks/useWaveformData";
 import { useEditedTimelineMetrics } from "./hooks/useEditedTimelineMetrics";
 import { useEditorAutosaveLifecycle } from "./hooks/useEditorAutosaveLifecycle";
 import { useEditorProjectLoader } from "./hooks/useEditorProjectLoader";
+import { useEditorPreviewState } from "./hooks/useEditorPreviewState";
 
 // Hoisted static JSX elements
 const atmosphericGradient = (
@@ -100,82 +101,29 @@ export function EditorPage() {
     setDuration,
     setIsLoading,
   });
-  const [jklRateMultiplier, setJklRateMultiplier] = useState(1);
-  const [annotationInsertMode, setAnnotationInsertMode] =
-    useState<"outline" | "blur" | "text" | "arrow">("outline");
-
-  // Derived state
-  const selectedZoom = useMemo(() => {
-    if (!project || !selectedZoomId) return null;
-    return project.edits.zoom.find((z) => z.id === selectedZoomId) ?? null;
-  }, [project, selectedZoomId]);
-
-  const selectedSpeed = useMemo(() => {
-    if (!project || !selectedSpeedId) return null;
-    return project.edits.speed.find((s) => s.id === selectedSpeedId) ?? null;
-  }, [project, selectedSpeedId]);
-
-  const selectedAnnotation = useMemo(() => {
-    if (!project || !selectedAnnotationId) return null;
-    return project.edits.annotations.find((a) => a.id === selectedAnnotationId) ?? null;
-  }, [project, selectedAnnotationId]);
-
-  useEffect(() => {
-    const selectedMode = selectedAnnotation?.mode;
-    if (!selectedMode) return;
-    setAnnotationInsertMode(selectedMode);
-  }, [selectedAnnotation?.id, selectedAnnotation?.mode]);
-
-  const activeZoom = useMemo(() => {
-    if (!project) return null;
-    return project.edits.zoom.find(
-      (z) => currentTime >= z.startTime && currentTime < z.endTime
-    ) ?? null;
-  }, [project, currentTime]);
-
-  const activeSpeed = useMemo(() => {
-    if (!project) return null;
-    return project.edits.speed.find(
-      (s) => currentTime >= s.startTime && currentTime < s.endTime
-    ) ?? null;
-  }, [project, currentTime]);
-
-  const currentPlaybackRate = useMemo(() => {
-    if (!activeSpeed) return 1;
-    const useDraft = speedDraft && selectedSpeedId === activeSpeed.id;
-    return useDraft ? speedDraft.speed : activeSpeed.speed;
-  }, [activeSpeed, selectedSpeedId, speedDraft]);
-
-  const effectivePlaybackRate = useMemo(
-    () => Math.min(currentPlaybackRate * jklRateMultiplier, 8),
-    [currentPlaybackRate, jklRateMultiplier]
-  );
-
-  const videoZoomStyle = useMemo(() => {
-    if (!activeZoom) {
-      return { transform: 'scale(1)', transformOrigin: 'center center' };
-    }
-    
-    const useDraft = zoomDraft && selectedZoomId === activeZoom.id;
-    const scale = useDraft ? zoomDraft.scale : activeZoom.scale;
-    const x = useDraft ? zoomDraft.x : activeZoom.x;
-    const y = useDraft ? zoomDraft.y : activeZoom.y;
-    
-    const originX = 50 + (x / (project?.resolution.width ?? 1920)) * 100;
-    const originY = 50 + (y / (project?.resolution.height ?? 1080)) * 100;
-    
-    return {
-      transform: `scale(${scale})`,
-      transformOrigin: `${originX}% ${originY}%`,
-    };
-  }, [activeZoom, selectedZoomId, zoomDraft, project?.resolution]);
-
-  const previewFilter = useMemo(() => {
-    const brightness = project?.edits.colorCorrection.brightness ?? 0;
-    const contrast = project?.edits.colorCorrection.contrast ?? 1;
-    const saturation = project?.edits.colorCorrection.saturation ?? 1;
-    return `brightness(${1 + brightness}) contrast(${contrast}) saturate(${saturation})`;
-  }, [project?.edits.colorCorrection]);
+  const {
+    selectedZoom,
+    selectedSpeed,
+    selectedAnnotation,
+    activeZoom,
+    activeSpeed,
+    currentPlaybackRate,
+    effectivePlaybackRate,
+    videoZoomStyle,
+    previewFilter,
+    jklRateMultiplier,
+    setJklRateMultiplier,
+    annotationInsertMode,
+    setAnnotationInsertMode,
+  } = useEditorPreviewState({
+    project,
+    currentTime,
+    selectedZoomId,
+    selectedSpeedId,
+    selectedAnnotationId,
+    zoomDraft,
+    speedDraft,
+  });
 
   const videoSrc = useMemo(() => {
     if (!project?.screenVideoPath) return "";
