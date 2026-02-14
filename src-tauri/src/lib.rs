@@ -28,7 +28,15 @@ const START_STOP_SHORTCUT: &str = "CmdOrCtrl+Shift+2";
 const PAUSE_RESUME_SHORTCUT: &str = "CmdOrCtrl+Shift+P";
 const MIN_RECORDING_FREE_SPACE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 
-fn ensure_recording_disk_headroom(recordings_dir: &PathBuf) -> Result<(), AppError> {
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiskSpaceStatus {
+    free_bytes: u64,
+    minimum_required_bytes: u64,
+    sufficient: bool,
+}
+
+fn recording_disk_space_status(recordings_dir: &PathBuf) -> Result<DiskSpaceStatus, AppError> {
     let free_bytes = fs2::available_space(recordings_dir).map_err(|error| {
         AppError::Io(format!(
             "Failed to check disk space for recordings directory: {}",
@@ -36,10 +44,20 @@ fn ensure_recording_disk_headroom(recordings_dir: &PathBuf) -> Result<(), AppErr
         ))
     })?;
 
-    if free_bytes < MIN_RECORDING_FREE_SPACE_BYTES {
+    Ok(DiskSpaceStatus {
+        free_bytes,
+        minimum_required_bytes: MIN_RECORDING_FREE_SPACE_BYTES,
+        sufficient: free_bytes >= MIN_RECORDING_FREE_SPACE_BYTES,
+    })
+}
+
+fn ensure_recording_disk_headroom(recordings_dir: &PathBuf) -> Result<(), AppError> {
+    let status = recording_disk_space_status(recordings_dir)?;
+
+    if !status.sufficient {
         return Err(AppError::Message(format!(
             "Insufficient disk space. At least 5 GB free is required (currently {:.2} GB).",
-            free_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+            status.free_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
         )));
     }
 
@@ -214,6 +232,20 @@ fn check_permission() -> bool {
 #[tauri::command]
 fn request_permission() -> bool {
     request_screen_recording_permission()
+}
+
+#[tauri::command]
+fn check_recording_disk_space(
+    state: tauri::State<SharedRecorderState>,
+) -> Result<DiskSpaceStatus, AppError> {
+    let recordings_dir = {
+        let state_guard = state
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+        state_guard.recordings_dir.clone()
+    };
+
+    recording_disk_space_status(&recordings_dir)
 }
 
 /// List available capture sources (displays or windows)
@@ -689,6 +721,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             check_permission,
             request_permission,
+            check_recording_disk_space,
             list_capture_sources,
             start_screen_recording,
             stop_screen_recording,

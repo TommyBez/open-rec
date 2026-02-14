@@ -11,6 +11,12 @@ import {
 import { useRecordingStore, RecordingState } from "../../stores";
 import { cn } from "@/lib/utils";
 
+interface DiskSpaceStatus {
+  freeBytes: number;
+  minimumRequiredBytes: number;
+  sufficient: boolean;
+}
+
 export function RecordingWidget() {
   const {
     state,
@@ -24,6 +30,7 @@ export function RecordingWidget() {
   } = useRecordingStore();
   
   const intervalRef = useRef<number | null>(null);
+  const autoStopForDiskRef = useRef(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
   // Get project ID from localStorage on mount (fallback for when store is reset)
@@ -93,6 +100,34 @@ export function RecordingWidget() {
     }, 3000);
 
     return () => clearInterval(intervalId);
+  }, [state]);
+
+  // Disk space monitoring to auto-stop when free space is low
+  useEffect(() => {
+    if (state !== "recording" && state !== "paused") return;
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const diskStatus = await invoke<DiskSpaceStatus>("check_recording_disk_space");
+        if (!diskStatus.sufficient && projectId && !autoStopForDiskRef.current) {
+          autoStopForDiskRef.current = true;
+          setPermissionError(
+            "Recording stopped automatically because free disk space dropped below 5 GB."
+          );
+          await stopRecording();
+        }
+      } catch (error) {
+        console.error("Failed to check recording disk space:", error);
+      }
+    }, 5000);
+
+    return () => clearInterval(intervalId);
+  }, [state, projectId]);
+
+  useEffect(() => {
+    if (state === "idle") {
+      autoStopForDiskRef.current = false;
+    }
   }, [state]);
 
   // Global shortcuts while recording widget is active
