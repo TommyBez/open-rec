@@ -24,10 +24,6 @@ interface ExportErrorEvent {
   message: string;
 }
 
-interface TrayOpenProjectEvent {
-  projectId: string;
-}
-
 function App() {
   const navigate = useNavigate();
   const isMainWindow = getCurrentWindow().label === "main";
@@ -73,14 +69,6 @@ function App() {
           navigate("/videos");
         })
       : Promise.resolve(() => undefined);
-    const unlistenTrayProjectPromise = isMainWindow
-      ? listen<TrayOpenProjectEvent>("tray-open-project", (event) => {
-          const projectId = event.payload?.projectId;
-          if (projectId) {
-            navigate(`/editor/${projectId}`);
-          }
-        })
-      : Promise.resolve(() => undefined);
     const unlistenTrayQuickRecordPromise = isMainWindow
       ? listen("tray-quick-record", () => {
           requestTrayQuickRecord();
@@ -96,7 +84,6 @@ function App() {
       unlistenCancelledPromise.then((unlisten) => unlisten());
       unlistenTrayRecorderPromise.then((unlisten) => unlisten());
       unlistenTrayProjectsPromise.then((unlisten) => unlisten());
-      unlistenTrayProjectPromise.then((unlisten) => unlisten());
       unlistenTrayQuickRecordPromise.then((unlisten) => unlisten());
     };
   }, [decrementActiveExports, incrementActiveExports, isMainWindow, navigate]);

@@ -714,9 +714,7 @@ fn open_recording_widget(app: AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Open a project editor in a separate window
-#[tauri::command]
-fn open_project_window(app: AppHandle, project_id: String) -> Result<(), AppError> {
+fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), AppError> {
     let label = format!("editor-{}", Uuid::new_v4());
     let route = format!("/editor/{}", project_id);
     let title = format!(
@@ -724,7 +722,7 @@ fn open_project_window(app: AppHandle, project_id: String) -> Result<(), AppErro
         &project_id.chars().take(8).collect::<String>()
     );
 
-    WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
+    WebviewWindowBuilder::new(app, label, WebviewUrl::App(route.into()))
         .title(title)
         .inner_size(1200.0, 800.0)
         .min_inner_size(900.0, 620.0)
@@ -736,6 +734,12 @@ fn open_project_window(app: AppHandle, project_id: String) -> Result<(), AppErro
         })?;
 
     Ok(())
+}
+
+/// Open a project editor in a separate window
+#[tauri::command]
+fn open_project_window(app: AppHandle, project_id: String) -> Result<(), AppError> {
+    open_project_editor_window(&app, &project_id)
 }
 
 /// Load a project by ID
@@ -1082,11 +1086,14 @@ pub fn run() {
                     other_id => {
                         if let Some(project_id) = other_id.strip_prefix(TRAY_MENU_RECENT_PREFIX) {
                             if project_id != "none" {
-                                show_main_window(app_handle);
-                                let _ = app_handle.emit(
-                                    "tray-open-project",
-                                    serde_json::json!({ "projectId": project_id }),
-                                );
+                                if let Err(error) =
+                                    open_project_editor_window(app_handle, project_id)
+                                {
+                                    eprintln!(
+                                        "Failed to open project {} from tray menu: {}",
+                                        project_id, error
+                                    );
+                                }
                             }
                         }
                     }
