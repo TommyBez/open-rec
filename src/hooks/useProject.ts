@@ -135,26 +135,34 @@ export function useProject(initialProject: Project | null) {
 
   // Toggle segment enabled/disabled (remove from final output)
   const toggleSegment = useCallback((segmentId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        segments: p.edits.segments.map((s) =>
-          s.id === segmentId ? { ...s, enabled: !s.enabled } : s
-        ),
-      },
-    }));
+    updateProject((p) => {
+      const hasSegment = p.edits.segments.some((segment) => segment.id === segmentId);
+      if (!hasSegment) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          segments: p.edits.segments.map((segment) =>
+            segment.id === segmentId ? { ...segment, enabled: !segment.enabled } : segment
+          ),
+        },
+      };
+    });
   }, [updateProject]);
 
   // Delete a segment (keeps source video time references intact)
   const deleteSegment = useCallback((segmentId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        segments: p.edits.segments.filter((s) => s.id !== segmentId),
-      },
-    }));
+    updateProject((p) => {
+      const nextSegments = p.edits.segments.filter((segment) => segment.id !== segmentId);
+      if (nextSegments.length === p.edits.segments.length) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          segments: nextSegments,
+        },
+      };
+    });
   }, [updateProject]);
 
   // Add a zoom effect (automatically adjusts end time to avoid overlapping existing zooms)
@@ -282,13 +290,17 @@ export function useProject(initialProject: Project | null) {
 
   // Delete a zoom effect
   const deleteZoom = useCallback((zoomId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        zoom: p.edits.zoom.filter((z) => z.id !== zoomId),
-      },
-    }));
+    updateProject((p) => {
+      const nextZoom = p.edits.zoom.filter((zoom) => zoom.id !== zoomId);
+      if (nextZoom.length === p.edits.zoom.length) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          zoom: nextZoom,
+        },
+      };
+    });
   }, [updateProject]);
 
   // Add a speed effect (automatically adjusts end time to avoid overlapping existing speeds)
@@ -414,13 +426,17 @@ export function useProject(initialProject: Project | null) {
 
   // Delete a speed effect
   const deleteSpeed = useCallback((speedId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        speed: p.edits.speed.filter((s) => s.id !== speedId),
-      },
-    }));
+    updateProject((p) => {
+      const nextSpeed = p.edits.speed.filter((speedSegment) => speedSegment.id !== speedId);
+      if (nextSpeed.length === p.edits.speed.length) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          speed: nextSpeed,
+        },
+      };
+    });
   }, [updateProject]);
 
   // Set whole video speed
@@ -474,25 +490,33 @@ export function useProject(initialProject: Project | null) {
   }, [updateProject]);
 
   const deleteAnnotation = useCallback((annotationId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        annotations: p.edits.annotations.filter((annotation) => annotation.id !== annotationId),
-      },
-    }));
+    updateProject((p) => {
+      const nextAnnotations = p.edits.annotations.filter((annotation) => annotation.id !== annotationId);
+      if (nextAnnotations.length === p.edits.annotations.length) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          annotations: nextAnnotations,
+        },
+      };
+    });
   }, [updateProject]);
 
   const updateAnnotation = useCallback((annotationId: string, updates: Partial<Annotation>) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        annotations: p.edits.annotations.map((annotation) =>
-          annotation.id === annotationId ? { ...annotation, ...updates } : annotation
-        ),
-      },
-    }));
+    updateProject((p) => {
+      const hasAnnotation = p.edits.annotations.some((annotation) => annotation.id === annotationId);
+      if (!hasAnnotation) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          annotations: p.edits.annotations.map((annotation) =>
+            annotation.id === annotationId ? { ...annotation, ...updates } : annotation
+          ),
+        },
+      };
+    });
   }, [updateProject]);
 
   const duplicateAnnotation = useCallback((annotationId: string) => {
