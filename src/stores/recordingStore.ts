@@ -1,13 +1,15 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { CaptureSource } from "../types/project";
 
-export type RecordingState = "idle" | "recording" | "paused";
+export type RecordingState = "idle" | "starting" | "recording" | "paused";
 
 interface RecordingStore {
   // Recording state
   state: RecordingState;
   elapsedTime: number;
   projectId: string | null;
+  recordingStartTimeMs: number | null;
   
   // Source selection
   sourceType: "display" | "window";
@@ -31,6 +33,7 @@ interface RecordingStore {
   setElapsedTime: (time: number) => void;
   incrementElapsedTime: () => void;
   setProjectId: (id: string | null) => void;
+  setRecordingStartTimeMs: (value: number | null) => void;
   setSourceType: (type: "display" | "window") => void;
   setSelectedSource: (source: CaptureSource | null) => void;
   setSources: (sources: CaptureSource[]) => void;
@@ -42,16 +45,20 @@ interface RecordingStore {
   setCameraReady: (ready: boolean) => void;
   
   // Composite actions
+  beginRecordingStart: () => void;
   startRecording: (projectId: string) => void;
   stopRecording: () => void;
   resetRecording: () => void;
 }
 
-export const useRecordingStore = create<RecordingStore>((set) => ({
+export const useRecordingStore = create<RecordingStore>()(
+  persist(
+    (set) => ({
   // Initial state
   state: "idle",
   elapsedTime: 0,
   projectId: null,
+  recordingStartTimeMs: null,
   sourceType: "display",
   selectedSource: null,
   sources: [],
@@ -67,6 +74,7 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
   setElapsedTime: (time) => set({ elapsedTime: time }),
   incrementElapsedTime: () => set((s) => ({ elapsedTime: s.elapsedTime + 1 })),
   setProjectId: (id) => set({ projectId: id }),
+  setRecordingStartTimeMs: (value) => set({ recordingStartTimeMs: value }),
   setSourceType: (type) => set({ sourceType: type }),
   setSelectedSource: (source) => set({ selectedSource: source }),
   setSources: (sources) => set({ sources }),
@@ -78,6 +86,10 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
   setCameraReady: (ready) => set({ cameraReady: ready }),
   
   // Composite actions
+  beginRecordingStart: () => set({
+    state: "starting",
+  }),
+
   startRecording: (projectId) => set({
     state: "recording",
     projectId,
@@ -87,11 +99,26 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
   stopRecording: () => set({
     state: "idle",
     elapsedTime: 0,
+    recordingStartTimeMs: null,
   }),
   
   resetRecording: () => set({
     state: "idle",
     elapsedTime: 0,
     projectId: null,
+    recordingStartTimeMs: null,
   }),
-}));
+    }),
+    {
+      name: "openrec-recording-preferences-v1",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        sourceType: state.sourceType,
+        selectedSource: state.selectedSource,
+        captureCamera: state.captureCamera,
+        captureMicrophone: state.captureMicrophone,
+        captureSystemAudio: state.captureSystemAudio,
+      }),
+    }
+  )
+);

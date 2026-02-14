@@ -1,12 +1,14 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Monitor, AppWindow, Lock, FolderOpen } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { SourceSelector } from "../../components/SourceSelector";
 import { ToggleRow } from "../../components/ToggleRow";
+import { MicrophoneRecorder } from "../../components/MicrophoneRecorder";
 import { Button } from "@/components/ui/button";
 import { CameraPreview } from "../../components/CameraPreview";
 import { BrandLogo } from "../../components/BrandLogo";
@@ -14,6 +16,7 @@ import { StatusIndicator } from "../../components/StatusIndicator";
 import { SourceTypeButton } from "../../components/SourceTypeButton";
 import { RecordButton } from "../../components/RecordButton";
 import { useRecordingStore } from "../../stores";
+import { StartRecordingResult } from "../../types/project";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -43,6 +46,7 @@ export function RecorderPage() {
   const {
     state: recordingState,
     projectId,
+    recordingStartTimeMs,
     sourceType,
     selectedSource,
     sources,
@@ -61,19 +65,22 @@ export function RecorderPage() {
     setCaptureSystemAudio,
     setHasPermission,
     setCameraReady,
+    beginRecordingStart,
     startRecording,
     setProjectId,
+    setRecordingStartTimeMs,
     setRecordingState,
   } = useRecordingStore();
 
-  const isRecording = recordingState === "recording" || recordingState === "paused";
+  const isRecording = ["starting", "recording", "paused"].includes(recordingState);
+  const isActivelyRecording = recordingState === "recording";
 
   // Resize window to compact size on mount
   useEffect(() => {
     async function resizeWindow() {
       try {
         const window = getCurrentWindow();
-        await window.setSize({ type: "Logical", width: 380, height: 580 });
+        await window.setSize(new LogicalSize(380, 580));
         await window.center();
       } catch (error) {
         console.error("Failed to resize window:", error);
@@ -120,6 +127,7 @@ export function RecorderPage() {
   useEffect(() => {
     const unlisten = listen<string>("recording-stopped", (event) => {
       setRecordingState("idle");
+      setRecordingStartTimeMs(null);
       // Navigate to editor with the project ID
       navigate(`/editor/${event.payload}`);
     });
@@ -161,7 +169,7 @@ export function RecorderPage() {
   async function handleStartRecording() {
     if (!selectedSource) return;
     
-    startRecording("");  // Temporarily set recording state
+    beginRecordingStart();
     try {
       const options: RecordingOptions = {
         sourceId: selectedSource.id,
@@ -171,10 +179,17 @@ export function RecorderPage() {
         captureSystemAudio,
       };
       
-      const result = await invoke<{ projectId: string }>("start_screen_recording", { options });
+      const result = await Promise.race([
+        invoke<StartRecordingResult>("start_screen_recording", { options }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Recording start timed out")), 15000)
+        ),
+      ]);
       
       // Store project ID for camera recording and in localStorage for widget
       setProjectId(result.projectId);
+      setRecordingStartTimeMs(result.recordingStartTimeMs);
+      startRecording(result.projectId);
       localStorage.setItem("currentProjectId", result.projectId);
       
       // Open the recording widget window
@@ -185,6 +200,8 @@ export function RecorderPage() {
       await mainWindow.hide();
     } catch (error) {
       console.error("Failed to start recording:", error);
+      setProjectId(null);
+      setRecordingStartTimeMs(null);
       setRecordingState("idle");
     }
   }
@@ -323,13 +340,21 @@ export function RecorderPage() {
             >
               <CameraPreview
                 enabled={captureCamera}
-                isRecording={isRecording}
+                isRecording={isActivelyRecording}
                 projectId={projectId}
+                recordingStartTimeMs={recordingStartTimeMs}
                 onCameraReady={setCameraReady}
               />
             </motion.div>
           )}
         </AnimatePresence>
+        
+        <MicrophoneRecorder
+          enabled={captureMicrophone}
+          isRecording={isActivelyRecording}
+          projectId={projectId}
+          recordingStartTimeMs={recordingStartTimeMs}
+        />
 
         {/* Input Sources */}
         <div className="animate-fade-up-delay-3 space-y-2">

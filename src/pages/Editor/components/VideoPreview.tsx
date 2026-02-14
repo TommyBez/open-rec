@@ -1,7 +1,5 @@
 import { memo, forwardRef, CSSProperties } from "react";
-import ZoomIn from "lucide-react/dist/esm/icons/zoom-in";
-import Gauge from "lucide-react/dist/esm/icons/gauge";
-import Film from "lucide-react/dist/esm/icons/film";
+import { ZoomIn, Gauge, Film } from "lucide-react";
 import { ZoomEffect, SpeedEffect } from "../../../types/project";
 
 interface VideoPreviewProps {

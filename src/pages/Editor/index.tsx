@@ -31,6 +31,20 @@ const loadingSpinner = (
   </div>
 );
 
+function normalizeProject(project: Project): Project {
+  return {
+    ...project,
+    edits: {
+      ...project.edits,
+      cameraOverlay: project.edits.cameraOverlay ?? {
+        position: "bottom-right",
+        margin: 20,
+        scale: 0.25,
+      },
+    },
+  };
+}
+
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -40,6 +54,8 @@ export function EditorPage() {
     setProject,
     isDirty,
     saveProject,
+    renameProject,
+    updateCameraOverlay,
     canUndo,
     undo,
     cutAt,
@@ -223,10 +239,20 @@ export function EditorPage() {
   // Auto-save
   useEffect(() => {
     if (isDirty && project) {
-      const timeout = setTimeout(() => saveProject().catch(console.error), 1000);
+      const timeout = setTimeout(() => saveProject().catch(console.error), 5000);
       return () => clearTimeout(timeout);
     }
   }, [isDirty, project, saveProject]);
+
+  useEffect(() => {
+    const flushSave = () => {
+      if (isDirty) {
+        saveProject().catch(console.error);
+      }
+    };
+    window.addEventListener("beforeunload", flushSave);
+    return () => window.removeEventListener("beforeunload", flushSave);
+  }, [isDirty, saveProject]);
 
   // Keyboard shortcut for undo
   useEffect(() => {
@@ -244,8 +270,9 @@ export function EditorPage() {
     setIsLoading(true);
     try {
       const result = await invoke<Project>("load_project", { projectId: id });
-      setProject(result);
-      setDuration(result.duration);
+      const normalizedProject = normalizeProject(result);
+      setProject(normalizedProject);
+      setDuration(normalizedProject.duration);
     } catch (error) {
       console.error("Failed to load project:", error);
       const mockProject: Project = {
@@ -259,6 +286,11 @@ export function EditorPage() {
           segments: [{ id: crypto.randomUUID(), startTime: 0, endTime: 274.8, enabled: true }],
           zoom: [],
           speed: [],
+          cameraOverlay: {
+            position: "bottom-right",
+            margin: 20,
+            scale: 0.25,
+          },
         },
       };
       setProject(mockProject);
@@ -316,6 +348,12 @@ export function EditorPage() {
       <EditorHeader
         projectName={project.name}
         isDirty={isDirty}
+        onRename={renameProject}
+        hasCameraTrack={Boolean(project.cameraVideoPath)}
+        cameraOverlayPosition={project.edits.cameraOverlay.position}
+        onCameraOverlayPositionChange={(position) =>
+          updateCameraOverlay({ position })
+        }
         onBack={handleBack}
         onExport={handleExport}
         onOpenVideos={handleOpenVideos}

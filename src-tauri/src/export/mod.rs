@@ -82,367 +82,570 @@ impl ResolutionPreset {
     }
 }
 
+#[derive(Debug, Clone)]
+struct TimelinePiece {
+    start: f64,
+    end: f64,
+    speed: f64,
+}
+
+fn has_audio_stream(path: &str) -> bool {
+    let output = std::process::Command::new("ffprobe")
+        .arg("-v")
+        .arg("error")
+        .arg("-select_streams")
+        .arg("a:0")
+        .arg("-show_entries")
+        .arg("stream=index")
+        .arg("-of")
+        .arg("csv=p=0")
+        .arg(path)
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => !String::from_utf8_lossy(&out.stdout).trim().is_empty(),
+        _ => false,
+    }
+}
+
+pub fn validate_export_inputs(project: &Project) -> Result<(), String> {
+    let screen_path = std::path::Path::new(&project.screen_video_path);
+    if !screen_path.exists() {
+        return Err(format!(
+            "Screen recording file does not exist: {}",
+            project.screen_video_path
+        ));
+    }
+
+    if let Some(camera_path) = &project.camera_video_path {
+        if !std::path::Path::new(camera_path).exists() {
+            return Err(format!(
+                "Camera recording file does not exist: {}",
+                camera_path
+            ));
+        }
+    }
+
+    if let Some(mic_path) = &project.microphone_audio_path {
+        if !std::path::Path::new(mic_path).exists() {
+            return Err(format!(
+                "Microphone recording file does not exist: {}",
+                mic_path
+            ));
+        }
+    }
+
+    if project.edits.segments.iter().all(|s| !s.enabled) {
+        return Err("No enabled timeline segments to export".to_string());
+    }
+
+    Ok(())
+}
+
+fn atempo_chain(speed: f64) -> Option<String> {
+    if !speed.is_finite() || speed <= 0.0 || (speed - 1.0).abs() < 0.01 {
+        return None;
+    }
+
+    let mut remaining = speed;
+    let mut parts = Vec::new();
+
+    while remaining > 2.0 {
+        parts.push("atempo=2.0".to_string());
+        remaining /= 2.0;
+    }
+    while remaining < 0.5 {
+        parts.push("atempo=0.5".to_string());
+        remaining /= 0.5;
+    }
+
+    parts.push(format!("atempo={:.5}", remaining));
+    Some(parts.join(","))
+}
+
+fn enabled_segments(project: &Project) -> Vec<(f64, f64)> {
+    let mut segments: Vec<(f64, f64)> = project
+        .edits
+        .segments
+        .iter()
+        .filter(|segment| segment.enabled)
+        .map(|segment| (segment.start_time, segment.end_time))
+        .collect();
+
+    if segments.is_empty() {
+        segments.push((0.0, project.duration));
+    }
+
+    segments.sort_by(|a, b| a.0.total_cmp(&b.0));
+    segments
+}
+
+fn build_timeline_pieces(project: &Project) -> Vec<TimelinePiece> {
+    let segments = enabled_segments(project);
+    let mut pieces = Vec::new();
+
+    for (seg_start, seg_end) in segments {
+        if seg_end <= seg_start {
+            continue;
+        }
+
+        let mut breakpoints = vec![seg_start, seg_end];
+        for effect in &project.edits.speed {
+            if effect.start_time > seg_start && effect.start_time < seg_end {
+                breakpoints.push(effect.start_time);
+            }
+            if effect.end_time > seg_start && effect.end_time < seg_end {
+                breakpoints.push(effect.end_time);
+            }
+        }
+
+        breakpoints.sort_by(|a, b| a.total_cmp(b));
+        breakpoints.dedup_by(|a, b| (*a - *b).abs() < f64::EPSILON);
+
+        for pair in breakpoints.windows(2) {
+            let start = pair[0];
+            let end = pair[1];
+            if end <= start {
+                continue;
+            }
+
+            let speed = project
+                .edits
+                .speed
+                .iter()
+                .find(|effect| start >= effect.start_time && start < effect.end_time)
+                .map(|effect| effect.speed)
+                .unwrap_or(1.0);
+
+            pieces.push(TimelinePiece { start, end, speed });
+        }
+    }
+
+    if pieces.is_empty() {
+        pieces.push(TimelinePiece {
+            start: 0.0,
+            end: project.duration,
+            speed: 1.0,
+        });
+    }
+
+    pieces
+}
+
+fn timeline_is_edited(project: &Project, pieces: &[TimelinePiece]) -> bool {
+    if pieces.len() != 1 {
+        return true;
+    }
+    let piece = &pieces[0];
+    piece.start > 0.001
+        || (piece.end - project.duration).abs() > 0.001
+        || (piece.speed - 1.0).abs() > 0.01
+}
+
+fn build_audio_timeline_filter(
+    input_label: &str,
+    pieces: &[TimelinePiece],
+    prefix: &str,
+) -> (Vec<String>, String) {
+    if pieces.len() == 1 {
+        let piece = &pieces[0];
+        if piece.start <= 0.001 && (piece.speed - 1.0).abs() < 0.01 {
+            return (Vec::new(), input_label.to_string());
+        }
+    }
+
+    let mut filters = Vec::new();
+    let mut labels = Vec::new();
+    for (idx, piece) in pieces.iter().enumerate() {
+        let label = format!("[{}{}]", prefix, idx);
+        let mut filter = format!(
+            "{}atrim=start={:.6}:end={:.6},asetpts=PTS-STARTPTS",
+            input_label, piece.start, piece.end
+        );
+        if let Some(chain) = atempo_chain(piece.speed) {
+            filter.push(',');
+            filter.push_str(&chain);
+        }
+        filter.push_str(&label);
+        filters.push(filter);
+        labels.push(label);
+    }
+
+    if labels.len() == 1 {
+        return (filters, labels[0].clone());
+    }
+
+    let output_label = format!("[{}out]", prefix);
+    filters.push(format!(
+        "{}concat=n={}:v=0:a=1{}",
+        labels.join(""),
+        labels.len(),
+        output_label
+    ));
+
+    (filters, output_label)
+}
+
+fn apply_audio_offset(input_label: &str, offset_ms: i64, prefix: &str) -> (Vec<String>, String) {
+    if offset_ms == 0 {
+        return (Vec::new(), input_label.to_string());
+    }
+
+    let output_label = format!("[{}offset]", prefix);
+    if offset_ms > 0 {
+        (
+            vec![format!(
+                "{}adelay={}|{}{}",
+                input_label, offset_ms, offset_ms, output_label
+            )],
+            output_label,
+        )
+    } else {
+        let trim_start = (offset_ms.unsigned_abs() as f64) / 1000.0;
+        (
+            vec![format!(
+                "{}atrim=start={:.6},asetpts=PTS-STARTPTS{}",
+                input_label, trim_start, output_label
+            )],
+            output_label,
+        )
+    }
+}
+
+fn build_zoom_filter(
+    project: &Project,
+    frame_rate: u32,
+    input_label: &str,
+    output_label: &str,
+) -> Option<String> {
+    if project.edits.zoom.is_empty() {
+        return None;
+    }
+
+    let transition_secs: f64 = 0.15;
+    let mut zoom_expr_parts: Vec<String> = Vec::new();
+    let mut x_offset_parts: Vec<String> = Vec::new();
+    let mut y_offset_parts: Vec<String> = Vec::new();
+
+    for zoom in &project.edits.zoom {
+        let s = zoom.start_time;
+        let e = zoom.end_time;
+        let scale = zoom.scale;
+        let trans = transition_secs.min((e - s) / 2.0);
+
+        let envelope = format!(
+            "if(lt(it,{s}),0,if(lte(it,{s_t}),clip((it-{s})/{t},0,1),if(lt(it,{e_t}),1,if(lte(it,{e}),clip(1-(it-{e_t})/{t},0,1),0))))",
+            s = s,
+            s_t = s + trans,
+            e_t = e - trans,
+            e = e,
+            t = trans
+        );
+
+        zoom_expr_parts.push(format!("(({}-1)*({}))", scale, envelope));
+        x_offset_parts.push(format!("({}*({}))", zoom.x, envelope));
+        y_offset_parts.push(format!("({}*({}))", zoom.y, envelope));
+    }
+
+    let width = project.resolution.width;
+    let height = project.resolution.height;
+    let zoom_factor = format!("(1+{})", zoom_expr_parts.join("+"));
+    let x_offset = if x_offset_parts.iter().all(|x| x.starts_with("(0*")) {
+        "0".to_string()
+    } else {
+        format!("({})", x_offset_parts.join("+"))
+    };
+    let y_offset = if y_offset_parts.iter().all(|y| y.starts_with("(0*")) {
+        "0".to_string()
+    } else {
+        format!("({})", y_offset_parts.join("+"))
+    };
+
+    let pan_x = format!("iw/2-(iw/zoom/2)+{}", x_offset);
+    let pan_y = format!("ih/2-(ih/zoom/2)+{}", y_offset);
+
+    Some(format!(
+        "{}zoompan=fps={}:d=1:s={}x{}:z='{}':x='{}':y='{}'{}",
+        input_label, frame_rate, width, height, zoom_factor, pan_x, pan_y, output_label
+    ))
+}
+
+fn build_camera_overlay_coordinates(project: &Project) -> String {
+    let margin = project.edits.camera_overlay.margin;
+    match project.edits.camera_overlay.position {
+        crate::project::CameraOverlayPosition::TopLeft => format!("{margin}:{margin}"),
+        crate::project::CameraOverlayPosition::TopRight => format!("W-w-{margin}:{margin}"),
+        crate::project::CameraOverlayPosition::BottomLeft => format!("{margin}:H-h-{margin}"),
+        crate::project::CameraOverlayPosition::BottomRight => format!("W-w-{margin}:H-h-{margin}"),
+    }
+}
+
 /// Build ffmpeg arguments for export
 pub fn build_ffmpeg_args(
     project: &Project,
     options: &ExportOptions,
     output_path: &PathBuf,
 ) -> Vec<String> {
-    // Check if camera video exists
-    let camera_path = project.camera_video_path.as_ref().and_then(|p| {
-        let path = std::path::Path::new(p);
-        if path.exists() { Some(p.clone()) } else { None }
-    });
-    
+    let _ = validate_export_inputs(project);
+
+    let camera_path = project.camera_video_path.as_ref().cloned();
+    let microphone_path = project.microphone_audio_path.as_ref().cloned();
+    let screen_has_audio = has_audio_stream(&project.screen_video_path);
+    let timeline_pieces = build_timeline_pieces(project);
+    let timeline_edited = timeline_is_edited(project, &timeline_pieces);
+
     let mut args = Vec::new();
-    
-    let enabled_segments: Vec<_> = project.edits.segments.iter()
-        .filter(|s| s.enabled)
-        .collect();
-    
-    let has_effects = !project.edits.zoom.is_empty() || !project.edits.speed.is_empty();
-    
-    let use_input_seeking = camera_path.is_none() 
-        && enabled_segments.len() == 1 
-        && (enabled_segments[0].start_time > 0.0 || enabled_segments[0].end_time < project.duration)
-        && !has_effects;
-    
+
+    let enabled_segments = enabled_segments(project);
+    let only_single_segment = enabled_segments.len() == 1;
+    let use_input_seeking = camera_path.is_none()
+        && microphone_path.is_none()
+        && only_single_segment
+        && (enabled_segments[0].0 > 0.0 || enabled_segments[0].1 < project.duration)
+        && !timeline_edited
+        && project.edits.zoom.is_empty();
+
     if use_input_seeking {
         let seg = &enabled_segments[0];
         args.push("-ss".to_string());
-        args.push(format!("{}", seg.start_time));
+        args.push(format!("{}", seg.0));
         args.push("-to".to_string());
-        args.push(format!("{}", seg.end_time));
+        args.push(format!("{}", seg.1));
     }
-    
+
     // Input file - screen recording
     args.push("-i".to_string());
     args.push(project.screen_video_path.clone());
-    
+
     // Input file - camera recording (if exists)
     if let Some(ref cam_path) = camera_path {
         args.push("-i".to_string());
         args.push(cam_path.clone());
     }
-    
+    let mic_index = if let Some(ref mic_path) = microphone_path {
+        args.push("-i".to_string());
+        args.push(mic_path.clone());
+        Some(if camera_path.is_some() { 2 } else { 1 })
+    } else {
+        None
+    };
+
     match options.format {
         ExportFormat::Mp4 => {
-            let mut has_filter_complex = false;
-            
-            if camera_path.is_some() {
-                let overlay_filter = format!(
-                    "[1:v]scale=iw/4:-1[cam];[0:v][cam]overlay=W-w-20:H-h-20"
-                );
-                
-                let edit_filter = build_filter_complex(project, options);
-                let full_filter = if edit_filter.is_empty() {
-                    overlay_filter
-                } else {
-                    format!("{};{}", overlay_filter, edit_filter)
-                };
-                
-                args.push("-filter_complex".to_string());
-                args.push(full_filter);
-                has_filter_complex = true;
-            } else if !use_input_seeking {
-                let filter = build_filter_complex(project, options);
-                if !filter.is_empty() {
-                    let has_multi_segment = enabled_segments.len() > 1;
-                    
-                    let has_speed_concat = {
-                        let active_speed_effects: Vec<_> = project.edits.speed.iter()
-                            .filter(|s| (s.speed - 1.0).abs() > 0.01)
-                            .collect();
-                        
-                        if active_speed_effects.is_empty() {
-                            false
-                        } else {
-                            let mut segment_count = 0;
-                            let mut current_pos = 0.0;
-                            let video_duration = project.duration;
-                            
-                            let mut sorted_effects = active_speed_effects;
-                            sorted_effects.sort_by(|a, b| a.start_time.partial_cmp(&b.start_time).unwrap());
-                            
-                            for effect in &sorted_effects {
-                                if effect.start_time > current_pos {
-                                    segment_count += 1;
-                                }
-                                segment_count += 1;
-                                current_pos = effect.end_time;
-                            }
-                            if current_pos < video_duration {
-                                segment_count += 1;
-                            }
-                            
-                            segment_count > 1
-                        }
-                    };
-                    
-                    let filter_with_scale = format!(
-                        "{};[outv]scale=-2:{}[vout]",
-                        filter,
-                        options.resolution.height()
-                    );
-                    args.push("-filter_complex".to_string());
-                    args.push(filter_with_scale);
-                    
-                    args.push("-map".to_string());
-                    args.push("[vout]".to_string());
-                    
-                    if has_multi_segment || has_speed_concat {
-                        args.push("-an".to_string());
-                    } else {
-                        args.push("-map".to_string());
-                        args.push("0:a?".to_string());
+            let mut filter_parts: Vec<String> = Vec::new();
+            let mut current_video_label = "[0:v]".to_string();
+
+            if !use_input_seeking {
+                let mut video_piece_labels = Vec::new();
+                if timeline_edited {
+                    for (idx, piece) in timeline_pieces.iter().enumerate() {
+                        let label = format!("[vpiece{}]", idx);
+                        filter_parts.push(format!(
+                            "[0:v]trim=start={:.6}:end={:.6},setpts=(PTS-STARTPTS)/{:.6}{}",
+                            piece.start, piece.end, piece.speed, label
+                        ));
+                        video_piece_labels.push(label);
                     }
-                    
-                    has_filter_complex = true;
+
+                    if video_piece_labels.len() == 1 {
+                        current_video_label = video_piece_labels[0].clone();
+                    } else {
+                        let concat_label = "[vconcat]".to_string();
+                        filter_parts.push(format!(
+                            "{}concat=n={}:v=1:a=0{}",
+                            video_piece_labels.join(""),
+                            video_piece_labels.len(),
+                            concat_label
+                        ));
+                        current_video_label = concat_label;
+                    }
+                }
+
+                if let Some(zoom_filter) =
+                    build_zoom_filter(project, options.frame_rate, &current_video_label, "[vzoom]")
+                {
+                    filter_parts.push(zoom_filter);
+                    current_video_label = "[vzoom]".to_string();
                 }
             }
-            
+
+            if camera_path.is_some() {
+                let camera_offset = project.camera_offset_ms.unwrap_or(0);
+                let camera_input = "[1:v]";
+                let camera_label = "[cam]";
+                let camera_scale = project.edits.camera_overlay.scale.max(0.1);
+                let camera_scale_filter = format!("scale=iw*{camera_scale}:ih*{camera_scale}");
+
+                if camera_offset > 0 {
+                    filter_parts.push(format!(
+                        "{}setpts=PTS+{:.6}/TB,{}{}",
+                        camera_input,
+                        camera_offset as f64 / 1000.0,
+                        camera_scale_filter,
+                        camera_label
+                    ));
+                } else if camera_offset < 0 {
+                    filter_parts.push(format!(
+                        "{}trim=start={:.6},setpts=PTS-STARTPTS,{}{}",
+                        camera_input,
+                        camera_offset.unsigned_abs() as f64 / 1000.0,
+                        camera_scale_filter,
+                        camera_label
+                    ));
+                } else {
+                    filter_parts.push(format!(
+                        "{}{}{}",
+                        camera_input, camera_scale_filter, camera_label
+                    ));
+                }
+
+                let overlay_coordinates = build_camera_overlay_coordinates(project);
+                filter_parts.push(format!(
+                    "{}{}overlay={}[vwithcam]",
+                    current_video_label, camera_label, overlay_coordinates
+                ));
+                current_video_label = "[vwithcam]".to_string();
+            }
+
+            let mut audio_labels: Vec<String> = Vec::new();
+            if screen_has_audio {
+                let (audio_filters, audio_label) =
+                    build_audio_timeline_filter("[0:a]", &timeline_pieces, "ascreen");
+                filter_parts.extend(audio_filters);
+                audio_labels.push(audio_label);
+            }
+
+            if let Some(idx) = mic_index {
+                let input_label = format!("[{}:a]", idx);
+                let (offset_filters, offset_label) = apply_audio_offset(
+                    &input_label,
+                    project.microphone_offset_ms.unwrap_or(0),
+                    "amic",
+                );
+                filter_parts.extend(offset_filters);
+                let (mic_filters, mic_label) =
+                    build_audio_timeline_filter(&offset_label, &timeline_pieces, "amicpiece");
+                filter_parts.extend(mic_filters);
+                audio_labels.push(mic_label);
+            }
+
+            let audio_output_label = if audio_labels.is_empty() {
+                None
+            } else if audio_labels.len() == 1 {
+                Some(audio_labels[0].clone())
+            } else {
+                let mixed_label = "[aout]".to_string();
+                filter_parts.push(format!(
+                    "{}amix=inputs={}:duration=longest:dropout_transition=0{}",
+                    audio_labels.join(""),
+                    audio_labels.len(),
+                    mixed_label
+                ));
+                Some(mixed_label)
+            };
+
+            let final_video_label = if filter_parts.is_empty() {
+                None
+            } else {
+                filter_parts.push(format!(
+                    "{}scale=-2:{}[vout]",
+                    current_video_label,
+                    options.resolution.height()
+                ));
+                Some("[vout]".to_string())
+            };
+
             // Video codec
             args.push("-c:v".to_string());
             args.push("libx264".to_string());
-            
+
             // CRF
             args.push("-crf".to_string());
             args.push(options.compression.crf().to_string());
-            
+
             // Preset
             args.push("-preset".to_string());
             args.push(options.compression.preset().to_string());
-            
+
             // Audio codec
             args.push("-c:a".to_string());
             args.push("aac".to_string());
-            
+
             // Audio bitrate
             args.push("-b:a".to_string());
             args.push(format!("{}k", options.compression.audio_bitrate()));
-            
+
             // Frame rate
             args.push("-r".to_string());
             args.push(options.frame_rate.to_string());
-            
-            if !has_filter_complex {
+
+            if let Some(video_map_label) = final_video_label {
+                args.push("-filter_complex".to_string());
+                args.push(filter_parts.join(";"));
+                args.push("-map".to_string());
+                args.push(video_map_label);
+            } else {
                 args.push("-vf".to_string());
                 args.push(format!("scale=-2:{}", options.resolution.height()));
+                args.push("-map".to_string());
+                args.push("0:v".to_string());
             }
-            
+
+            if let Some(audio_label) = audio_output_label {
+                if !filter_parts.is_empty() {
+                    args.push("-map".to_string());
+                    if audio_label == "[0:a]" {
+                        args.push("0:a?".to_string());
+                    } else if audio_label.starts_with('[')
+                        && audio_label.ends_with(":a]")
+                        && audio_label.len() >= 5
+                    {
+                        let stream = audio_label
+                            .trim_start_matches('[')
+                            .trim_end_matches(']');
+                        args.push(stream.to_string());
+                    } else {
+                        args.push(audio_label);
+                    }
+                } else if audio_label == "[0:a]" {
+                    args.push("-map".to_string());
+                    args.push("0:a?".to_string());
+                }
+            } else if !filter_parts.is_empty() {
+                args.push("-an".to_string());
+            } else if screen_has_audio {
+                args.push("-map".to_string());
+                args.push("0:a?".to_string());
+            }
+
             args.push("-pix_fmt".to_string());
             args.push("yuv420p".to_string());
         }
         ExportFormat::Gif => {
             if camera_path.is_some() {
+                let camera_scale = project.edits.camera_overlay.scale.max(0.1);
+                let overlay_coordinates = build_camera_overlay_coordinates(project);
                 args.push("-filter_complex".to_string());
                 args.push(format!(
-                    "[1:v]scale=iw/4:-1[cam];[0:v][cam]overlay=W-w-20:H-h-20,fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+                    "[1:v]scale=iw*{camera_scale}:ih*{camera_scale}[cam];[0:v][cam]overlay={overlay_coordinates},fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
                     options.frame_rate.min(30),
                     options.resolution.height().min(720)
                 ));
             } else {
                 args.push("-vf".to_string());
                 args.push(format!(
-                    "fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+                    "fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
                     options.frame_rate.min(30),
                     options.resolution.height().min(720)
                 ));
             }
         }
     }
-    
+
     args.push("-y".to_string());
     args.push(output_path.to_string_lossy().to_string());
-    
-    args
-}
 
-/// Build ffmpeg filter complex for applying edits
-fn build_filter_complex(project: &Project, options: &ExportOptions) -> String {
-    let edits = &project.edits;
-    let width = project.resolution.width;
-    let height = project.resolution.height;
-    
-    // Handle cuts (segments)
-    let enabled_segments: Vec<_> = edits.segments.iter()
-        .filter(|s| s.enabled)
-        .collect();
-    
-    // Determine the video input label after segment processing
-    let mut current_video_label = "[0:v]".to_string();
-    let mut filters = Vec::new();
-    
-    // Track if we need additional effects after concat
-    let has_post_segment_effects = !edits.zoom.is_empty() || 
-        edits.speed.iter().any(|s| (s.speed - 1.0).abs() > 0.01);
-    
-    if enabled_segments.len() > 1 {
-        let mut segment_filters = Vec::new();
-        for (i, seg) in enabled_segments.iter().enumerate() {
-            segment_filters.push(format!(
-                "[0:v]trim=start={}:end={},setpts=PTS-STARTPTS[v{}]",
-                seg.start_time, seg.end_time, i
-            ));
-        }
-        
-        let concat_output = if has_post_segment_effects { "[concat_out]" } else { "[outv]" };
-        let v_streams: String = (0..enabled_segments.len()).map(|i| format!("[v{}]", i)).collect();
-        segment_filters.push(format!(
-            "{}concat=n={}:v=1:a=0{}",
-            v_streams, enabled_segments.len(), concat_output
-        ));
-        
-        filters.push(segment_filters.join(";"));
-        current_video_label = concat_output.to_string();
-    }
-    
-    if !edits.zoom.is_empty() {
-        let transition_secs: f64 = 0.15;
-        
-        let mut zoom_expr_parts: Vec<String> = Vec::new();
-        let mut x_offset_parts: Vec<String> = Vec::new();
-        let mut y_offset_parts: Vec<String> = Vec::new();
-        
-        for zoom in &edits.zoom {
-            let s = zoom.start_time;
-            let e = zoom.end_time;
-            let scale = zoom.scale;
-            
-            let trans = transition_secs.min((e - s) / 2.0);
-            
-            let envelope = format!(
-                "if(lt(it,{s}),0,if(lte(it,{s_t}),clip((it-{s})/{t},0,1),if(lt(it,{e_t}),1,if(lte(it,{e}),clip(1-(it-{e_t})/{t},0,1),0))))",
-                s = s,
-                s_t = s + trans,
-                e_t = e - trans,
-                e = e,
-                t = trans
-            );
-            
-            zoom_expr_parts.push(format!("(({}-1)*({}))", scale, envelope));
-            x_offset_parts.push(format!("({}*({}))", zoom.x, envelope));
-            y_offset_parts.push(format!("({}*({}))", zoom.y, envelope));
-        }
-        
-        let zoom_factor = format!("(1+{})", zoom_expr_parts.join("+"));
-        
-        let x_offset = if x_offset_parts.iter().all(|x| x.starts_with("(0*")) {
-            "0".to_string()
-        } else {
-            format!("({})", x_offset_parts.join("+"))
-        };
-        let y_offset = if y_offset_parts.iter().all(|y| y.starts_with("(0*")) {
-            "0".to_string()
-        } else {
-            format!("({})", y_offset_parts.join("+"))
-        };
-        
-        let pan_x = format!("iw/2-(iw/zoom/2)+{}", x_offset);
-        let pan_y = format!("ih/2-(ih/zoom/2)+{}", y_offset);
-        
-        let output_label = "[zoomout]";
-        
-        filters.push(format!(
-            "{}zoompan=fps={}:d=1:s={}x{}:z='{}':x='{}':y='{}'{}",
-            current_video_label,
-            options.frame_rate,
-            width,
-            height,
-            zoom_factor,
-            pan_x,
-            pan_y,
-            output_label
-        ));
-        
-        current_video_label = output_label.to_string();
-    }
-    
-    let active_speed_effects: Vec<_> = edits.speed.iter()
-        .filter(|s| (s.speed - 1.0).abs() > 0.01)
-        .collect();
-    
-    if !active_speed_effects.is_empty() {
-        let mut sorted_effects = active_speed_effects.clone();
-        sorted_effects.sort_by(|a, b| a.start_time.partial_cmp(&b.start_time).unwrap());
-        
-        let mut segments: Vec<(f64, f64, f64)> = Vec::new();
-        let mut current_pos = 0.0;
-        let video_duration = project.duration;
-        
-        for effect in sorted_effects {
-            if effect.start_time > current_pos {
-                segments.push((current_pos, effect.start_time, 1.0));
-            }
-            
-            let effect_end = effect.end_time.min(video_duration);
-            if effect_end > effect.start_time {
-                segments.push((effect.start_time, effect_end, effect.speed));
-            }
-            
-            current_pos = effect_end;
-        }
-        
-        if current_pos < video_duration {
-            segments.push((current_pos, video_duration, 1.0));
-        }
-        
-        let segments: Vec<_> = segments.into_iter()
-            .filter(|(start, end, _)| end > start)
-            .collect();
-        
-        if segments.len() == 1 && (segments[0].2 - 1.0).abs() < 0.01 {
-        } else if segments.len() == 1 {
-            let speed_multiplier = 1.0 / segments[0].2;
-            let output_label = "[speedout]";
-            filters.push(format!(
-                "{}setpts={}*PTS{}",
-                current_video_label,
-                speed_multiplier,
-                output_label
-            ));
-            current_video_label = output_label.to_string();
-        } else {
-            let mut segment_labels = Vec::new();
-            let input_label = current_video_label.clone();
-            
-            for (i, (start, end, speed)) in segments.iter().enumerate() {
-                let seg_label = format!("[speedseg{}]", i);
-                let speed_multiplier = 1.0 / speed;
-                
-                filters.push(format!(
-                    "{}trim=start={}:end={},setpts={}*(PTS-STARTPTS){}",
-                    input_label,
-                    start,
-                    end,
-                    speed_multiplier,
-                    seg_label
-                ));
-                segment_labels.push(seg_label);
-            }
-            
-            let concat_inputs: String = segment_labels.iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join("");
-            let output_label = "[speedout]";
-            filters.push(format!(
-                "{}concat=n={}:v=1:a=0{}",
-                concat_inputs,
-                segment_labels.len(),
-                output_label
-            ));
-            current_video_label = output_label.to_string();
-        }
-    }
-    
-    if !filters.is_empty() && current_video_label != "[outv]" {
-        if let Some(last) = filters.last_mut() {
-            *last = last.replace(&current_video_label, "[outv]");
-        }
-    }
-    
-    filters.join(";")
+    args
 }
 
 /// Get default export output path
@@ -455,7 +658,7 @@ pub fn get_export_output_path(
         ExportFormat::Mp4 => "mp4",
         ExportFormat::Gif => "gif",
     };
-    
+
     let filename = format!(
         "{}_{}_{}.{}",
         project.name.replace(' ', "_"),
@@ -463,6 +666,6 @@ pub fn get_export_output_path(
         format!("{:?}", options.resolution).to_lowercase(),
         extension
     );
-    
+
     downloads_dir.join(filename)
 }

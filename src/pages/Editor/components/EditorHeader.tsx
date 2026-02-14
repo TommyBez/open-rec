@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { ArrowLeft, Film, Download, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,12 @@ import {
 interface EditorHeaderProps {
   projectName: string;
   isDirty: boolean;
+  onRename: (name: string) => void;
+  hasCameraTrack: boolean;
+  cameraOverlayPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  onCameraOverlayPositionChange: (
+    position: "top-left" | "top-right" | "bottom-left" | "bottom-right"
+  ) => void;
   onBack: () => void;
   onExport: () => void;
   onOpenVideos: () => void;
@@ -18,10 +24,28 @@ interface EditorHeaderProps {
 export const EditorHeader = memo(function EditorHeader({
   projectName,
   isDirty,
+  onRename,
+  hasCameraTrack,
+  cameraOverlayPosition,
+  onCameraOverlayPositionChange,
   onBack,
   onExport,
   onOpenVideos,
 }: EditorHeaderProps) {
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [draftName, setDraftName] = useState(projectName);
+
+  useEffect(() => {
+    if (!isRenaming) {
+      setDraftName(projectName);
+    }
+  }, [projectName, isRenaming]);
+
+  const commitRename = () => {
+    onRename(draftName);
+    setIsRenaming(false);
+  };
+
   return (
     <header className="relative z-10 flex items-center justify-between border-b border-border/50 bg-card/30 px-4 py-3 backdrop-blur-sm animate-fade-up">
       <div className="flex items-center gap-3">
@@ -40,13 +64,59 @@ export const EditorHeader = memo(function EditorHeader({
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
             <Film className="size-4 text-primary" strokeWidth={1.75} />
           </div>
-          <span className="text-sm font-medium text-foreground/80">{projectName}</span>
+          {isRenaming ? (
+            <input
+              value={draftName}
+              onChange={(event) => setDraftName(event.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  commitRename();
+                }
+                if (event.key === "Escape") {
+                  setDraftName(projectName);
+                  setIsRenaming(false);
+                }
+              }}
+              autoFocus
+              className="w-56 rounded-md border border-border/60 bg-background px-2 py-1 text-sm font-medium text-foreground/90 outline-none focus:border-primary/50"
+            />
+          ) : (
+            <button
+              onClick={() => setIsRenaming(true)}
+              className="text-sm font-medium text-foreground/80 hover:text-foreground"
+              title="Rename project"
+            >
+              {projectName}
+            </button>
+          )}
           {isDirty && (
             <span className="text-xl leading-none text-accent">•</span>
           )}
         </div>
       </div>
       <div className="flex items-center gap-2">
+        {hasCameraTrack && (
+          <select
+            value={cameraOverlayPosition}
+            onChange={(event) =>
+              onCameraOverlayPositionChange(
+                event.target.value as
+                  | "top-left"
+                  | "top-right"
+                  | "bottom-left"
+                  | "bottom-right"
+              )
+            }
+            className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80 outline-none focus:border-primary/50"
+            title="Camera overlay position"
+          >
+            <option value="top-left">Camera: Top Left</option>
+            <option value="top-right">Camera: Top Right</option>
+            <option value="bottom-left">Camera: Bottom Left</option>
+            <option value="bottom-right">Camera: Bottom Right</option>
+          </select>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <button

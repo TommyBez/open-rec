@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ArrowLeft, Video, FolderOpen } from "lucide-react";
 import { BrandLogo } from "../../components/BrandLogo";
@@ -55,7 +56,7 @@ export function VideoSelectionPage() {
     async function resizeWindow() {
       try {
         const window = getCurrentWindow();
-        await window.setSize({ type: "Logical", width: 1200, height: 800 });
+        await window.setSize(new LogicalSize(1200, 800));
         await window.center();
       } catch (error) {
         console.error("Failed to resize window:", error);

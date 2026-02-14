@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { writeFile, BaseDirectory, mkdir } from "@tauri-apps/plugin-fs";
 import { Camera, ChevronDown, VideoOff } from "lucide-react";
 import {
@@ -14,14 +15,25 @@ interface CameraPreviewProps {
   enabled: boolean;
   isRecording: boolean;
   projectId: string | null;
+  recordingStartTimeMs: number | null;
   onCameraReady?: (ready: boolean) => void;
   onRecordingComplete?: (blobUrl: string) => void;
+}
+
+function getVideoMimeType(): string | undefined {
+  const preferred = [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+  ];
+  return preferred.find((mime) => MediaRecorder.isTypeSupported(mime));
 }
 
 export function CameraPreview({
   enabled,
   isRecording,
   projectId,
+  recordingStartTimeMs,
   onCameraReady,
   onRecordingComplete,
 }: CameraPreviewProps) {
@@ -29,6 +41,8 @@ export function CameraPreview({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+  const [isStreamReady, setIsStreamReady] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
@@ -81,15 +95,21 @@ export function CameraPreview({
           videoRef.current.srcObject = stream;
         }
 
+        setIsStreamReady(true);
         onCameraReady?.(true);
       } catch (error) {
         console.error("Failed to start camera:", error);
         setHasPermission(false);
+        setIsStreamReady(false);
         onCameraReady?.(false);
       }
     }
 
     function stopCamera() {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      mediaRecorderRef.current = null;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -97,6 +117,7 @@ export function CameraPreview({
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
+      setIsStreamReady(false);
       onCameraReady?.(false);
     }
 
@@ -113,16 +134,18 @@ export function CameraPreview({
 
   // Handle recording start/stop
   useEffect(() => {
-    if (!enabled || !streamRef.current) return;
+    if (!enabled || !isStreamReady || !streamRef.current || !projectId) return;
 
     if (isRecording && !mediaRecorderRef.current) {
       // Start recording
       chunksRef.current = [];
-
-      const mediaRecorder = new MediaRecorder(streamRef.current, {
-        mimeType: "video/webm;codecs=vp9",
-        videoBitsPerSecond: 2500000, // 2.5 Mbps
-      });
+      const mimeType = getVideoMimeType();
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(streamRef.current, {
+            mimeType,
+            videoBitsPerSecond: 2500000,
+          })
+        : new MediaRecorder(streamRef.current);
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -133,29 +156,40 @@ export function CameraPreview({
       mediaRecorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: "video/webm" });
         const blobUrl = URL.createObjectURL(blob);
+        if (objectUrlRef.current) {
+          URL.revokeObjectURL(objectUrlRef.current);
+        }
+        objectUrlRef.current = blobUrl;
         onRecordingComplete?.(blobUrl);
 
-        // Save to file if we have a project ID
-        if (projectId) {
-          try {
-            // Ensure directory exists
-            await mkdir(`recordings/${projectId}`, {
-              baseDir: BaseDirectory.AppData,
-              recursive: true,
-            }).catch(() => {}); // Ignore if already exists
-            
-            const arrayBuffer = await blob.arrayBuffer();
-            const uint8Array = new Uint8Array(arrayBuffer);
-            await writeFile(`recordings/${projectId}/camera.webm`, uint8Array, {
-              baseDir: BaseDirectory.AppData,
-            });
-          } catch (error) {
-            console.error("Failed to save camera recording:", error);
-          }
+        try {
+          // Ensure directory exists
+          await mkdir(`recordings/${projectId}`, {
+            baseDir: BaseDirectory.AppData,
+            recursive: true,
+          }).catch(() => {});
+          
+          const arrayBuffer = await blob.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          await writeFile(`recordings/${projectId}/camera.webm`, uint8Array, {
+            baseDir: BaseDirectory.AppData,
+          });
+        } catch (error) {
+          console.error("Failed to save camera recording:", error);
         }
 
         chunksRef.current = [];
       };
+
+      if (recordingStartTimeMs) {
+        const offset = Date.now() - recordingStartTimeMs;
+        void invoke("set_recording_media_offsets", {
+          projectId,
+          cameraOffsetMs: offset,
+        }).catch((error) => {
+          console.error("Failed to persist camera offset:", error);
+        });
+      }
 
       mediaRecorder.start(1000); // Collect data every second
       mediaRecorderRef.current = mediaRecorder;
@@ -173,7 +207,16 @@ export function CameraPreview({
         mediaRecorderRef.current = null;
       }
     };
-  }, [isRecording, enabled, projectId, onRecordingComplete]);
+  }, [isRecording, enabled, isStreamReady, projectId, recordingStartTimeMs, onRecordingComplete]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, []);
 
   if (!enabled) {
     return null;

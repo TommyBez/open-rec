@@ -6,6 +6,9 @@ export interface Project {
   createdAt: string;
   screenVideoPath: string;
   cameraVideoPath?: string;
+  microphoneAudioPath?: string;
+  cameraOffsetMs?: number;
+  microphoneOffsetMs?: number;
   duration: number;
   resolution: Resolution;
   edits: EditDecisionList;
@@ -20,6 +23,13 @@ export interface EditDecisionList {
   segments: Segment[];
   zoom: ZoomEffect[];
   speed: SpeedEffect[];
+  cameraOverlay: CameraOverlaySettings;
+}
+
+export interface CameraOverlaySettings {
+  position: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  margin: number;
+  scale: number;
 }
 
 export interface Segment {
@@ -73,4 +83,5 @@ export interface StartRecordingResult {
   projectId: string;
   screenVideoPath: string;
   cameraVideoPath?: string;
+  recordingStartTimeMs: number;
 }

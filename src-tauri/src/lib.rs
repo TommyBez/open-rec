@@ -5,18 +5,153 @@ mod recording;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::ShellExt;
 
-use export::{build_ffmpeg_args, get_export_output_path, ExportOptions};
+use export::{build_ffmpeg_args, get_export_output_path, validate_export_inputs, ExportOptions};
 use project::Project;
 use recording::{
-    check_screen_recording_permission, request_screen_recording_permission,
-    pause_recording as do_pause_recording, resume_recording as do_resume_recording,
-    start_recording as do_start_recording, stop_recording as do_stop_recording,
-    CaptureSource, RecorderState, RecordingOptions, SharedRecorderState, SourceType,
-    StartRecordingResult,
+    check_screen_recording_permission, pause_recording as do_pause_recording,
+    request_screen_recording_permission, resume_recording as do_resume_recording,
+    set_media_offsets as do_set_media_offsets, start_recording as do_start_recording,
+    stop_recording as do_stop_recording, CaptureSource, RecorderState, RecordingOptions,
+    SharedRecorderState, SourceType, StartRecordingResult, StopRecordingResult,
 };
+
+async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), String> {
+    let shell = app.shell();
+    let (mut rx, _child) = shell
+        .sidecar("ffmpeg")
+        .unwrap_or_else(|_| shell.command("ffmpeg"))
+        .args(args)
+        .spawn()
+        .map_err(|e| format!("Failed to spawn ffmpeg: {}", e))?;
+
+    while let Some(event) = rx.recv().await {
+        if let CommandEvent::Terminated(status) = event {
+            if status.code == Some(0) {
+                return Ok(());
+            }
+            return Err(format!(
+                "ffmpeg failed with exit code: {:?}",
+                status.code.unwrap_or(-1)
+            ));
+        }
+    }
+
+    Err("ffmpeg process terminated unexpectedly".to_string())
+}
+
+fn escape_concat_path(path: &PathBuf) -> String {
+    path.to_string_lossy().replace('\'', "'\\''")
+}
+
+async fn concatenate_screen_segments(
+    app: &AppHandle,
+    stop_result: &StopRecordingResult,
+) -> Result<(), String> {
+    if stop_result.screen_segment_paths.len() <= 1 {
+        return Ok(());
+    }
+
+    let project_dir = stop_result
+        .screen_video_path
+        .parent()
+        .ok_or("Invalid screen video path")?;
+    let concat_list_path = project_dir.join("segments_concat.txt");
+    let merged_path = project_dir.join("screen_merged.mp4");
+
+    let concat_manifest = stop_result
+        .screen_segment_paths
+        .iter()
+        .map(|path| format!("file '{}'", escape_concat_path(path)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    tokio::fs::write(&concat_list_path, concat_manifest)
+        .await
+        .map_err(|e| format!("Failed to write concat manifest: {}", e))?;
+
+    let args = vec![
+        "-f".to_string(),
+        "concat".to_string(),
+        "-safe".to_string(),
+        "0".to_string(),
+        "-i".to_string(),
+        concat_list_path.to_string_lossy().to_string(),
+        "-c".to_string(),
+        "copy".to_string(),
+        "-y".to_string(),
+        merged_path.to_string_lossy().to_string(),
+    ];
+
+    run_ffmpeg_command(app, &args).await?;
+
+    if tokio::fs::metadata(&stop_result.screen_video_path)
+        .await
+        .is_ok()
+    {
+        tokio::fs::remove_file(&stop_result.screen_video_path)
+            .await
+            .map_err(|e| format!("Failed to remove old screen recording: {}", e))?;
+    }
+    tokio::fs::rename(&merged_path, &stop_result.screen_video_path)
+        .await
+        .map_err(|e| format!("Failed to finalize merged recording: {}", e))?;
+
+    let _ = tokio::fs::remove_file(&concat_list_path).await;
+    for path in &stop_result.screen_segment_paths {
+        if path != &stop_result.screen_video_path {
+            let _ = tokio::fs::remove_file(path).await;
+        }
+    }
+
+    Ok(())
+}
+
+fn probe_video_dimensions(screen_video_path: &PathBuf) -> Option<(u32, u32)> {
+    let output = std::process::Command::new("ffprobe")
+        .arg("-v")
+        .arg("error")
+        .arg("-select_streams")
+        .arg("v:0")
+        .arg("-show_entries")
+        .arg("stream=width,height")
+        .arg("-of")
+        .arg("csv=s=x:p=0")
+        .arg(screen_video_path.as_os_str())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let dimensions = String::from_utf8_lossy(&output.stdout);
+    let mut parts = dimensions.trim().split('x');
+    let width = parts.next()?.parse().ok()?;
+    let height = parts.next()?.parse().ok()?;
+    Some((width, height))
+}
+
+fn probe_video_duration(screen_video_path: &PathBuf) -> Option<f64> {
+    let output = std::process::Command::new("ffprobe")
+        .arg("-v")
+        .arg("error")
+        .arg("-show_entries")
+        .arg("format=duration")
+        .arg("-of")
+        .arg("default=noprint_wrappers=1:nokey=1")
+        .arg(screen_video_path.as_os_str())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let duration = String::from_utf8_lossy(&output.stdout);
+    duration.trim().parse::<f64>().ok()
+}
 
 /// Check if screen recording permission is granted
 #[tauri::command]
@@ -43,78 +178,95 @@ fn start_screen_recording(
     state: tauri::State<SharedRecorderState>,
     options: RecordingOptions,
 ) -> Result<StartRecordingResult, String> {
+    if !check_screen_recording_permission() {
+        return Err("Screen recording permission is not granted".to_string());
+    }
+
     let result = do_start_recording(&state, options)?;
-    
+
     // Emit event to notify frontend
-    app.emit("recording-started", &result).ok();
-    
+    let _ = app.emit("recording-started", &result);
+
     Ok(result)
 }
 
 /// Stop screen recording
 #[tauri::command]
-fn stop_screen_recording(
+async fn stop_screen_recording(
     app: AppHandle,
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<(), String> {
-    // Get session info before stopping
-    let capture_camera = {
-        let state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-        state_guard.sessions.get(&project_id).map(|s| s.options.capture_camera).unwrap_or(false)
-    };
-    
-    do_stop_recording(&state, &project_id)?;
-    
+    let stop_result = do_stop_recording(&state, &project_id)?;
+
+    let _ = app.emit(
+        "recording-finalizing",
+        serde_json::json!({
+            "projectId": project_id,
+            "status": "merging"
+        }),
+    );
+
+    concatenate_screen_segments(&app, &stop_result).await?;
+
     // Get the recordings directory from state
     let recordings_dir = {
         let state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
         state_guard.recordings_dir.clone()
     };
-    
+
     // Create project.json for the recording
-    // For now, use placeholder duration - in production would read from video file
-    let project_dir = recordings_dir.join(&project_id);
-    let screen_video_path = project_dir.join("screen.mp4");
-    
-    // Determine camera path - use .webm if camera was enabled
-    let camera_video_path = if capture_camera {
-        Some(project_dir.join("camera.webm"))
-    } else {
-        None
-    };
-    
+    let probed_duration =
+        probe_video_duration(&stop_result.screen_video_path).filter(|d| d.is_finite() && *d > 0.0);
+    let duration = probed_duration.unwrap_or(stop_result.duration_seconds.max(0.1));
+    let (width, height) =
+        probe_video_dimensions(&stop_result.screen_video_path).unwrap_or((1920, 1080));
+
     let project = Project::new(
-        project_id.clone(),
-        screen_video_path,
-        camera_video_path,
-        60.0, // placeholder duration
-        1920,
-        1080,
+        stop_result.project_id.clone(),
+        stop_result.screen_video_path.clone(),
+        stop_result.camera_video_path.clone(),
+        stop_result.microphone_audio_path.clone(),
+        duration,
+        width,
+        height,
+        stop_result.camera_offset_ms,
+        stop_result.microphone_offset_ms,
     );
     project::save_project(&recordings_dir, &project)?;
-    
+
     // First, show and prepare the main window BEFORE emitting events
     if let Some(main_window) = app.get_webview_window("main") {
         // Resize window for editor view
-        main_window.set_size(tauri::LogicalSize::new(1200, 800)).ok();
-        main_window.center().ok();
-        main_window.show().ok();
-        main_window.set_focus().ok();
+        let _ = main_window.set_size(tauri::LogicalSize::new(1200, 800));
+        let _ = main_window.center();
+        let _ = main_window.show();
+        let _ = main_window.set_focus();
     }
-    
+
     // Small delay to ensure the window is ready to receive events
     std::thread::sleep(std::time::Duration::from_millis(100));
-    
+
     // Now emit event to notify frontend to navigate to editor
-    app.emit("recording-stopped", &project_id).ok();
-    
+    let _ = app.emit("recording-stopped", &project_id);
+
     // Close recording widget window after main window is ready
     if let Some(widget_window) = app.get_webview_window("recording-widget") {
-        widget_window.close().ok();
+        let _ = widget_window.close();
     }
-    
+
     Ok(())
+}
+
+/// Set media offsets gathered by frontend camera/mic recorders
+#[tauri::command]
+fn set_recording_media_offsets(
+    state: tauri::State<SharedRecorderState>,
+    project_id: String,
+    camera_offset_ms: Option<i64>,
+    microphone_offset_ms: Option<i64>,
+) -> Result<(), String> {
+    do_set_media_offsets(&state, &project_id, camera_offset_ms, microphone_offset_ms)
 }
 
 /// Pause screen recording
@@ -124,8 +276,12 @@ fn pause_recording(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<(), String> {
+    if !check_screen_recording_permission() {
+        return Err("Screen recording permission was revoked".to_string());
+    }
+
     do_pause_recording(&state, &project_id)?;
-    
+
     app.emit(
         "recording-state-changed",
         serde_json::json!({
@@ -133,8 +289,8 @@ fn pause_recording(
             "projectId": project_id
         }),
     )
-    .ok();
-    
+    .map_err(|e| format!("Failed to emit pause event: {}", e))?;
+
     Ok(())
 }
 
@@ -145,8 +301,12 @@ fn resume_recording(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<(), String> {
+    if !check_screen_recording_permission() {
+        return Err("Screen recording permission was revoked".to_string());
+    }
+
     do_resume_recording(&state, &project_id)?;
-    
+
     app.emit(
         "recording-state-changed",
         serde_json::json!({
@@ -154,8 +314,8 @@ fn resume_recording(
             "projectId": project_id
         }),
     )
-    .ok();
-    
+    .map_err(|e| format!("Failed to emit resume event: {}", e))?;
+
     Ok(())
 }
 
@@ -166,7 +326,7 @@ fn open_recording_widget(app: AppHandle) -> Result<(), String> {
     if app.get_webview_window("recording-widget").is_some() {
         return Ok(());
     }
-    
+
     // Create the recording widget window
     let _widget = WebviewWindowBuilder::new(
         &app,
@@ -181,7 +341,7 @@ fn open_recording_widget(app: AppHandle) -> Result<(), String> {
     .skip_taskbar(true)
     .build()
     .map_err(|e| format!("Failed to create widget window: {}", e))?;
-    
+
     Ok(())
 }
 
@@ -200,10 +360,7 @@ fn load_project(
 
 /// Save a project
 #[tauri::command]
-fn save_project(
-    state: tauri::State<SharedRecorderState>,
-    project: Project,
-) -> Result<(), String> {
+fn save_project(state: tauri::State<SharedRecorderState>, project: Project) -> Result<(), String> {
     let recordings_dir = {
         let state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
         state_guard.recordings_dir.clone()
@@ -236,19 +393,21 @@ async fn export_project(
         let project = project::load_project(&recordings_dir, &project_id)?;
         (recordings_dir, project)
     };
-    
+
+    validate_export_inputs(&project)?;
+
     // Get downloads directory
     let downloads_dir = dirs::download_dir().unwrap_or_else(|| PathBuf::from("."));
-    
+
     // Get output path
     let output_path = get_export_output_path(&project, &options, &downloads_dir);
-    
+
     // Build ffmpeg arguments
     let args = build_ffmpeg_args(&project, &options, &output_path);
-    
+
     // Run ffmpeg using the shell plugin
     let shell = app.shell();
-    
+
     // Try to use bundled ffmpeg sidecar, fallback to system ffmpeg
     let (mut rx, _child) = shell
         .sidecar("ffmpeg")
@@ -256,37 +415,43 @@ async fn export_project(
         .args(&args)
         .spawn()
         .map_err(|e| format!("Failed to spawn ffmpeg: {}", e))?;
-    
+
     // Clone output_path for use in async block
     let output_path_for_event = output_path.clone();
     let output_path_str = output_path.to_string_lossy().to_string();
-    
+    let expected_duration = project.duration.max(1.0);
+
     // Process output for progress
     let app_clone = app.clone();
     tokio::spawn(async move {
+        let started = tokio::time::Instant::now();
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stderr(line) => {
                     // Parse ffmpeg progress from stderr
                     let line_str = String::from_utf8_lossy(&line);
-                    if let Some(progress) = parse_ffmpeg_progress(&line_str) {
-                        app_clone.emit("export-progress", progress).ok();
-                    }
+                    let progress = parse_ffmpeg_progress(&line_str).unwrap_or_else(|| {
+                        started
+                            .elapsed()
+                            .as_secs_f64()
+                            .min(expected_duration * 0.98)
+                    });
+                    app_clone.emit("export-progress", progress).ok();
                 }
                 CommandEvent::Terminated(status) => {
                     if status.code == Some(0) {
-                        app_clone.emit("export-complete", &output_path_for_event).ok();
-                    } else {
                         app_clone
-                            .emit("export-error", "Export failed")
+                            .emit("export-complete", &output_path_for_event)
                             .ok();
+                    } else {
+                        app_clone.emit("export-error", "Export failed").ok();
                     }
                 }
                 _ => {}
             }
         }
     });
-    
+
     Ok(output_path_str)
 }
 
@@ -332,6 +497,7 @@ pub fn run() {
             list_capture_sources,
             start_screen_recording,
             stop_screen_recording,
+            set_recording_media_offsets,
             pause_recording,
             resume_recording,
             open_recording_widget,

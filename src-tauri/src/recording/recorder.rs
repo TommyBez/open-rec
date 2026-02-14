@@ -2,12 +2,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 #[cfg(target_os = "macos")]
 use screencapturekit::{
     prelude::*,
-    recording_output::{SCRecordingOutput, SCRecordingOutputConfiguration, SCRecordingOutputCodec, SCRecordingOutputFileType},
+    recording_output::{
+        SCRecordingOutput, SCRecordingOutputCodec, SCRecordingOutputConfiguration,
+        SCRecordingOutputFileType,
+    },
     shareable_content::SCShareableContent,
 };
 
@@ -41,8 +45,16 @@ pub struct RecordingSession {
     pub state: RecordingState,
     pub screen_video_path: PathBuf,
     pub camera_video_path: Option<PathBuf>,
+    pub microphone_audio_path: Option<PathBuf>,
     pub start_time: chrono::DateTime<chrono::Utc>,
+    pub recording_start_time_ms: i64,
     pub segment_index: u32,
+    pub screen_segments: Vec<PathBuf>,
+    pub current_segment_path: PathBuf,
+    pub active_duration_ms: u64,
+    pub last_resume_instant: Option<Instant>,
+    pub camera_offset_ms: Option<i64>,
+    pub microphone_offset_ms: Option<i64>,
     #[cfg(target_os = "macos")]
     pub stream: Option<SCStream>,
     #[cfg(target_os = "macos")]
@@ -75,6 +87,53 @@ pub struct StartRecordingResult {
     pub project_id: String,
     pub screen_video_path: String,
     pub camera_video_path: Option<String>,
+    pub recording_start_time_ms: i64,
+}
+
+/// Result of stopping a recording
+#[derive(Debug, Clone)]
+pub struct StopRecordingResult {
+    pub project_id: String,
+    pub screen_video_path: PathBuf,
+    pub screen_segment_paths: Vec<PathBuf>,
+    pub camera_video_path: Option<PathBuf>,
+    pub microphone_audio_path: Option<PathBuf>,
+    pub duration_seconds: f64,
+    pub camera_offset_ms: Option<i64>,
+    pub microphone_offset_ms: Option<i64>,
+}
+
+fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), String> {
+    let started = Instant::now();
+    let mut last_size = 0;
+    let mut stable_checks = 0;
+
+    while started.elapsed() < timeout {
+        match std::fs::metadata(path) {
+            Ok(metadata) => {
+                let size = metadata.len();
+                if size > 1024 && size == last_size {
+                    stable_checks += 1;
+                    if stable_checks >= 3 {
+                        return Ok(());
+                    }
+                } else {
+                    stable_checks = 0;
+                    last_size = size;
+                }
+            }
+            Err(_) => {
+                stable_checks = 0;
+            }
+        }
+
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    Err(format!(
+        "Timed out waiting for recording file finalization: {}",
+        path.to_string_lossy()
+    ))
 }
 
 /// Start screen recording
@@ -84,30 +143,39 @@ pub fn start_recording(
     options: RecordingOptions,
 ) -> Result<StartRecordingResult, String> {
     let project_id = Uuid::new_v4().to_string();
-    
+
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    
+
     // Create project directory
     let project_dir = state_guard.recordings_dir.join(&project_id);
-    std::fs::create_dir_all(&project_dir).map_err(|e| format!("Failed to create project dir: {}", e))?;
-    
+    std::fs::create_dir_all(&project_dir)
+        .map_err(|e| format!("Failed to create project dir: {}", e))?;
+
     let screen_video_path = project_dir.join("screen.mp4");
     let camera_video_path = if options.capture_camera {
-        Some(project_dir.join("camera.mp4"))
+        Some(project_dir.join("camera.webm"))
     } else {
         None
     };
-    
+    let microphone_audio_path = if options.capture_microphone {
+        Some(project_dir.join("microphone.webm"))
+    } else {
+        None
+    };
+
     // Get shareable content
     let content = SCShareableContent::get()
         .map_err(|e| format!("Failed to get shareable content: {:?}", e))?;
-    
+
     // Create content filter based on source type
     let filter = match options.source_type {
         SourceType::Display => {
-            let display_id: u32 = options.source_id.parse()
+            let display_id: u32 = options
+                .source_id
+                .parse()
                 .map_err(|_| "Invalid display ID")?;
-            let display = content.displays()
+            let display = content
+                .displays()
                 .into_iter()
                 .find(|d| d.display_id() == display_id)
                 .ok_or("Display not found")?;
@@ -117,45 +185,44 @@ pub fn start_recording(
                 .build()
         }
         SourceType::Window => {
-            let window_id: u32 = options.source_id.parse()
-                .map_err(|_| "Invalid window ID")?;
+            let window_id: u32 = options.source_id.parse().map_err(|_| "Invalid window ID")?;
             let windows = content.windows();
             let window = windows
                 .iter()
                 .find(|w| w.window_id() == window_id)
                 .ok_or("Window not found")?;
-            SCContentFilter::create()
-                .with_window(window)
-                .build()
+            SCContentFilter::create().with_window(window).build()
         }
     };
-    
+
     // Configure stream
     let config = SCStreamConfiguration::new()
-        .with_width(1920)
-        .with_height(1080)
         .with_pixel_format(PixelFormat::YCbCr_420v)
         .with_shows_cursor(true)
         .with_captures_audio(options.capture_system_audio)
         .with_sample_rate(48000)
         .with_channel_count(2);
-    
+
     // Configure recording output
     let recording_config = SCRecordingOutputConfiguration::new()
         .with_output_url(&screen_video_path)
         .with_video_codec(SCRecordingOutputCodec::H264)
         .with_output_file_type(SCRecordingOutputFileType::MP4);
-    
-    let recording_output = SCRecordingOutput::new(&recording_config)
-        .ok_or("Failed to create recording output")?;
-    
+
+    let recording_output =
+        SCRecordingOutput::new(&recording_config).ok_or("Failed to create recording output")?;
+
     // Create and start stream
     let stream = SCStream::new(&filter, &config);
-    stream.add_recording_output(&recording_output)
+    stream
+        .add_recording_output(&recording_output)
         .map_err(|e| format!("Failed to add recording output: {:?}", e))?;
-    stream.start_capture()
+    stream
+        .start_capture()
         .map_err(|e| format!("Failed to start capture: {:?}", e))?;
-    
+
+    let recording_start_time_ms = chrono::Utc::now().timestamp_millis();
+
     // Store session
     let session = RecordingSession {
         project_id: project_id.clone(),
@@ -163,18 +230,27 @@ pub fn start_recording(
         state: RecordingState::Recording,
         screen_video_path: screen_video_path.clone(),
         camera_video_path: camera_video_path.clone(),
+        microphone_audio_path: microphone_audio_path.clone(),
         start_time: chrono::Utc::now(),
+        recording_start_time_ms,
         segment_index: 0,
+        screen_segments: vec![screen_video_path.clone()],
+        current_segment_path: screen_video_path.clone(),
+        active_duration_ms: 0,
+        last_resume_instant: Some(Instant::now()),
+        camera_offset_ms: None,
+        microphone_offset_ms: None,
         stream: Some(stream),
         recording_output: Some(recording_output),
     };
-    
+
     state_guard.sessions.insert(project_id.clone(), session);
-    
+
     Ok(StartRecordingResult {
         project_id,
         screen_video_path: screen_video_path.to_string_lossy().to_string(),
         camera_video_path: camera_video_path.map(|p| p.to_string_lossy().to_string()),
+        recording_start_time_ms,
     })
 }
 
@@ -183,127 +259,135 @@ pub fn start_recording(
 pub fn stop_recording(
     state: &SharedRecorderState,
     project_id: &str,
-) -> Result<(), String> {
+) -> Result<StopRecordingResult, String> {
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    
-    let session = state_guard.sessions.get_mut(project_id)
+
+    let mut session = state_guard
+        .sessions
+        .remove(project_id)
         .ok_or("Recording session not found")?;
-    
-    let video_path = session.screen_video_path.clone();
-    
+
+    let current_segment_path = session.current_segment_path.clone();
+
     if let Some(ref stream) = session.stream {
         // First stop the capture to signal we're done
-        stream.stop_capture()
+        stream
+            .stop_capture()
             .map_err(|e| format!("Failed to stop capture: {:?}", e))?;
-        
+
         // Then remove the recording output - this should trigger file finalization
         if let Some(ref recording_output) = session.recording_output {
-            stream.remove_recording_output(recording_output)
+            stream
+                .remove_recording_output(recording_output)
                 .map_err(|e| format!("Failed to remove recording output: {:?}", e))?;
         }
+
+        wait_for_file_ready(&current_segment_path, Duration::from_secs(20))?;
     }
-    
+
+    if let Some(last_resume) = session.last_resume_instant.take() {
+        let elapsed = last_resume.elapsed().as_millis() as u64;
+        session.active_duration_ms = session.active_duration_ms.saturating_add(elapsed);
+    }
+
     session.state = RecordingState::Stopped;
     session.stream = None;
     session.recording_output = None;
-    
-    // Drop the lock before waiting
+
     drop(state_guard);
-    
-    // Wait for the file to be finalized (moov atom written)
-    // This is necessary because SCRecordingOutput writes the moov atom asynchronously
-    for _ in 0..20 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        
-        // Check if file exists and has content
-        if let Ok(metadata) = std::fs::metadata(&video_path) {
-            let size = metadata.len();
-            
-            // Check if file seems complete (has moov atom - file > 1KB and growing stopped)
-            if size > 1024 {
-                // Give it one more moment to ensure moov is written
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                
-                // Verify size didn't change (file is done being written)
-                if let Ok(metadata2) = std::fs::metadata(&video_path) {
-                    if metadata2.len() == size {
-                        return Ok(());
-                    }
-                }
-            }
-        }
-    }
-    
-    Ok(())
+
+    Ok(StopRecordingResult {
+        project_id: session.project_id.clone(),
+        screen_video_path: session.screen_video_path.clone(),
+        screen_segment_paths: session.screen_segments.clone(),
+        camera_video_path: session.camera_video_path.clone(),
+        microphone_audio_path: session.microphone_audio_path.clone(),
+        duration_seconds: session.active_duration_ms as f64 / 1000.0,
+        camera_offset_ms: session.camera_offset_ms,
+        microphone_offset_ms: session.microphone_offset_ms,
+    })
 }
 
 /// Pause recording (creates a new segment)
 #[cfg(target_os = "macos")]
-pub fn pause_recording(
-    state: &SharedRecorderState,
-    project_id: &str,
-) -> Result<(), String> {
+pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), String> {
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    
-    let session = state_guard.sessions.get_mut(project_id)
+
+    let session = state_guard
+        .sessions
+        .get_mut(project_id)
         .ok_or("Recording session not found")?;
-    
+
     if session.state != RecordingState::Recording {
         return Err("Recording is not active".to_string());
     }
-    
+
     // Stop current recording output
     if let Some(ref stream) = session.stream {
         if let Some(ref recording_output) = session.recording_output {
-            stream.remove_recording_output(recording_output)
+            stream
+                .remove_recording_output(recording_output)
                 .map_err(|e| format!("Failed to remove recording output: {:?}", e))?;
         }
-        stream.stop_capture()
+        stream
+            .stop_capture()
             .map_err(|e| format!("Failed to stop capture for pause: {:?}", e))?;
     }
-    
+
+    if let Some(last_resume) = session.last_resume_instant.take() {
+        let elapsed = last_resume.elapsed().as_millis() as u64;
+        session.active_duration_ms = session.active_duration_ms.saturating_add(elapsed);
+    }
+
+    wait_for_file_ready(&session.current_segment_path, Duration::from_secs(20))?;
+
     session.state = RecordingState::Paused;
     session.stream = None;
     session.recording_output = None;
-    
+
     Ok(())
 }
 
 /// Resume recording (starts a new segment)
 #[cfg(target_os = "macos")]
-pub fn resume_recording(
-    state: &SharedRecorderState,
-    project_id: &str,
-) -> Result<(), String> {
+pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), String> {
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    
-    let session = state_guard.sessions.get_mut(project_id)
+
+    let session = state_guard
+        .sessions
+        .get_mut(project_id)
         .ok_or("Recording session not found")?;
-    
+
     if session.state != RecordingState::Paused {
         return Err("Recording is not paused".to_string());
     }
-    
+
     // Increment segment index
     session.segment_index += 1;
-    
+
     // Get the project directory
-    let project_dir = session.screen_video_path.parent()
+    let project_dir = session
+        .screen_video_path
+        .parent()
         .ok_or("Invalid video path")?;
-    
+
     // Create new segment file path
     let segment_path = project_dir.join(format!("screen_part{}.mp4", session.segment_index));
-    
+
     // Get shareable content again
     let content = SCShareableContent::get()
         .map_err(|e| format!("Failed to get shareable content: {:?}", e))?;
-    
+
     // Recreate filter
     let filter = match session.options.source_type {
         SourceType::Display => {
-            let display_id: u32 = session.options.source_id.parse()
+            let display_id: u32 = session
+                .options
+                .source_id
+                .parse()
                 .map_err(|_| "Invalid display ID")?;
-            let display = content.displays()
+            let display = content
+                .displays()
                 .into_iter()
                 .find(|d| d.display_id() == display_id)
                 .ok_or("Display not found")?;
@@ -313,49 +397,77 @@ pub fn resume_recording(
                 .build()
         }
         SourceType::Window => {
-            let window_id: u32 = session.options.source_id.parse()
+            let window_id: u32 = session
+                .options
+                .source_id
+                .parse()
                 .map_err(|_| "Invalid window ID")?;
             let windows = content.windows();
             let window = windows
                 .iter()
                 .find(|w| w.window_id() == window_id)
                 .ok_or("Window not found")?;
-            SCContentFilter::create()
-                .with_window(window)
-                .build()
+            SCContentFilter::create().with_window(window).build()
         }
     };
-    
+
     // Configure stream
     let config = SCStreamConfiguration::new()
-        .with_width(1920)
-        .with_height(1080)
         .with_pixel_format(PixelFormat::YCbCr_420v)
         .with_shows_cursor(true)
         .with_captures_audio(session.options.capture_system_audio)
         .with_sample_rate(48000)
         .with_channel_count(2);
-    
+
     // Configure new recording output
     let recording_config = SCRecordingOutputConfiguration::new()
         .with_output_url(&segment_path)
         .with_video_codec(SCRecordingOutputCodec::H264)
         .with_output_file_type(SCRecordingOutputFileType::MP4);
-    
-    let recording_output = SCRecordingOutput::new(&recording_config)
-        .ok_or("Failed to create recording output")?;
-    
+
+    let recording_output =
+        SCRecordingOutput::new(&recording_config).ok_or("Failed to create recording output")?;
+
     // Create and start new stream
     let stream = SCStream::new(&filter, &config);
-    stream.add_recording_output(&recording_output)
+    stream
+        .add_recording_output(&recording_output)
         .map_err(|e| format!("Failed to add recording output: {:?}", e))?;
-    stream.start_capture()
+    stream
+        .start_capture()
         .map_err(|e| format!("Failed to resume capture: {:?}", e))?;
-    
+
     session.state = RecordingState::Recording;
     session.stream = Some(stream);
     session.recording_output = Some(recording_output);
-    
+    session.current_segment_path = segment_path.clone();
+    session.screen_segments.push(segment_path);
+    session.last_resume_instant = Some(Instant::now());
+
+    Ok(())
+}
+
+/// Update media offsets for camera/microphone recordings
+#[cfg(target_os = "macos")]
+pub fn set_media_offsets(
+    state: &SharedRecorderState,
+    project_id: &str,
+    camera_offset_ms: Option<i64>,
+    microphone_offset_ms: Option<i64>,
+) -> Result<(), String> {
+    let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let session = state_guard
+        .sessions
+        .get_mut(project_id)
+        .ok_or("Recording session not found")?;
+
+    if let Some(offset) = camera_offset_ms {
+        session.camera_offset_ms = Some(offset);
+    }
+    if let Some(offset) = microphone_offset_ms {
+        session.microphone_offset_ms = Some(offset);
+    }
+
     Ok(())
 }
 
@@ -372,22 +484,26 @@ pub fn start_recording(
 pub fn stop_recording(
     _state: &SharedRecorderState,
     _project_id: &str,
-) -> Result<(), String> {
+) -> Result<StopRecordingResult, String> {
     Err("Screen capture is only supported on macOS".to_string())
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn pause_recording(
-    _state: &SharedRecorderState,
-    _project_id: &str,
-) -> Result<(), String> {
+pub fn pause_recording(_state: &SharedRecorderState, _project_id: &str) -> Result<(), String> {
     Err("Screen capture is only supported on macOS".to_string())
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn resume_recording(
+pub fn resume_recording(_state: &SharedRecorderState, _project_id: &str) -> Result<(), String> {
+    Err("Screen capture is only supported on macOS".to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_media_offsets(
     _state: &SharedRecorderState,
     _project_id: &str,
+    _camera_offset_ms: Option<i64>,
+    _microphone_offset_ms: Option<i64>,
 ) -> Result<(), String> {
     Err("Screen capture is only supported on macOS".to_string())
 }

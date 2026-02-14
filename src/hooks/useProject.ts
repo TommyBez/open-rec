@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
+import { CameraOverlaySettings, Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
 
 const MAX_HISTORY_SIZE = 50;
 
@@ -59,6 +59,16 @@ export function useProject(initialProject: Project | null) {
       throw error;
     }
   }, [project]);
+
+  // Rename project
+  const renameProject = useCallback((name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    updateProject((p) => ({
+      ...p,
+      name: trimmed,
+    }));
+  }, [updateProject]);
 
   // Cut: Split a segment at the given time
   const cutAt = useCallback((time: number) => {
@@ -400,11 +410,25 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [project, updateProject]);
 
+  const updateCameraOverlay = useCallback((updates: Partial<CameraOverlaySettings>) => {
+    updateProject((p) => ({
+      ...p,
+      edits: {
+        ...p.edits,
+        cameraOverlay: {
+          ...p.edits.cameraOverlay,
+          ...updates,
+        },
+      },
+    }));
+  }, [updateProject]);
+
   return {
     project,
     setProject,
     isDirty,
     saveProject,
+    renameProject,
     // History
     canUndo,
     undo,
@@ -421,5 +445,6 @@ export function useProject(initialProject: Project | null) {
     updateSpeed,
     deleteSpeed,
     setGlobalSpeed,
+    updateCameraOverlay,
   };
 }

@@ -62,8 +62,9 @@ pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource
     if !check_screen_recording_permission() {
         return Ok(vec![]);
     }
-    
-    let content = SCShareableContent::get().map_err(|e| format!("Failed to get shareable content: {:?}", e))?;
+
+    let content = SCShareableContent::get()
+        .map_err(|e| format!("Failed to get shareable content: {:?}", e))?;
 
     match source_type {
         SourceType::Display => {
