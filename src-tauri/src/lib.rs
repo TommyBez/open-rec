@@ -706,6 +706,14 @@ async fn stop_screen_recording(
             "status": "merging"
         }),
     );
+    emit_with_log(
+        &app,
+        "recording-state-changed",
+        serde_json::json!({
+            "state": "stopping",
+            "projectId": &project_id
+        }),
+    );
 
     concatenate_screen_segments(&app, &stop_result).await?;
 
