@@ -1003,43 +1003,64 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
     }
 
     if path.extension().and_then(|ext| ext.to_str()) == Some("openrec") {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(project_id) = json.get("projectId").and_then(|value| value.as_str()) {
-                    if let Some(normalized) = normalize_opened_project_id(project_id) {
-                        return Some(normalized);
-                    }
-                }
-                if let Some(project_id) = json.get("project_id").and_then(|value| value.as_str()) {
-                    if let Some(normalized) = normalize_opened_project_id(project_id) {
-                        return Some(normalized);
-                    }
-                }
-                if let Some(project_dir) = json.get("projectDir").and_then(|value| value.as_str()) {
-                    let project_dir_path = PathBuf::from(project_dir);
-                    if project_dir_path
-                        .file_name()
-                        .and_then(|value| value.to_str())
-                        == Some("project.json")
+        match std::fs::read_to_string(path) {
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(json) => {
+                    if let Some(project_id) = json.get("projectId").and_then(|value| value.as_str())
                     {
-                        if let Some(parent_name) = project_dir_path
-                            .parent()
-                            .and_then(|parent| parent.file_name())
-                            .and_then(|value| value.to_str())
-                        {
-                            if let Some(normalized) = normalize_opened_project_id(parent_name) {
-                                return Some(normalized);
-                            }
-                        }
-                    } else if let Some(dir_name) = project_dir_path
-                        .file_name()
-                        .and_then(|value| value.to_str())
-                    {
-                        if let Some(normalized) = normalize_opened_project_id(dir_name) {
+                        if let Some(normalized) = normalize_opened_project_id(project_id) {
                             return Some(normalized);
                         }
                     }
+                    if let Some(project_id) =
+                        json.get("project_id").and_then(|value| value.as_str())
+                    {
+                        if let Some(normalized) = normalize_opened_project_id(project_id) {
+                            return Some(normalized);
+                        }
+                    }
+                    if let Some(project_dir) =
+                        json.get("projectDir").and_then(|value| value.as_str())
+                    {
+                        let project_dir_path = PathBuf::from(project_dir);
+                        if project_dir_path
+                            .file_name()
+                            .and_then(|value| value.to_str())
+                            == Some("project.json")
+                        {
+                            if let Some(parent_name) = project_dir_path
+                                .parent()
+                                .and_then(|parent| parent.file_name())
+                                .and_then(|value| value.to_str())
+                            {
+                                if let Some(normalized) = normalize_opened_project_id(parent_name) {
+                                    return Some(normalized);
+                                }
+                            }
+                        } else if let Some(dir_name) = project_dir_path
+                            .file_name()
+                            .and_then(|value| value.to_str())
+                        {
+                            if let Some(normalized) = normalize_opened_project_id(dir_name) {
+                                return Some(normalized);
+                            }
+                        }
+                    }
                 }
+                Err(error) => {
+                    eprintln!(
+                        "Failed to parse .openrec association payload ({}): {}",
+                        path.display(),
+                        error
+                    );
+                }
+            },
+            Err(error) => {
+                eprintln!(
+                    "Failed to read .openrec association payload ({}): {}",
+                    path.display(),
+                    error
+                );
             }
         }
         let stem = path.file_stem()?.to_string_lossy();
