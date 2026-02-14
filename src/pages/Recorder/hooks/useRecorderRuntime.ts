@@ -31,6 +31,7 @@ interface UseRecorderRuntimeOptions {
 }
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
+const DEFAULT_MINIMUM_FREE_BYTES = 5 * 1024 ** 3;
 
 export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRuntimeOptions) {
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
@@ -190,8 +191,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     try {
       const status = await invoke<DiskSpaceStatus>("check_recording_disk_space");
       if (!status.sufficient) {
+        const minimumRequiredBytes = status.minimumRequiredBytes ?? DEFAULT_MINIMUM_FREE_BYTES;
+        const minimumRequiredGb = (minimumRequiredBytes / (1024 ** 3)).toFixed(2);
         setDiskWarning(
-          `Low disk space: ${(status.freeBytes / (1024 ** 3)).toFixed(2)} GB available. Recording requires at least 5 GB free.`
+          `Low disk space: ${(status.freeBytes / (1024 ** 3)).toFixed(2)} GB available. Recording requires at least ${minimumRequiredGb} GB free.`
         );
       } else {
         setDiskWarning(null);
@@ -355,8 +358,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     try {
       const status = await invoke<DiskSpaceStatus>("check_recording_disk_space");
       if (!status.sufficient) {
+        const minimumRequiredBytes = status.minimumRequiredBytes ?? DEFAULT_MINIMUM_FREE_BYTES;
+        const minimumRequiredGb = (minimumRequiredBytes / (1024 ** 3)).toFixed(2);
         setErrorMessage(
-          `Insufficient disk space. ${(status.freeBytes / (1024 ** 3)).toFixed(2)} GB available, 5 GB required.`
+          `Insufficient disk space. ${(status.freeBytes / (1024 ** 3)).toFixed(2)} GB available, ${minimumRequiredGb} GB required.`
         );
         return;
       }

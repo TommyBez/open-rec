@@ -13,6 +13,7 @@ import { withTimeout } from "../../../lib/withTimeout";
 
 const STOP_RECORDING_TIMEOUT_MS = 30_000;
 const PAUSE_RESUME_TIMEOUT_MS = 10_000;
+const DEFAULT_MINIMUM_FREE_BYTES = 5 * 1024 ** 3;
 
 export function useRecordingWidgetRuntime() {
   const {
@@ -205,9 +206,12 @@ export function useRecordingWidgetRuntime() {
       try {
         const diskStatus = await invoke<DiskSpaceStatus>("check_recording_disk_space");
         if (!diskStatus.sufficient && !autoStopForDiskRef.current) {
+          const minimumRequiredBytes =
+            diskStatus.minimumRequiredBytes ?? DEFAULT_MINIMUM_FREE_BYTES;
+          const minimumRequiredGb = (minimumRequiredBytes / (1024 ** 3)).toFixed(2);
           autoStopForDiskRef.current = true;
           setPermissionError(
-            "Recording stopped automatically because free disk space dropped below 5 GB."
+            `Recording stopped automatically because free disk space dropped below ${minimumRequiredGb} GB.`
           );
           const didStop = await stopRecording();
           if (!didStop) {

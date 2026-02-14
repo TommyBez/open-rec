@@ -124,6 +124,6 @@ export type BackendRecordingState = "recording" | "paused" | "stopped";
 
 export interface DiskSpaceStatus {
   freeBytes: number;
-  minimumRequiredBytes?: number;
+  minimumRequiredBytes: number;
   sufficient: boolean;
 }
