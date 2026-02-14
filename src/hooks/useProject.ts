@@ -296,6 +296,22 @@ export function useProject(initialProject: Project | null) {
       if (newEndTime - newStartTime < minDuration) {
         return p; // Would result in too small segment, abort
       }
+
+      const nextZoomState = {
+        ...currentZoom,
+        ...updates,
+        startTime: newStartTime,
+        endTime: newEndTime,
+      };
+      const zoomUnchanged =
+        nextZoomState.startTime === currentZoom.startTime &&
+        nextZoomState.endTime === currentZoom.endTime &&
+        nextZoomState.scale === currentZoom.scale &&
+        nextZoomState.x === currentZoom.x &&
+        nextZoomState.y === currentZoom.y;
+      if (zoomUnchanged) {
+        return p;
+      }
       
       return {
         ...p,
@@ -432,6 +448,20 @@ export function useProject(initialProject: Project | null) {
       if (newEndTime - newStartTime < minDuration) {
         return p; // Would result in too small segment, abort
       }
+
+      const nextSpeedState = {
+        ...currentSpeed,
+        ...updates,
+        startTime: newStartTime,
+        endTime: newEndTime,
+      };
+      const speedUnchanged =
+        nextSpeedState.startTime === currentSpeed.startTime &&
+        nextSpeedState.endTime === currentSpeed.endTime &&
+        nextSpeedState.speed === currentSpeed.speed;
+      if (speedUnchanged) {
+        return p;
+      }
       
       return {
         ...p,
@@ -464,20 +494,35 @@ export function useProject(initialProject: Project | null) {
   const setGlobalSpeed = useCallback((speed: number) => {
     if (!project) return;
     
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        speed: [
-          {
-            id: generateId(),
-            startTime: 0,
-            endTime: p.duration,
-            speed,
-          },
-        ],
-      },
-    }));
+    updateProject((p) => {
+      const existingGlobalSpeed =
+        p.edits.speed.length === 1
+          ? p.edits.speed[0]
+          : null;
+      if (
+        existingGlobalSpeed &&
+        existingGlobalSpeed.startTime === 0 &&
+        existingGlobalSpeed.endTime === p.duration &&
+        existingGlobalSpeed.speed === speed
+      ) {
+        return p;
+      }
+
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          speed: [
+            {
+              id: generateId(),
+              startTime: 0,
+              endTime: p.duration,
+              speed,
+            },
+          ],
+        },
+      };
+    });
   }, [project, updateProject]);
 
   const addAnnotation = useCallback((
