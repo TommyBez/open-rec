@@ -305,9 +305,15 @@ pub async fn save_project(recordings_dir: &PathBuf, project: &Project) -> Result
     let association_content = serde_json::to_string_pretty(&association_payload).map_err(|e| {
         AppError::Message(format!("Failed to serialize project association: {}", e))
     })?;
-    tokio::fs::write(&association_path, association_content)
-        .await
-        .map_err(|e| AppError::Io(format!("Failed to write project association file: {}", e)))
+    if let Err(error) = tokio::fs::write(&association_path, association_content).await {
+        eprintln!(
+            "Project saved but failed to write association file {}: {}",
+            association_path.display(),
+            error
+        );
+    }
+
+    Ok(())
 }
 
 /// List all projects
@@ -370,14 +376,13 @@ pub async fn delete_project(recordings_dir: &PathBuf, project_id: &str) -> Resul
 
     let association_path =
         recordings_dir.join(format!("{}.{}", project_id, PROJECT_ASSOCIATION_EXTENSION));
-    match tokio::fs::remove_file(&association_path).await {
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(AppError::Io(format!(
-                "Failed to delete project association file: {}",
+    if let Err(error) = tokio::fs::remove_file(&association_path).await {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            eprintln!(
+                "Project deleted but failed to remove association file {}: {}",
+                association_path.display(),
                 error
-            )));
+            );
         }
     }
 
