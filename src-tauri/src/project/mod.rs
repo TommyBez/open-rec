@@ -134,56 +134,69 @@ impl Project {
     }
 
     /// Load a project from its JSON file
-    pub fn load(project_dir: &PathBuf) -> Result<Self, AppError> {
+    pub async fn load(project_dir: &PathBuf) -> Result<Self, AppError> {
         let project_file = project_dir.join("project.json");
-        let content = std::fs::read_to_string(&project_file)
+        let content = tokio::fs::read_to_string(&project_file)
+            .await
             .map_err(|e| AppError::Io(format!("Failed to read project file: {}", e)))?;
         serde_json::from_str(&content)
             .map_err(|e| AppError::Message(format!("Failed to parse project file: {}", e)))
     }
 
     /// Save the project to its JSON file
-    pub fn save(&self, project_dir: &PathBuf) -> Result<(), AppError> {
+    pub async fn save(&self, project_dir: &PathBuf) -> Result<(), AppError> {
         let project_file = project_dir.join("project.json");
         let content = serde_json::to_string_pretty(self)
             .map_err(|e| AppError::Message(format!("Failed to serialize project: {}", e)))?;
-        std::fs::write(&project_file, content)
+        tokio::fs::write(&project_file, content)
+            .await
             .map_err(|e| AppError::Io(format!("Failed to write project file: {}", e)))
     }
 }
 
 /// Load project by ID
-pub fn load_project(recordings_dir: &PathBuf, project_id: &str) -> Result<Project, AppError> {
+pub async fn load_project(recordings_dir: &PathBuf, project_id: &str) -> Result<Project, AppError> {
     let project_dir = recordings_dir.join(project_id);
-    if !project_dir.exists() {
+    if tokio::fs::metadata(&project_dir).await.is_err() {
         return Err(AppError::Message("Project not found".to_string()));
     }
-    Project::load(&project_dir)
+    Project::load(&project_dir).await
 }
 
 /// Save project
-pub fn save_project(recordings_dir: &PathBuf, project: &Project) -> Result<(), AppError> {
+pub async fn save_project(recordings_dir: &PathBuf, project: &Project) -> Result<(), AppError> {
     let project_dir = recordings_dir.join(&project.id);
-    std::fs::create_dir_all(&project_dir)
+    tokio::fs::create_dir_all(&project_dir)
+        .await
         .map_err(|e| AppError::Io(format!("Failed to create project directory: {}", e)))?;
-    project.save(&project_dir)
+    project.save(&project_dir).await
 }
 
 /// List all projects
-pub fn list_projects(recordings_dir: &PathBuf) -> Result<Vec<Project>, AppError> {
+pub async fn list_projects(recordings_dir: &PathBuf) -> Result<Vec<Project>, AppError> {
     let mut projects = Vec::new();
 
-    if !recordings_dir.exists() {
+    if tokio::fs::metadata(recordings_dir).await.is_err() {
         return Ok(projects);
     }
 
-    let entries = std::fs::read_dir(recordings_dir)
+    let mut entries = tokio::fs::read_dir(recordings_dir)
+        .await
         .map_err(|e| AppError::Io(format!("Failed to read recordings directory: {}", e)))?;
 
-    for entry in entries.flatten() {
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| AppError::Io(format!("Failed to read recordings directory entry: {}", e)))?
+    {
         let path = entry.path();
-        if path.is_dir() {
-            if let Ok(project) = Project::load(&path) {
+        if entry
+            .file_type()
+            .await
+            .map(|kind| kind.is_dir())
+            .unwrap_or(false)
+        {
+            if let Ok(project) = Project::load(&path).await {
                 projects.push(project);
             }
         }

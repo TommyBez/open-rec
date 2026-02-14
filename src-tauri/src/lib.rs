@@ -247,7 +247,7 @@ async fn stop_screen_recording(
         stop_result.camera_offset_ms,
         stop_result.microphone_offset_ms,
     );
-    project::save_project(&recordings_dir, &project)?;
+    project::save_project(&recordings_dir, &project).await?;
 
     // First, show and prepare the main window BEFORE emitting events
     if let Some(main_window) = app.get_webview_window("main") {
@@ -366,7 +366,7 @@ fn open_recording_widget(app: AppHandle) -> Result<(), AppError> {
 
 /// Load a project by ID
 #[tauri::command]
-fn load_project(
+async fn load_project(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<Project, AppError> {
@@ -376,12 +376,12 @@ fn load_project(
             .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::load_project(&recordings_dir, &project_id)
+    project::load_project(&recordings_dir, &project_id).await
 }
 
 /// Save a project
 #[tauri::command]
-fn save_project(
+async fn save_project(
     state: tauri::State<SharedRecorderState>,
     project: Project,
 ) -> Result<(), AppError> {
@@ -391,19 +391,19 @@ fn save_project(
             .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::save_project(&recordings_dir, &project)
+    project::save_project(&recordings_dir, &project).await
 }
 
 /// List all projects
 #[tauri::command]
-fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<Project>, AppError> {
+async fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<Project>, AppError> {
     let recordings_dir = {
         let state_guard = state
             .lock()
             .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::list_projects(&recordings_dir)
+    project::list_projects(&recordings_dir).await
 }
 
 /// Export a project
@@ -415,15 +415,13 @@ async fn export_project(
     project_id: String,
     options: ExportOptions,
 ) -> Result<String, AppError> {
-    // Load the project
-    let (_recordings_dir, project) = {
+    let recordings_dir = {
         let state_guard = state
             .lock()
             .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
-        let recordings_dir = state_guard.recordings_dir.clone();
-        let project = project::load_project(&recordings_dir, &project_id)?;
-        (recordings_dir, project)
+        state_guard.recordings_dir.clone()
     };
+    let project = project::load_project(&recordings_dir, &project_id).await?;
 
     validate_export_inputs(&project).map_err(AppError::from)?;
 
