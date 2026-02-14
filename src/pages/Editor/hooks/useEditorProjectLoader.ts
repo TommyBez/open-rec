@@ -45,23 +45,15 @@ function normalizeProject(project: Project): Project {
 }
 
 function buildFallbackProject(id: string): Project {
-  const defaultDuration = 274.8;
   return {
     id,
     name: `Recording ${id.slice(0, 8)}`,
     createdAt: new Date().toISOString(),
     screenVideoPath: "",
-    duration: defaultDuration,
-    resolution: { width: 1920, height: 1080 },
+    duration: 0,
+    resolution: { width: 1, height: 1 },
     edits: {
-      segments: [
-        {
-          id: crypto.randomUUID(),
-          startTime: 0,
-          endTime: defaultDuration,
-          enabled: true,
-        },
-      ],
+      segments: [],
       zoom: [],
       speed: [],
       annotations: [] as Annotation[],
