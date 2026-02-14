@@ -55,10 +55,22 @@ struct DiskSpaceStatus {
     sufficient: bool,
 }
 
+fn emit_with_log<S: serde::Serialize>(app: &AppHandle, event: &str, payload: S) {
+    if let Err(error) = app.emit(event, payload) {
+        eprintln!("Failed to emit event '{}': {}", event, error);
+    }
+}
+
+fn log_if_err<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) {
+    if let Err(error) = result {
+        eprintln!("{}: {}", context, error);
+    }
+}
+
 fn show_main_window(app_handle: &AppHandle) {
     if let Some(main_window) = app_handle.get_webview_window("main") {
-        let _ = main_window.show();
-        let _ = main_window.set_focus();
+        log_if_err(main_window.show(), "Failed to show main window");
+        log_if_err(main_window.set_focus(), "Failed to focus main window");
     }
 }
 
@@ -469,10 +481,18 @@ async fn concatenate_screen_segments(
         .await
         .map_err(|e| AppError::Message(format!("Failed to finalize merged recording: {}", e)))?;
 
-    let _ = tokio::fs::remove_file(&concat_list_path).await;
+    if let Err(error) = tokio::fs::remove_file(&concat_list_path).await {
+        eprintln!(
+            "Failed to remove concat manifest {}: {}",
+            concat_list_path.display(),
+            error
+        );
+    }
     for path in &stop_result.screen_segment_paths {
         if path != &stop_result.screen_video_path {
-            let _ = tokio::fs::remove_file(path).await;
+            if let Err(error) = tokio::fs::remove_file(path).await {
+                eprintln!("Failed to remove segment {}: {}", path.display(), error);
+            }
         }
     }
 
@@ -598,8 +618,7 @@ fn start_screen_recording(
 
     let result = do_start_recording(&state, options)?;
 
-    // Emit event to notify frontend
-    let _ = app.emit("recording-started", &result);
+    emit_with_log(&app, "recording-started", &result);
 
     Ok(result)
 }
@@ -613,7 +632,8 @@ async fn stop_screen_recording(
 ) -> Result<(), AppError> {
     let stop_result = do_stop_recording(&state, &project_id)?;
 
-    let _ = app.emit(
+    emit_with_log(
+        &app,
         "recording-finalizing",
         serde_json::json!({
             "projectId": project_id,
@@ -667,21 +687,27 @@ async fn stop_screen_recording(
     // First, show and prepare the main window BEFORE emitting events
     if let Some(main_window) = app.get_webview_window("main") {
         // Resize window for editor view
-        let _ = main_window.set_size(tauri::LogicalSize::new(1200, 800));
-        let _ = main_window.center();
-        let _ = main_window.show();
-        let _ = main_window.set_focus();
+        log_if_err(
+            main_window.set_size(tauri::LogicalSize::new(1200, 800)),
+            "Failed to resize main window for editor",
+        );
+        log_if_err(main_window.center(), "Failed to center main window");
+        log_if_err(main_window.show(), "Failed to show main window");
+        log_if_err(main_window.set_focus(), "Failed to focus main window");
     }
 
     // Small delay to ensure the window is ready to receive events
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     // Now emit event to notify frontend to navigate to editor
-    let _ = app.emit("recording-stopped", &project_id);
+    emit_with_log(&app, "recording-stopped", &project_id);
 
     // Close recording widget window after main window is ready
     if let Some(widget_window) = app.get_webview_window("recording-widget") {
-        let _ = widget_window.close();
+        log_if_err(
+            widget_window.close(),
+            "Failed to close recording widget window",
+        );
     }
 
     Ok(())
@@ -997,7 +1023,8 @@ async fn export_project(
             .map_err(|e| AppError::Lock(format!("Failed to lock export jobs state: {}", e)))?;
         jobs.insert(job_id.clone(), job_pid);
     }
-    let _ = app.emit(
+    emit_with_log(
+        &app,
         "export-started",
         serde_json::json!({ "jobId": job_id, "pid": job_pid }),
     );
@@ -1019,7 +1046,8 @@ async fn export_project(
                             .as_secs_f64()
                             .min(expected_duration * 0.98)
                     });
-                    let _ = app_clone.emit(
+                    emit_with_log(
+                        &app_clone,
                         "export-progress",
                         serde_json::json!({
                             "jobId": &job_id_for_task,
@@ -1038,7 +1066,8 @@ async fn export_project(
                     }
 
                     if status.code == Some(0) {
-                        let _ = app_clone.emit(
+                        emit_with_log(
+                            &app_clone,
                             "export-complete",
                             serde_json::json!({
                                 "jobId": &job_id_for_task,
@@ -1046,7 +1075,8 @@ async fn export_project(
                             }),
                         );
                     } else {
-                        let _ = app_clone.emit(
+                        emit_with_log(
+                            &app_clone,
                             "export-error",
                             serde_json::json!({
                                 "jobId": &job_id_for_task,
@@ -1082,7 +1112,8 @@ fn cancel_export(
     };
     terminate_process_by_pid(pid)?;
 
-    let _ = app.emit(
+    emit_with_log(
+        &app,
         "export-cancelled",
         serde_json::json!({
             "jobId": job_id
@@ -1184,9 +1215,9 @@ pub fn run() {
                         }
 
                         if shortcut == &start_stop_handler {
-                            let _ = app_handle.emit("global-shortcut-start-stop", ());
+                            emit_with_log(app_handle, "global-shortcut-start-stop", ());
                         } else if shortcut == &pause_resume_handler {
-                            let _ = app_handle.emit("global-shortcut-toggle-pause", ());
+                            emit_with_log(app_handle, "global-shortcut-toggle-pause", ());
                         }
                     },
                 )
@@ -1207,31 +1238,31 @@ pub fn run() {
                     }
                     TRAY_MENU_OPEN_RECORDER => {
                         show_main_window(app_handle);
-                        let _ = app_handle.emit("tray-open-recorder", ());
+                        emit_with_log(app_handle, "tray-open-recorder", ());
                     }
                     TRAY_MENU_OPEN_PROJECTS => {
                         show_main_window(app_handle);
-                        let _ = app_handle.emit("tray-open-projects", ());
+                        emit_with_log(app_handle, "tray-open-projects", ());
                     }
                     TRAY_MENU_QUICK_RECORD => {
                         show_main_window(app_handle);
                         let app_handle = app_handle.clone();
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_millis(120)).await;
-                            let _ = app_handle.emit("tray-quick-record", ());
+                            emit_with_log(&app_handle, "tray-quick-record", ());
                         });
                     }
                     TRAY_MENU_START_STOP => {
                         show_main_window(app_handle);
-                        let _ = app_handle.emit("tray-open-recorder", ());
+                        emit_with_log(app_handle, "tray-open-recorder", ());
                         let app_handle = app_handle.clone();
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_millis(120)).await;
-                            let _ = app_handle.emit("global-shortcut-start-stop", ());
+                            emit_with_log(&app_handle, "global-shortcut-start-stop", ());
                         });
                     }
                     TRAY_MENU_PAUSE_RESUME => {
-                        let _ = app_handle.emit("global-shortcut-toggle-pause", ());
+                        emit_with_log(app_handle, "global-shortcut-toggle-pause", ());
                     }
                     TRAY_MENU_QUIT => {
                         app_handle.exit(0);
@@ -1260,7 +1291,7 @@ pub fn run() {
                     {
                         let app_handle = tray.app_handle();
                         show_main_window(app_handle);
-                        let _ = app_handle.emit("tray-open-recorder", ());
+                        emit_with_log(app_handle, "tray-open-recorder", ());
                     }
                 });
 
@@ -1331,10 +1362,14 @@ pub fn run() {
 
                 if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                     if let Some(state) = app_handle.try_state::<SharedRecorderState>() {
-                        let _ = recording::cleanup_active_recordings(&state);
+                        if let Err(error) = recording::cleanup_active_recordings(&state) {
+                            eprintln!("Failed to cleanup active recordings: {}", error);
+                        }
                     }
                     if let Some(export_jobs) = app_handle.try_state::<SharedExportJobs>() {
-                        let _ = cleanup_active_exports(&export_jobs);
+                        if let Err(error) = cleanup_active_exports(&export_jobs) {
+                            eprintln!("Failed to cleanup active exports: {}", error);
+                        }
                     }
                 }
             });
