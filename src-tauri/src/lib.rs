@@ -1554,6 +1554,20 @@ mod tests {
     }
 
     #[test]
+    fn resolves_project_id_from_uppercase_project_json_path() {
+        let root = create_test_dir("path-uppercase-project-json");
+        let project_dir = root.join("project-uppercase-file");
+        std::fs::create_dir_all(&project_dir).expect("failed to create project directory");
+        let project_json_path = project_dir.join("PROJECT.JSON");
+        std::fs::write(&project_json_path, "{}").expect("failed to write project file");
+
+        let resolved = project_id_from_opened_path(&project_json_path);
+        assert_eq!(resolved.as_deref(), Some("project-uppercase-file"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn resolves_project_id_from_openrec_payload() {
         let root = create_test_dir("openrec-payload");
         let association_path = root.join("open-from-payload.openrec");
