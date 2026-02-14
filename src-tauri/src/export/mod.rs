@@ -86,6 +86,16 @@ impl ResolutionPreset {
     }
 }
 
+impl ResolutionPreset {
+    fn label(&self) -> &'static str {
+        match self {
+            ResolutionPreset::P720 => "720p",
+            ResolutionPreset::P1080 => "1080p",
+            ResolutionPreset::P4K => "4k",
+        }
+    }
+}
+
 fn target_video_bitrate_kbps(options: &ExportOptions) -> u32 {
     let base = match options.resolution {
         ResolutionPreset::P720 => 5_000.0,
@@ -813,11 +823,33 @@ pub fn get_export_output_path(
         ExportFormat::Mp3 => "mp3",
     };
 
+    let resolution_label = if matches!(options.format, ExportFormat::Mp3 | ExportFormat::Wav) {
+        "audio".to_string()
+    } else {
+        options.resolution.label().to_string()
+    };
+
+    let sanitized_project_name = project
+        .name
+        .chars()
+        .map(|character| {
+            if matches!(
+                character,
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+            ) {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect::<String>()
+        .replace(' ', "_");
+
     let filename = format!(
         "{}_{}_{}.{}",
-        project.name.replace(' ', "_"),
+        sanitized_project_name,
         chrono::Local::now().format("%Y%m%d_%H%M%S"),
-        format!("{:?}", options.resolution).to_lowercase(),
+        resolution_label,
         extension
     );
 
