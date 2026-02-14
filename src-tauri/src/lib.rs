@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
@@ -23,6 +24,8 @@ use recording::{
 use uuid::Uuid;
 
 type SharedExportJobs = Arc<Mutex<HashMap<String, u32>>>;
+const START_STOP_SHORTCUT: &str = "CmdOrCtrl+Shift+2";
+const PAUSE_RESUME_SHORTCUT: &str = "CmdOrCtrl+Shift+P";
 
 async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), AppError> {
     let shell = app.shell();
@@ -587,6 +590,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // Initialize recorder state with app data directory
             let app_data_dir = app
@@ -597,6 +601,32 @@ pub fn run() {
             app.manage(recorder_state);
             let export_jobs: SharedExportJobs = Arc::new(Mutex::new(HashMap::new()));
             app.manage(export_jobs);
+
+            let start_stop_shortcut: Shortcut = START_STOP_SHORTCUT
+                .parse()
+                .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
+            let pause_resume_shortcut: Shortcut = PAUSE_RESUME_SHORTCUT
+                .parse()
+                .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
+            let start_stop_handler = start_stop_shortcut;
+            let pause_resume_handler = pause_resume_shortcut;
+
+            app.global_shortcut()
+                .on_shortcuts(
+                    [start_stop_shortcut, pause_resume_shortcut],
+                    move |app_handle, shortcut, event| {
+                        if event.state != ShortcutState::Pressed {
+                            return;
+                        }
+
+                        if shortcut == &start_stop_handler {
+                            let _ = app_handle.emit("global-shortcut-start-stop", ());
+                        } else if shortcut == &pause_resume_handler {
+                            let _ = app_handle.emit("global-shortcut-toggle-pause", ());
+                        }
+                    },
+                )
+                .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

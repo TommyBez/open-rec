@@ -197,6 +197,19 @@ export function RecorderPage() {
     };
   }, [navigate, setRecordingState]);
 
+  // Start recording using global shortcut when app is idle
+  useEffect(() => {
+    const unlisten = listen("global-shortcut-start-stop", () => {
+      if (recordingState === "idle" && selectedSource && countdown === null) {
+        void handleStartRecording();
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [recordingState, selectedSource, countdown]);
+
   async function loadSources() {
     setIsLoadingSources(true);
     try {

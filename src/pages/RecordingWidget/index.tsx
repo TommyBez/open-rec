@@ -95,6 +95,25 @@ export function RecordingWidget() {
     return () => clearInterval(intervalId);
   }, [state]);
 
+  // Global shortcuts while recording widget is active
+  useEffect(() => {
+    const unlistenStartStop = listen("global-shortcut-start-stop", () => {
+      if (projectId && (state === "recording" || state === "paused")) {
+        void stopRecording();
+      }
+    });
+    const unlistenTogglePause = listen("global-shortcut-toggle-pause", () => {
+      if (projectId && (state === "recording" || state === "paused")) {
+        void togglePause();
+      }
+    });
+
+    return () => {
+      unlistenStartStop.then((fn) => fn());
+      unlistenTogglePause.then((fn) => fn());
+    };
+  }, [projectId, state]);
+
   async function togglePause() {
     if (state === "stopping") return;
     try {
