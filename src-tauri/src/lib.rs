@@ -140,7 +140,7 @@ async fn concatenate_screen_segments(
     Ok(())
 }
 
-fn probe_video_dimensions(screen_video_path: &PathBuf) -> Option<(u32, u32)> {
+fn probe_video_dimensions(screen_video_path: &PathBuf) -> Result<(u32, u32), AppError> {
     let output = std::process::Command::new("ffprobe")
         .arg("-v")
         .arg("error")
@@ -152,20 +152,33 @@ fn probe_video_dimensions(screen_video_path: &PathBuf) -> Option<(u32, u32)> {
         .arg("csv=s=x:p=0")
         .arg(screen_video_path.as_os_str())
         .output()
-        .ok()?;
+        .map_err(|error| {
+            AppError::Io(format!("Failed to run ffprobe for dimensions: {}", error))
+        })?;
 
     if !output.status.success() {
-        return None;
+        return Err(AppError::Message(format!(
+            "ffprobe failed to extract video dimensions: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
 
     let dimensions = String::from_utf8_lossy(&output.stdout);
     let mut parts = dimensions.trim().split('x');
-    let width = parts.next()?.parse().ok()?;
-    let height = parts.next()?.parse().ok()?;
-    Some((width, height))
+    let width = parts
+        .next()
+        .ok_or_else(|| AppError::Message("ffprobe did not return a video width".to_string()))?
+        .parse()
+        .map_err(|error| AppError::Message(format!("Invalid ffprobe width value: {}", error)))?;
+    let height = parts
+        .next()
+        .ok_or_else(|| AppError::Message("ffprobe did not return a video height".to_string()))?
+        .parse()
+        .map_err(|error| AppError::Message(format!("Invalid ffprobe height value: {}", error)))?;
+    Ok((width, height))
 }
 
-fn probe_video_duration(screen_video_path: &PathBuf) -> Option<f64> {
+fn probe_video_duration(screen_video_path: &PathBuf) -> Result<f64, AppError> {
     let output = std::process::Command::new("ffprobe")
         .arg("-v")
         .arg("error")
@@ -175,14 +188,20 @@ fn probe_video_duration(screen_video_path: &PathBuf) -> Option<f64> {
         .arg("default=noprint_wrappers=1:nokey=1")
         .arg(screen_video_path.as_os_str())
         .output()
-        .ok()?;
+        .map_err(|error| AppError::Io(format!("Failed to run ffprobe for duration: {}", error)))?;
 
     if !output.status.success() {
-        return None;
+        return Err(AppError::Message(format!(
+            "ffprobe failed to extract video duration: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
 
     let duration = String::from_utf8_lossy(&output.stdout);
-    duration.trim().parse::<f64>().ok()
+    duration
+        .trim()
+        .parse::<f64>()
+        .map_err(|error| AppError::Message(format!("Invalid ffprobe duration value: {}", error)))
 }
 
 /// Check if screen recording permission is granted
@@ -260,11 +279,23 @@ async fn stop_screen_recording(
     };
 
     // Create project.json for the recording
-    let probed_duration =
-        probe_video_duration(&stop_result.screen_video_path).filter(|d| d.is_finite() && *d > 0.0);
-    let duration = probed_duration.unwrap_or(stop_result.duration_seconds.max(0.1));
-    let (width, height) = probe_video_dimensions(&stop_result.screen_video_path)
-        .unwrap_or((stop_result.source_width, stop_result.source_height));
+    let duration = match probe_video_duration(&stop_result.screen_video_path) {
+        Ok(value) if value.is_finite() && value > 0.0 => value,
+        Ok(_) => stop_result.duration_seconds.max(0.1),
+        Err(error) => {
+            eprintln!(
+                "Failed to probe recording duration, falling back to session timing: {error}"
+            );
+            stop_result.duration_seconds.max(0.1)
+        }
+    };
+    let (width, height) = match probe_video_dimensions(&stop_result.screen_video_path) {
+        Ok(dimensions) => dimensions,
+        Err(error) => {
+            eprintln!("Failed to probe recording dimensions, falling back to source size: {error}");
+            (stop_result.source_width, stop_result.source_height)
+        }
+    };
 
     let project = Project::new(
         stop_result.project_id.clone(),
@@ -289,7 +320,7 @@ async fn stop_screen_recording(
     }
 
     // Small delay to ensure the window is ready to receive events
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     // Now emit event to notify frontend to navigate to editor
     let _ = app.emit("recording-stopped", &project_id);
@@ -599,9 +630,9 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
             // Parse time format HH:MM:SS.ff
             let parts: Vec<&str> = time_part.split(':').collect();
             if parts.len() == 3 {
-                let hours: f64 = parts[0].parse().unwrap_or(0.0);
-                let minutes: f64 = parts[1].parse().unwrap_or(0.0);
-                let seconds: f64 = parts[2].parse().unwrap_or(0.0);
+                let hours: f64 = parts[0].parse().ok()?;
+                let minutes: f64 = parts[1].parse().ok()?;
+                let seconds: f64 = parts[2].parse().ok()?;
                 return Some(hours * 3600.0 + minutes * 60.0 + seconds);
             }
         }
