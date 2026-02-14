@@ -328,14 +328,27 @@ pub async fn list_projects(recordings_dir: &PathBuf) -> Result<Vec<Project>, App
         .map_err(|e| AppError::Io(format!("Failed to read recordings directory entry: {}", e)))?
     {
         let path = entry.path();
-        if entry
-            .file_type()
-            .await
-            .map(|kind| kind.is_dir())
-            .unwrap_or(false)
-        {
-            if let Ok(project) = Project::load(&path).await {
-                projects.push(project);
+        let entry_is_directory = match entry.file_type().await {
+            Ok(kind) => kind.is_dir(),
+            Err(error) => {
+                eprintln!(
+                    "Failed to resolve recordings entry type for {}: {}",
+                    path.display(),
+                    error
+                );
+                false
+            }
+        };
+        if entry_is_directory {
+            match Project::load(&path).await {
+                Ok(project) => projects.push(project),
+                Err(error) => {
+                    eprintln!(
+                        "Failed to load project from {} while listing: {}",
+                        path.display(),
+                        error
+                    );
+                }
             }
         }
     }
