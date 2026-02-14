@@ -39,7 +39,7 @@ async function waitForExportResult(jobId: string): Promise<{ ok: boolean; messag
       settle({ ok: false, message: "Export timed out" });
     }, 30 * 60 * 1000);
 
-    void Promise.all([
+    void Promise.allSettled([
       listen<{ jobId: string; outputPath: string }>("export-complete", (event) => {
         if (event.payload.jobId !== jobId) return;
         settle({ ok: true, message: event.payload.outputPath });
@@ -53,7 +53,18 @@ async function waitForExportResult(jobId: string): Promise<{ ok: boolean; messag
         settle({ ok: false, message: "Export cancelled" });
       }),
     ])
-      .then((handles) => {
+      .then((listenerResults) => {
+        const handles = listenerResults
+          .filter((result): result is PromiseFulfilledResult<UnlistenFn> => result.status === "fulfilled")
+          .map((result) => result.value);
+        const hasRegistrationError = listenerResults.some(
+          (result) => result.status === "rejected"
+        );
+        if (hasRegistrationError) {
+          handles.forEach((unlisten) => unlisten());
+          settle({ ok: false, message: "Failed to attach export listeners" });
+          return;
+        }
         if (settled) {
           handles.forEach((unlisten) => unlisten());
           return;
@@ -61,7 +72,7 @@ async function waitForExportResult(jobId: string): Promise<{ ok: boolean; messag
         unlisteners.push(...handles);
       })
       .catch((error) => {
-        console.error("Failed to attach batch export listeners:", error);
+        console.error("Failed to attach batch export listeners unexpectedly:", error);
         settle({ ok: false, message: "Failed to attach export listeners" });
       });
   });
