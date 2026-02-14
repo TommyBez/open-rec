@@ -154,6 +154,21 @@ pub struct Annotation {
     pub thickness: u32,
     #[serde(default)]
     pub text: Option<String>,
+    #[serde(default)]
+    pub mode: AnnotationMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AnnotationMode {
+    Outline,
+    Blur,
+}
+
+impl Default for AnnotationMode {
+    fn default() -> Self {
+        Self::Outline
+    }
 }
 
 impl Project {

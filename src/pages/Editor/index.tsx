@@ -54,7 +54,10 @@ function normalizeProject(project: Project): Project {
         systemVolume: audioMix?.systemVolume ?? 1,
         microphoneVolume: audioMix?.microphoneVolume ?? 1,
       },
-      annotations: annotations ?? [],
+      annotations: (annotations ?? []).map((annotation) => ({
+        ...annotation,
+        mode: annotation.mode ?? "outline",
+      })),
     },
   };
 }

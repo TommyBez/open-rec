@@ -455,6 +455,7 @@ export function useProject(initialProject: Project | null) {
             opacity: 0.95,
             thickness: 4,
             text: "",
+            mode: "outline",
           },
         ],
       },

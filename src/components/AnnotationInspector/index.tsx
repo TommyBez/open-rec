@@ -174,6 +174,22 @@ export function AnnotationInspector({
         </label>
 
         <label className="flex flex-col gap-1 text-xs text-foreground/80">
+          Mode
+          <select
+            value={draft.mode ?? "outline"}
+            onChange={(event) => {
+              const next = event.target.value as "outline" | "blur";
+              setDraft((current) => ({ ...current, mode: next }));
+              onCommit({ mode: next });
+            }}
+            className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs outline-none"
+          >
+            <option value="outline">Outline</option>
+            <option value="blur">Blur</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs text-foreground/80">
           Text (optional)
           <input
             type="text"

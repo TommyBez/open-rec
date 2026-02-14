@@ -180,29 +180,34 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
               onPointerDown={isCustomCameraOverlay ? handlePointerDown : undefined}
             />
           )}
-          {activeAnnotations.map((annotation) => (
-            <div
-              key={annotation.id}
-              className="pointer-events-none absolute"
-              style={{
-                left: `${Math.max(0, Math.min(1, annotation.x)) * 100}%`,
-                top: `${Math.max(0, Math.min(1, annotation.y)) * 100}%`,
-                width: `${Math.max(0.02, Math.min(1, annotation.width)) * 100}%`,
-                height: `${Math.max(0.02, Math.min(1, annotation.height)) * 100}%`,
-                borderStyle: "solid",
-                borderColor: annotation.color,
-                borderWidth: `${Math.max(1, annotation.thickness)}px`,
-                opacity: Math.max(0.1, Math.min(1, annotation.opacity)),
-                boxShadow: "0 0 0 1px rgba(0,0,0,0.2)",
-              }}
-            >
-              {annotation.text?.trim() && (
-                <span className="absolute left-1 top-1 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                  {annotation.text}
-                </span>
-              )}
-            </div>
-          ))}
+          {activeAnnotations.map((annotation) => {
+            const mode = annotation.mode ?? "outline";
+            return (
+              <div
+                key={annotation.id}
+                className="pointer-events-none absolute"
+                style={{
+                  left: `${Math.max(0, Math.min(1, annotation.x)) * 100}%`,
+                  top: `${Math.max(0, Math.min(1, annotation.y)) * 100}%`,
+                  width: `${Math.max(0.02, Math.min(1, annotation.width)) * 100}%`,
+                  height: `${Math.max(0.02, Math.min(1, annotation.height)) * 100}%`,
+                  borderStyle: "solid",
+                  borderColor: mode === "blur" ? "rgba(255,255,255,0.85)" : annotation.color,
+                  borderWidth: `${Math.max(1, annotation.thickness)}px`,
+                  opacity: Math.max(0.1, Math.min(1, annotation.opacity)),
+                  boxShadow: "0 0 0 1px rgba(0,0,0,0.2)",
+                  backdropFilter: mode === "blur" ? "blur(8px)" : undefined,
+                  backgroundColor: mode === "blur" ? "rgba(0,0,0,0.15)" : "transparent",
+                }}
+              >
+                {annotation.text?.trim() && (
+                  <span className="absolute left-1 top-1 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                    {annotation.text}
+                  </span>
+                )}
+              </div>
+            );
+          })}
           {/* Effect indicator badges */}
           <div className="absolute right-3 top-3 flex flex-col gap-1.5">
             {activeZoom && (
