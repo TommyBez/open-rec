@@ -335,6 +335,7 @@ const START_RECORDING_TIMEOUT_MS = 15_000;
       setProjectId(null);
       setRecordingStartTimeMs(null);
       setRecordingState("idle");
+      localStorage.removeItem("currentProjectId");
       setErrorMessage(String(error));
     }
   }
