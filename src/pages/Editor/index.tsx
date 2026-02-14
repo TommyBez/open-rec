@@ -274,6 +274,18 @@ export function EditorPage() {
     setProject,
   });
 
+  const createAnnotationAtPlayhead = useCallback(
+    (mode: "outline" | "blur" | "text" | "arrow" = "outline") => {
+      if (!project) return;
+      const startTime = Math.max(0, currentTime);
+      const endTime = Math.min(project.duration, startTime + 3);
+      if (endTime - startTime > 0.1) {
+        addAnnotation(startTime, endTime, mode);
+      }
+    },
+    [addAnnotation, currentTime, project]
+  );
+
   // Load project on mount
   useEffect(() => {
     if (projectId) {
@@ -351,12 +363,17 @@ export function EditorPage() {
 
       if (e.key.toLowerCase() === "a") {
         e.preventDefault();
-        if (!project) return;
-        const startTime = Math.max(0, currentTime);
-        const endTime = Math.min(project.duration, startTime + 3);
-        if (endTime - startTime > 0.1) {
-          addAnnotation(startTime, endTime);
-        }
+        createAnnotationAtPlayhead(e.shiftKey ? "arrow" : "outline");
+      }
+
+      if (e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        createAnnotationAtPlayhead("blur");
+      }
+
+      if (e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        createAnnotationAtPlayhead("text");
       }
 
       if (e.key === "1") {
@@ -408,8 +425,7 @@ export function EditorPage() {
     isPlaying,
     togglePlay,
     skipBackward,
-    project,
-    addAnnotation,
+    createAnnotationAtPlayhead,
     toggleTool,
     selectedZoomId,
     selectedSpeedId,

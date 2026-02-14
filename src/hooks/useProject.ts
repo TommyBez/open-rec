@@ -436,7 +436,11 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [project, updateProject]);
 
-  const addAnnotation = useCallback((startTime: number, endTime: number) => {
+  const addAnnotation = useCallback((
+    startTime: number,
+    endTime: number,
+    mode: "outline" | "blur" | "text" | "arrow" = "outline"
+  ) => {
     updateProject((p) => ({
       ...p,
       edits: {
@@ -455,7 +459,7 @@ export function useProject(initialProject: Project | null) {
             opacity: 0.95,
             thickness: 4,
             text: "",
-            mode: "outline",
+            mode,
           },
         ],
       },
