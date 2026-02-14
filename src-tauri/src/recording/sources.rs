@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::error::AppError;
+
 #[cfg(target_os = "macos")]
 use screencapturekit::shareable_content::SCShareableContent;
 
@@ -57,14 +59,14 @@ pub fn request_screen_recording_permission() -> bool {
 
 /// List available capture sources
 #[cfg(target_os = "macos")]
-pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, String> {
+pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, AppError> {
     // Check permission first - if not granted, return empty list without triggering prompt
     if !check_screen_recording_permission() {
         return Ok(vec![]);
     }
 
     let content = SCShareableContent::get()
-        .map_err(|e| format!("Failed to get shareable content: {:?}", e))?;
+        .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
     match source_type {
         SourceType::Display => {
@@ -109,6 +111,9 @@ pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource
 
 /// Fallback for non-macOS platforms
 #[cfg(not(target_os = "macos"))]
-pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, String> {
-    Err("Screen capture is only supported on macOS".to_string())
+pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, AppError> {
+    let _ = source_type;
+    Err(AppError::Message(
+        "Screen capture is only supported on macOS".to_string(),
+    ))
 }

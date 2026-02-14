@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+use crate::error::AppError;
+
 #[cfg(target_os = "macos")]
 use screencapturekit::{
     prelude::*,
@@ -208,7 +210,7 @@ fn resolve_capture_dimensions(
     content: &SCShareableContent,
     source_type: SourceType,
     source_id: &str,
-) -> Result<(u32, u32), String> {
+) -> Result<(u32, u32), AppError> {
     let (width, height) = match source_type {
         SourceType::Display => {
             let display_id: u32 = source_id.parse().map_err(|_| "Invalid display ID")?;
@@ -234,7 +236,7 @@ fn resolve_capture_dimensions(
     Ok((make_even_dimension(width), make_even_dimension(height)))
 }
 
-fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), String> {
+fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), AppError> {
     let started = Instant::now();
     let mut last_size = 0;
     let mut stable_checks = 0;
@@ -261,10 +263,10 @@ fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), String> 
         std::thread::sleep(Duration::from_millis(200));
     }
 
-    Err(format!(
+    Err(AppError::Message(format!(
         "Timed out waiting for recording file finalization: {}",
         path.to_string_lossy()
-    ))
+    )))
 }
 
 /// Start screen recording
@@ -272,7 +274,7 @@ fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), String> 
 pub fn start_recording(
     state: &SharedRecorderState,
     options: RecordingOptions,
-) -> Result<StartRecordingResult, String> {
+) -> Result<StartRecordingResult, AppError> {
     let project_id = Uuid::new_v4().to_string();
 
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -403,7 +405,7 @@ pub fn start_recording(
 pub fn stop_recording(
     state: &SharedRecorderState,
     project_id: &str,
-) -> Result<StopRecordingResult, String> {
+) -> Result<StopRecordingResult, AppError> {
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
 
     let mut session = state_guard
@@ -456,7 +458,7 @@ pub fn stop_recording(
 
 /// Pause recording (creates a new segment)
 #[cfg(target_os = "macos")]
-pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), String> {
+pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), AppError> {
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
 
     let session = state_guard
@@ -496,7 +498,7 @@ pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<
 
 /// Resume recording (starts a new segment)
 #[cfg(target_os = "macos")]
-pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), String> {
+pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), AppError> {
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
 
     let session = state_guard
@@ -603,7 +605,7 @@ pub fn set_media_offsets(
     project_id: &str,
     camera_offset_ms: Option<i64>,
     microphone_offset_ms: Option<i64>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
     let session = state_guard
         .sessions
@@ -622,7 +624,7 @@ pub fn set_media_offsets(
 
 /// Cleanup all active recording streams (used on app termination)
 #[cfg(target_os = "macos")]
-pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), String> {
+pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), AppError> {
     let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
 
     for session in state_guard.sessions.values_mut() {
@@ -649,26 +651,34 @@ pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), Stri
 pub fn start_recording(
     _state: &SharedRecorderState,
     _options: RecordingOptions,
-) -> Result<StartRecordingResult, String> {
-    Err("Screen capture is only supported on macOS".to_string())
+) -> Result<StartRecordingResult, AppError> {
+    Err(AppError::Message(
+        "Screen capture is only supported on macOS".to_string(),
+    ))
 }
 
 #[cfg(not(target_os = "macos"))]
 pub fn stop_recording(
     _state: &SharedRecorderState,
     _project_id: &str,
-) -> Result<StopRecordingResult, String> {
-    Err("Screen capture is only supported on macOS".to_string())
+) -> Result<StopRecordingResult, AppError> {
+    Err(AppError::Message(
+        "Screen capture is only supported on macOS".to_string(),
+    ))
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn pause_recording(_state: &SharedRecorderState, _project_id: &str) -> Result<(), String> {
-    Err("Screen capture is only supported on macOS".to_string())
+pub fn pause_recording(_state: &SharedRecorderState, _project_id: &str) -> Result<(), AppError> {
+    Err(AppError::Message(
+        "Screen capture is only supported on macOS".to_string(),
+    ))
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn resume_recording(_state: &SharedRecorderState, _project_id: &str) -> Result<(), String> {
-    Err("Screen capture is only supported on macOS".to_string())
+pub fn resume_recording(_state: &SharedRecorderState, _project_id: &str) -> Result<(), AppError> {
+    Err(AppError::Message(
+        "Screen capture is only supported on macOS".to_string(),
+    ))
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -677,11 +687,13 @@ pub fn set_media_offsets(
     _project_id: &str,
     _camera_offset_ms: Option<i64>,
     _microphone_offset_ms: Option<i64>,
-) -> Result<(), String> {
-    Err("Screen capture is only supported on macOS".to_string())
+) -> Result<(), AppError> {
+    Err(AppError::Message(
+        "Screen capture is only supported on macOS".to_string(),
+    ))
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn cleanup_active_recordings(_state: &SharedRecorderState) -> Result<(), String> {
+pub fn cleanup_active_recordings(_state: &SharedRecorderState) -> Result<(), AppError> {
     Ok(())
 }
