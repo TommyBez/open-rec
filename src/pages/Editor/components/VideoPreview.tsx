@@ -1,7 +1,9 @@
-import { memo, forwardRef, CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { memo, forwardRef, CSSProperties, useEffect, useMemo, useRef } from "react";
 import { ZoomIn, Gauge, Film } from "lucide-react";
 import { Annotation, ZoomEffect, SpeedEffect } from "../../../types/project";
 import { useCameraOverlayDrag } from "../hooks/useCameraOverlayDrag";
+import { useAnnotationOverlayDrag } from "../hooks/useAnnotationOverlayDrag";
+import { AnnotationOverlayLayer } from "./AnnotationOverlayLayer";
 
 interface VideoPreviewProps {
   videoSrc: string;
@@ -54,20 +56,6 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
   ) {
     const previewFrameRef = useRef<HTMLDivElement>(null);
     const cameraVideoRef = useRef<HTMLVideoElement>(null);
-    const annotationDragRef = useRef<{
-      annotationId: string;
-      offsetX: number;
-      offsetY: number;
-      width: number;
-      height: number;
-    } | null>(null);
-    const [annotationDragPosition, setAnnotationDragPosition] = useState<{
-      annotationId: string;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    } | null>(null);
     const cameraOffsetSeconds = (cameraOffsetMs ?? 0) / 1000;
     const cameraTime = currentSourceTime - cameraOffsetSeconds;
     const showCamera = Boolean(cameraSrc) && cameraTime >= 0;
@@ -98,6 +86,12 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
         onCameraOverlayCustomPositionChange?.(x, y);
       },
     });
+    const { getAnnotationRenderPosition, handleAnnotationPointerDown } =
+      useAnnotationOverlayDrag({
+        selectedAnnotationId,
+        onAnnotationPositionChange,
+        containerRef: previewFrameRef,
+      });
 
     useEffect(() => {
       const camera = cameraVideoRef.current;
@@ -106,55 +100,6 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
         camera.currentTime = Math.max(0, cameraTime);
       }
     }, [cameraSrc, cameraTime, showCamera]);
-
-    useEffect(() => {
-      if (!annotationDragRef.current) return;
-
-      function handlePointerMove(event: PointerEvent) {
-        const dragState = annotationDragRef.current;
-        if (!dragState) return;
-        const containerRect = previewFrameRef.current?.getBoundingClientRect();
-        if (!containerRect) return;
-        const maxLeft = Math.max(containerRect.width - dragState.width, 0);
-        const maxTop = Math.max(containerRect.height - dragState.height, 0);
-        const rawLeft = event.clientX - containerRect.left - dragState.offsetX;
-        const rawTop = event.clientY - containerRect.top - dragState.offsetY;
-        const clampedLeft = Math.min(Math.max(rawLeft, 0), maxLeft);
-        const clampedTop = Math.min(Math.max(rawTop, 0), maxTop);
-        setAnnotationDragPosition({
-          annotationId: dragState.annotationId,
-          x: containerRect.width > 0 ? clampedLeft / containerRect.width : 0,
-          y: containerRect.height > 0 ? clampedTop / containerRect.height : 0,
-          width: containerRect.width > 0 ? dragState.width / containerRect.width : 0.02,
-          height: containerRect.height > 0 ? dragState.height / containerRect.height : 0.02,
-        });
-      }
-
-      function handlePointerUp() {
-        const pending = annotationDragPosition;
-        annotationDragRef.current = null;
-        setAnnotationDragPosition(null);
-        if (
-          pending &&
-          typeof onAnnotationPositionChange === "function" &&
-          Number.isFinite(pending.x) &&
-          Number.isFinite(pending.y)
-        ) {
-          onAnnotationPositionChange(
-            pending.annotationId,
-            Math.min(Math.max(0, 1 - pending.width), Math.max(0, pending.x)),
-            Math.min(Math.max(0, 1 - pending.height), Math.max(0, pending.y))
-          );
-        }
-      }
-
-      window.addEventListener("pointermove", handlePointerMove);
-      window.addEventListener("pointerup", handlePointerUp, { once: true });
-      return () => {
-        window.removeEventListener("pointermove", handlePointerMove);
-        window.removeEventListener("pointerup", handlePointerUp);
-      };
-    }, [annotationDragPosition, onAnnotationPositionChange]);
 
     useEffect(() => {
       const camera = cameraVideoRef.current;
@@ -250,104 +195,12 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
               onPointerDown={isCustomCameraOverlay ? handlePointerDown : undefined}
             />
           )}
-          {activeAnnotations.map((annotation) => {
-            const mode = annotation.mode ?? "outline";
-            const arrowStroke = Math.max(2, annotation.thickness);
-            const isSelected = selectedAnnotationId === annotation.id;
-            const isDragging = annotationDragPosition?.annotationId === annotation.id;
-            const widthNormalized = Math.max(0.02, Math.min(1, annotation.width));
-            const heightNormalized = Math.max(0.02, Math.min(1, annotation.height));
-            const rawX = isDragging ? annotationDragPosition.x : annotation.x;
-            const rawY = isDragging ? annotationDragPosition.y : annotation.y;
-            const renderX = Math.max(0, Math.min(1 - widthNormalized, rawX));
-            const renderY = Math.max(0, Math.min(1 - heightNormalized, rawY));
-            return (
-              <div
-                key={annotation.id}
-                className={isSelected ? "pointer-events-auto absolute" : "pointer-events-none absolute"}
-                style={{
-                  left: `${Math.max(0, Math.min(1, renderX)) * 100}%`,
-                  top: `${Math.max(0, Math.min(1, renderY)) * 100}%`,
-                  width: `${widthNormalized * 100}%`,
-                  height: `${heightNormalized * 100}%`,
-                  borderStyle: "solid",
-                  borderColor:
-                    mode === "blur"
-                      ? "rgba(255,255,255,0.85)"
-                      : mode === "text"
-                      ? "transparent"
-                      : mode === "arrow"
-                      ? "transparent"
-                      : annotation.color,
-                  borderWidth:
-                    mode === "text" || mode === "arrow"
-                      ? "0px"
-                      : `${Math.max(1, annotation.thickness)}px`,
-                  opacity: Math.max(0.1, Math.min(1, annotation.opacity)),
-                  boxShadow: "0 0 0 1px rgba(0,0,0,0.2)",
-                  backdropFilter: mode === "blur" ? "blur(8px)" : undefined,
-                  backgroundColor:
-                    mode === "blur"
-                      ? "rgba(0,0,0,0.15)"
-                      : mode === "text"
-                      ? "transparent"
-                      : mode === "arrow"
-                      ? "transparent"
-                      : "transparent",
-                  cursor: isSelected ? "grab" : "default",
-                }}
-                onPointerDown={(event) => {
-                  if (!isSelected) return;
-                  const containerRect = previewFrameRef.current?.getBoundingClientRect();
-                  const annotationRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                  if (!containerRect) return;
-                  annotationDragRef.current = {
-                    annotationId: annotation.id,
-                    offsetX: event.clientX - annotationRect.left,
-                    offsetY: event.clientY - annotationRect.top,
-                    width: annotationRect.width,
-                    height: annotationRect.height,
-                  };
-                  setAnnotationDragPosition({
-                    annotationId: annotation.id,
-                    x: renderX,
-                    y: renderY,
-                    width: widthNormalized,
-                    height: heightNormalized,
-                  });
-                  event.preventDefault();
-                }}
-              >
-                {mode === "arrow" && (
-                  <>
-                    <div
-                      className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full"
-                      style={{
-                        width: "78%",
-                        height: `${arrowStroke}px`,
-                        backgroundColor: annotation.color,
-                      }}
-                    />
-                    <div
-                      className="absolute right-0 top-1/2 -translate-y-1/2"
-                      style={{
-                        width: 0,
-                        height: 0,
-                        borderTop: `${arrowStroke * 1.6}px solid transparent`,
-                        borderBottom: `${arrowStroke * 1.6}px solid transparent`,
-                        borderLeft: `${arrowStroke * 2.6}px solid ${annotation.color}`,
-                      }}
-                    />
-                  </>
-                )}
-                {annotation.text?.trim() && (
-                  <span className="absolute left-1 top-1 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                    {annotation.text}
-                  </span>
-                )}
-              </div>
-            );
-          })}
+          <AnnotationOverlayLayer
+            annotations={activeAnnotations}
+            selectedAnnotationId={selectedAnnotationId}
+            getAnnotationRenderPosition={getAnnotationRenderPosition}
+            onAnnotationPointerDown={handleAnnotationPointerDown}
+          />
           {/* Effect indicator badges */}
           <div className="absolute right-3 top-3 flex flex-col gap-1.5">
             {activeZoom && (
