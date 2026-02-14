@@ -1367,7 +1367,15 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_ffmpeg_progress;
+    use super::{parse_ffmpeg_progress, project_id_from_opened_path};
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    fn create_test_dir(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("openrec-{}-{}", name, Uuid::new_v4()));
+        std::fs::create_dir_all(&path).expect("failed to create test directory");
+        path
+    }
 
     #[test]
     fn parses_out_time_us_progress() {
@@ -1399,6 +1407,51 @@ mod tests {
     fn ignores_invalid_progress_tokens() {
         assert_eq!(parse_ffmpeg_progress("out_time_ms=abc"), None);
         assert_eq!(parse_ffmpeg_progress("time=bad-value"), None);
+    }
+
+    #[test]
+    fn resolves_project_id_from_project_directory() {
+        let root = create_test_dir("path-directory");
+        let project_dir = root.join("project-123");
+        std::fs::create_dir_all(&project_dir).expect("failed to create project directory");
+        std::fs::write(project_dir.join("project.json"), "{}")
+            .expect("failed to write project.json");
+
+        let resolved = project_id_from_opened_path(&project_dir);
+        assert_eq!(resolved.as_deref(), Some("project-123"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_project_id_from_openrec_payload() {
+        let root = create_test_dir("openrec-payload");
+        let association_path = root.join("open-from-payload.openrec");
+        std::fs::write(&association_path, r#"{"projectId":"payload-project"}"#)
+            .expect("failed to write association file");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("payload-project"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_project_id_from_openrec_project_dir_fallback() {
+        let root = create_test_dir("openrec-project-dir");
+        let project_dir = root.join("fallback-project");
+        std::fs::create_dir_all(&project_dir).expect("failed to create fallback project directory");
+        let association_path = root.join("fallback-association.openrec");
+        let payload = serde_json::json!({
+            "projectDir": project_dir.to_string_lossy().to_string()
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("fallback-project"));
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }
 
