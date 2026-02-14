@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Pause, Play, Square } from "lucide-react";
@@ -22,6 +23,7 @@ export function RecordingWidget() {
   } = useRecordingStore();
   
   const intervalRef = useRef<number | null>(null);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
 
   // Get project ID from localStorage on mount (fallback for when store is reset)
   useEffect(() => {
@@ -72,6 +74,26 @@ export function RecordingWidget() {
     };
   }, [state, incrementElapsedTime]);
 
+  // Permission monitoring during active recording sessions
+  useEffect(() => {
+    if (state === "idle") return;
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const stillGranted = await invoke<boolean>("check_permission");
+        if (!stillGranted) {
+          setPermissionError(
+            "Screen recording permission was revoked. Stop recording and re-enable permission in System Settings."
+          );
+        }
+      } catch (error) {
+        console.error("Failed to check recording permission:", error);
+      }
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [state]);
+
   async function togglePause() {
     try {
       if (state === "recording") {
@@ -83,6 +105,7 @@ export function RecordingWidget() {
       }
     } catch (error) {
       console.error("Failed to toggle pause:", error);
+      setPermissionError(String(error));
     }
   }
 
@@ -107,6 +130,7 @@ export function RecordingWidget() {
       
       // Reset recording state in store
       resetRecording();
+      setPermissionError(null);
     } catch (error) {
       console.error("[RecordingWidget] Failed to stop recording:", error);
     }
@@ -227,6 +251,11 @@ export function RecordingWidget() {
           </Tooltip>
         </div>
       </div>
+      {permissionError && (
+        <div className="absolute -bottom-11 left-0 right-0 rounded-md border border-destructive/40 bg-background/95 px-2 py-1 text-[10px] text-destructive shadow-lg">
+          {permissionError}
+        </div>
+      )}
     </div>
   );
 }
