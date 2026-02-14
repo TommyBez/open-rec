@@ -7,6 +7,8 @@ interface DiskSpaceStatus {
   sufficient: boolean;
 }
 
+const STOP_RECORDING_TIMEOUT_MS = 30_000;
+
 export function useRecordingWidgetRuntime() {
   const {
     state,
@@ -92,15 +94,27 @@ export function useRecordingWidgetRuntime() {
   async function stopRecording() {
     if (!projectId) return;
     const currentProjectId = projectId;
+    const fallbackState = state === "paused" ? "paused" : "recording";
     try {
       beginRecordingStop();
-      await invoke("stop_screen_recording", { projectId: currentProjectId });
+      await Promise.race([
+        invoke("stop_screen_recording", { projectId: currentProjectId }),
+        new Promise<never>((_, reject) =>
+          window.setTimeout(
+            () => reject(new Error("Stopping recording timed out.")),
+            STOP_RECORDING_TIMEOUT_MS
+          )
+        ),
+      ]);
       localStorage.removeItem("currentProjectId");
       resetRecording();
       setPermissionError(null);
+      return true;
     } catch (error) {
       console.error("[RecordingWidget] Failed to stop recording:", error);
-      setRecordingState("paused");
+      setRecordingState(fallbackState);
+      setPermissionError(String(error));
+      return false;
     }
   }
 
@@ -114,7 +128,10 @@ export function useRecordingWidgetRuntime() {
           setPermissionError(
             "Recording stopped automatically because free disk space dropped below 5 GB."
           );
-          await stopRecording();
+          const didStop = await stopRecording();
+          if (!didStop) {
+            autoStopForDiskRef.current = false;
+          }
         }
       } catch (error) {
         console.error("Failed to check recording disk space:", error);
@@ -126,6 +143,8 @@ export function useRecordingWidgetRuntime() {
   useEffect(() => {
     if (state === "idle") {
       autoStopForDiskRef.current = false;
+      lastAutoSegmentAtRef.current = 0;
+      autoSegmentInFlightRef.current = false;
     }
   }, [state]);
 
