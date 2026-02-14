@@ -90,10 +90,14 @@ pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource
                     let app_name = w
                         .owning_application()
                         .map(|app| app.application_name())
-                        .unwrap_or_default();
-                    let window_title = w.title().unwrap_or_default();
-                    let name = if window_title.is_empty() {
+                        .unwrap_or_else(|| "Unknown App".to_string());
+                    let window_title = w
+                        .title()
+                        .unwrap_or_else(|| format!("Window {}", w.window_id()));
+                    let name = if window_title.trim().is_empty() {
                         app_name.clone()
+                    } else if app_name.trim().is_empty() {
+                        window_title.clone()
                     } else {
                         format!("{} - {}", app_name, window_title)
                     };
