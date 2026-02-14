@@ -328,18 +328,19 @@ fn build_tray_menu<R: tauri::Runtime, M: Manager<R>>(
 }
 
 fn refresh_tray_menu(app: &AppHandle, recordings_dir: &PathBuf) {
-    let Some(tray) = app.tray_by_id("open-rec-tray") else {
-        return;
-    };
-    match build_tray_menu(app, recordings_dir) {
-        Ok(menu) => {
-            if let Err(error) = tray.set_menu(Some(menu)) {
+    if let Some(tray) = app.tray_by_id("open-rec-tray") {
+        match build_tray_menu(app, recordings_dir) {
+            Ok(menu) => {
+                if let Err(error) = tray.set_menu(Some(menu)) {
+                    eprintln!("Failed to refresh tray menu: {}", error);
+                }
+            }
+            Err(error) => {
                 eprintln!("Failed to refresh tray menu: {}", error);
             }
         }
-        Err(error) => {
-            eprintln!("Failed to refresh tray menu: {}", error);
-        }
+    } else {
+        eprintln!("Tray icon not available while attempting to refresh tray menu");
     }
 
     match build_app_menu(app, recordings_dir) {
