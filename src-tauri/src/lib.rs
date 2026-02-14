@@ -174,7 +174,17 @@ fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> 
         }
     };
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                eprintln!(
+                    "Failed to read an entry from recordings directory for tray menu: {}",
+                    error
+                );
+                continue;
+            }
+        };
         let path = entry.path();
         if !path.is_dir() {
             continue;
