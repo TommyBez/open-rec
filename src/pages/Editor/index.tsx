@@ -269,6 +269,15 @@ export function EditorPage() {
     return () => window.removeEventListener("beforeunload", flushSave);
   }, [isDirty, saveProject]);
 
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedZoomId) { deleteZoom(selectedZoomId); selectZoom(null); }
+    else if (selectedSpeedId) { deleteSpeed(selectedSpeedId); selectSpeed(null); }
+    else if (selectedSegmentId && project && project.edits.segments.length > 1) {
+      deleteSegment(selectedSegmentId);
+      selectSegment(null);
+    }
+  }, [selectedZoomId, selectedSpeedId, selectedSegmentId, project, deleteZoom, deleteSpeed, deleteSegment, selectZoom, selectSpeed, selectSegment]);
+
   // Keyboard shortcuts (undo/redo + JKL transport controls)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -309,6 +318,28 @@ export function EditorPage() {
         skipBackward();
       }
 
+      if (e.key === "1") {
+        e.preventDefault();
+        toggleTool("cut");
+      }
+
+      if (e.key === "2") {
+        e.preventDefault();
+        toggleTool("zoom");
+      }
+
+      if (e.key === "3") {
+        e.preventDefault();
+        toggleTool("speed");
+      }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedZoomId || selectedSpeedId || selectedSegmentId) {
+          e.preventDefault();
+          handleDeleteSelected();
+        }
+      }
+
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         const frameStep = (e.shiftKey ? 10 : 1) / 30;
@@ -331,6 +362,11 @@ export function EditorPage() {
     isPlaying,
     togglePlay,
     skipBackward,
+    toggleTool,
+    selectedZoomId,
+    selectedSpeedId,
+    selectedSegmentId,
+    handleDeleteSelected,
     currentTime,
     duration,
     seek,
@@ -381,15 +417,6 @@ export function EditorPage() {
       default: seek(time);
     }
   }, [project, selectedTool, cutAt, addZoom, addSpeed, duration, seek]);
-
-  const handleDeleteSelected = useCallback(() => {
-    if (selectedZoomId) { deleteZoom(selectedZoomId); selectZoom(null); }
-    else if (selectedSpeedId) { deleteSpeed(selectedSpeedId); selectSpeed(null); }
-    else if (selectedSegmentId && project && project.edits.segments.length > 1) {
-      deleteSegment(selectedSegmentId);
-      selectSegment(null);
-    }
-  }, [selectedZoomId, selectedSpeedId, selectedSegmentId, project, deleteZoom, deleteSpeed, deleteSegment, selectZoom, selectSpeed, selectSegment]);
 
   const handleZoomDraftChange = useCallback((draft: { scale: number; x: number; y: number }) => setZoomDraft(draft), [setZoomDraft]);
   const handleSpeedDraftChange = useCallback((draft: { speed: number }) => setSpeedDraft(draft), [setSpeedDraft]);
