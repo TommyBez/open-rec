@@ -9,6 +9,7 @@ interface DiskSpaceStatus {
 }
 
 const STOP_RECORDING_TIMEOUT_MS = 30_000;
+const PAUSE_RESUME_TIMEOUT_MS = 10_000;
 
 export function useRecordingWidgetRuntime() {
   const {
@@ -154,11 +155,20 @@ export function useRecordingWidgetRuntime() {
     autoSegmentInFlightRef.current = true;
     void (async () => {
       try {
-        await invoke("pause_recording", { projectId });
-        await invoke("resume_recording", { projectId });
+        await withTimeout(
+          invoke("pause_recording", { projectId }),
+          PAUSE_RESUME_TIMEOUT_MS,
+          "Pause operation timed out during auto-segmentation."
+        );
+        await withTimeout(
+          invoke("resume_recording", { projectId }),
+          PAUSE_RESUME_TIMEOUT_MS,
+          "Resume operation timed out during auto-segmentation."
+        );
         lastAutoSegmentAtRef.current = elapsedTime;
       } catch (error) {
         console.error("Auto-segmentation failed:", error);
+        setPermissionError(String(error));
       } finally {
         autoSegmentInFlightRef.current = false;
       }
@@ -169,10 +179,18 @@ export function useRecordingWidgetRuntime() {
     if (state === "stopping") return;
     try {
       if (state === "recording") {
-        await invoke("pause_recording", { projectId });
+        await withTimeout(
+          invoke("pause_recording", { projectId }),
+          PAUSE_RESUME_TIMEOUT_MS,
+          "Pausing recording timed out."
+        );
         setRecordingState("paused");
       } else {
-        await invoke("resume_recording", { projectId });
+        await withTimeout(
+          invoke("resume_recording", { projectId }),
+          PAUSE_RESUME_TIMEOUT_MS,
+          "Resuming recording timed out."
+        );
         setRecordingState("recording");
       }
     } catch (error) {
