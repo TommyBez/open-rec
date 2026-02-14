@@ -566,6 +566,22 @@ async fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<P
     project::list_projects(&recordings_dir).await
 }
 
+/// Delete project and all local assets
+#[tauri::command]
+async fn delete_project(
+    state: tauri::State<'_, SharedRecorderState>,
+    project_id: String,
+) -> Result<(), AppError> {
+    let recordings_dir = {
+        let state_guard = state
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+        state_guard.recordings_dir.clone()
+    };
+
+    project::delete_project(&recordings_dir, &project_id).await
+}
+
 /// Export a project
 #[tauri::command]
 async fn export_project(
@@ -803,6 +819,7 @@ pub fn run() {
             load_project,
             save_project,
             list_projects,
+            delete_project,
             export_project,
             cancel_export,
         ])

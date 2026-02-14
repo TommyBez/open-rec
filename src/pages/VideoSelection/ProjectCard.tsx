@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Film, Clock, Calendar, Video, Pencil } from "lucide-react";
+import { Film, Clock, Calendar, Video, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Project } from "../../types/project";
 
@@ -25,6 +25,7 @@ interface ProjectCardProps {
   project: Project;
   onSelect: (project: Project) => void;
   onRename: (projectId: string, name: string) => void;
+  onDelete: (projectId: string) => void;
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (projectId: string) => void;
@@ -35,6 +36,7 @@ export function ProjectCard({
   project,
   onSelect,
   onRename,
+  onDelete,
   selectionMode = false,
   selected = false,
   onToggleSelect,
@@ -148,6 +150,17 @@ export function ProjectCard({
                 title="Rename project"
               >
                 <Pencil className="size-3.5" strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (selectionMode) return;
+                  onDelete(project.id);
+                }}
+                className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                title="Delete project"
+              >
+                <Trash2 className="size-3.5" strokeWidth={1.75} />
               </button>
             </>
           )}

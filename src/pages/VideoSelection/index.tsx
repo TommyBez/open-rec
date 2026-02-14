@@ -138,6 +138,24 @@ export function VideoSelectionPage() {
     }
   }
 
+  async function handleDeleteProject(projectId: string) {
+    const target = projects.find((project) => project.id === projectId);
+    if (!target) return;
+    const confirmed = window.confirm(`Delete "${target.name}" and all its files?`);
+    if (!confirmed) return;
+
+    setProjects((prev) => prev.filter((project) => project.id !== projectId));
+    setSelectedProjectIds((prev) => prev.filter((id) => id !== projectId));
+
+    try {
+      await invoke("delete_project", { projectId });
+    } catch (err) {
+      console.error("Failed to delete project:", err);
+      setError(`Failed to delete project: ${String(err)}`);
+      await loadProjects();
+    }
+  }
+
   function handleBack() {
     if (cameFromEditor && previousProjectId) {
       navigate(`/editor/${previousProjectId}`);
@@ -403,6 +421,7 @@ export function VideoSelectionPage() {
                   project={project}
                   onSelect={handleSelectProject}
                   onRename={handleRenameProject}
+                  onDelete={handleDeleteProject}
                   selectionMode={selectionMode}
                   selected={selectedProjectIds.includes(project.id)}
                   onToggleSelect={toggleProjectSelection}

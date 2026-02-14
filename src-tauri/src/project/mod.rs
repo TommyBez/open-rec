@@ -207,3 +207,15 @@ pub async fn list_projects(recordings_dir: &PathBuf) -> Result<Vec<Project>, App
 
     Ok(projects)
 }
+
+/// Delete project by ID (directory + files)
+pub async fn delete_project(recordings_dir: &PathBuf, project_id: &str) -> Result<(), AppError> {
+    let project_dir = recordings_dir.join(project_id);
+    if tokio::fs::metadata(&project_dir).await.is_err() {
+        return Ok(());
+    }
+
+    tokio::fs::remove_dir_all(&project_dir)
+        .await
+        .map_err(|e| AppError::Io(format!("Failed to delete project directory: {}", e)))
+}
