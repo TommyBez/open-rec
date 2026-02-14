@@ -102,6 +102,29 @@ export function useRecordingWidgetRuntime() {
   }, [setRecordingState, setProjectId]);
 
   useEffect(() => {
+    const unlistenFinalizing = listen<{ projectId: string }>(
+      "recording-finalizing",
+      (event) => {
+        const activeProjectId = projectId ?? getStoredCurrentProjectId();
+        if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
+        setRecordingState("stopping");
+      }
+    );
+    const unlistenStopped = listen<string>("recording-stopped", (stoppedProjectId) => {
+      const activeProjectId = projectId ?? getStoredCurrentProjectId();
+      if (!activeProjectId || stoppedProjectId.payload !== activeProjectId) return;
+      clearStoredCurrentProjectId();
+      resetRecording();
+      setPermissionError(null);
+    });
+
+    return () => {
+      unlistenFinalizing.then((fn) => fn());
+      unlistenStopped.then((fn) => fn());
+    };
+  }, [projectId, resetRecording, setRecordingState]);
+
+  useEffect(() => {
     if (state === "recording") {
       intervalRef.current = window.setInterval(() => {
         incrementElapsedTime();
