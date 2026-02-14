@@ -19,6 +19,7 @@ import { PlaybackControls } from "./components/PlaybackControls";
 import { useEditorKeyboardShortcuts } from "./hooks/useEditorKeyboardShortcuts";
 import { useVideoPlayback } from "./hooks/useVideoPlayback";
 import { useWaveformData } from "./hooks/useWaveformData";
+import { useEditedTimelineMetrics } from "./hooks/useEditedTimelineMetrics";
 
 // Hoisted static JSX elements
 const atmosphericGradient = (
@@ -218,73 +219,8 @@ export function EditorPage() {
   const screenWaveform = useWaveformData(project?.screenVideoPath);
   const microphoneWaveform = useWaveformData(project?.microphoneAudioPath);
 
-  // Segments and duration calculation
-  const { enabledSegments, editedDuration, sourceToEditedTime } = useMemo(() => {
-    if (!project) return { enabledSegments: [], editedDuration: 0, sourceToEditedTime: () => 0 };
-    
-    const sorted = project.edits.segments
-      .filter((s) => s.enabled)
-      .sort((a, b) => a.startTime - b.startTime);
-    
-    const speedEffects = project.edits.speed.filter(
-      (s) => Math.abs(s.speed - 1.0) > 0.01
-    );
-    
-    const getSpeedAt = (time: number): number => {
-      for (const effect of speedEffects) {
-        if (time >= effect.startTime && time < effect.endTime) {
-          return effect.speed;
-        }
-      }
-      return 1.0;
-    };
-    
-    const getAdjustedDuration = (start: number, end: number): number => {
-      if (speedEffects.length === 0) return end - start;
-      
-      const breakpoints = new Set<number>([start, end]);
-      for (const effect of speedEffects) {
-        if (effect.startTime > start && effect.startTime < end) breakpoints.add(effect.startTime);
-        if (effect.endTime > start && effect.endTime < end) breakpoints.add(effect.endTime);
-      }
-      
-      const sortedPoints = Array.from(breakpoints).sort((a, b) => a - b);
-      let totalAdjusted = 0;
-      
-      for (let i = 0; i < sortedPoints.length - 1; i++) {
-        const segStart = sortedPoints[i];
-        const segEnd = sortedPoints[i + 1];
-        totalAdjusted += (segEnd - segStart) / getSpeedAt(segStart);
-      }
-      
-      return totalAdjusted;
-    };
-    
-    let editedOffset = 0;
-    const segmentInfo: Array<{ seg: typeof sorted[0]; clampedStart: number; clampedEnd: number; editedStart: number }> = [];
-    
-    for (const seg of sorted) {
-      const clampedStart = Math.max(0, Math.min(seg.startTime, duration));
-      const clampedEnd = Math.max(0, Math.min(seg.endTime, duration));
-      const segDuration = Math.max(0, clampedEnd - clampedStart);
-      
-      if (segDuration > 0) {
-        segmentInfo.push({ seg, clampedStart, clampedEnd, editedStart: editedOffset });
-        editedOffset += getAdjustedDuration(clampedStart, clampedEnd);
-      }
-    }
-    
-    const sourceToEdited = (sourceTime: number): number => {
-      for (const info of segmentInfo) {
-        if (sourceTime >= info.clampedStart && sourceTime <= info.clampedEnd) {
-          return info.editedStart + (sourceTime - info.clampedStart);
-        }
-      }
-      return editedOffset;
-    };
-    
-    return { enabledSegments: sorted, editedDuration: editedOffset || duration, sourceToEditedTime: sourceToEdited };
-  }, [project, duration]);
+  const { enabledSegments, editedDuration, sourceToEditedTime } =
+    useEditedTimelineMetrics(project, duration);
 
   // Video playback hook
   const { videoRef, seek, togglePlay, skipBackward, skipForward } = useVideoPlayback({
