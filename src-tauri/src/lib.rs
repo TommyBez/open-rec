@@ -990,9 +990,32 @@ fn normalize_opened_project_id(raw: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
+fn has_project_json_file(path: &Path) -> bool {
+    if path.join("project.json").exists() {
+        return true;
+    }
+
+    match std::fs::read_dir(path) {
+        Ok(entries) => entries.flatten().any(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("project.json")
+        }),
+        Err(error) => {
+            eprintln!(
+                "Failed to scan opened directory for project.json ({}): {}",
+                path.display(),
+                error
+            );
+            false
+        }
+    }
+}
+
 fn project_id_from_opened_path(path: &Path) -> Option<String> {
     if path.is_dir() {
-        if !path.join("project.json").exists() {
+        if !has_project_json_file(path) {
             return None;
         }
         let name = path.file_name()?.to_string_lossy();
@@ -1487,6 +1510,20 @@ mod tests {
 
         let resolved = project_id_from_opened_path(&project_dir);
         assert_eq!(resolved.as_deref(), Some("project-123"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_project_id_from_project_directory_with_uppercase_project_file() {
+        let root = create_test_dir("path-directory-uppercase-project-file");
+        let project_dir = root.join("project-uppercase");
+        std::fs::create_dir_all(&project_dir).expect("failed to create project directory");
+        std::fs::write(project_dir.join("PROJECT.JSON"), "{}")
+            .expect("failed to write uppercase project file");
+
+        let resolved = project_id_from_opened_path(&project_dir);
+        assert_eq!(resolved.as_deref(), Some("project-uppercase"));
 
         let _ = std::fs::remove_dir_all(root);
     }
