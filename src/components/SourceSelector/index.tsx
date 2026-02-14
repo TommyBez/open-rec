@@ -1,5 +1,5 @@
 import { Monitor, AppWindow, ChevronDown, Check } from "lucide-react";
-import { CaptureSource } from "../../pages/Recorder";
+import { CaptureSource } from "../../types/project";
 import {
   Select,
   SelectContent,
@@ -40,7 +40,7 @@ export function SourceSelector({
           "studio-panel h-auto w-full rounded-xl border-0 px-3 py-2.5 transition-all duration-200",
           "hover:bg-card/80",
           "focus:ring-1 focus:ring-primary/30",
-          "[&>svg]:hidden" // Hide default chevron
+          "[&>svg]:hidden"
         )}
       >
         <SelectValue placeholder={isLoading ? "Scanning sources..." : "Select a source"}>
@@ -105,12 +105,12 @@ export function SourceSelector({
               className="rounded-lg px-3 py-2.5 transition-colors duration-150 focus:bg-card data-[state=checked]:bg-primary/10"
             >
               <div className="flex items-center gap-3">
-                <div className={cn(
-                  "flex size-8 items-center justify-center rounded-lg transition-colors",
-                  selectedSource?.id === source.id 
-                    ? "bg-primary/15" 
-                    : "bg-muted/50"
-                )}>
+                <div
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-lg transition-colors",
+                    selectedSource?.id === source.id ? "bg-primary/15" : "bg-muted/50"
+                  )}
+                >
                   {source.type === "display" ? (
                     <Monitor 
                       className={cn(

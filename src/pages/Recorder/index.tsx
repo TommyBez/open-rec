@@ -16,7 +16,11 @@ import { StatusIndicator } from "../../components/StatusIndicator";
 import { SourceTypeButton } from "../../components/SourceTypeButton";
 import { RecordButton } from "../../components/RecordButton";
 import { useRecordingStore } from "../../stores";
-import { RecordingOptions as RecordingOptionsType, StartRecordingResult } from "../../types/project";
+import {
+  CaptureSource,
+  RecordingOptions as RecordingOptionsType,
+  StartRecordingResult,
+} from "../../types/project";
 import {
   loadRecordingPreferences,
   saveRecordingPreferences,
@@ -31,13 +35,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-export interface CaptureSource {
-  id: string;
-  name: string;
-  type: "display" | "window";
-  thumbnail?: string;
-}
 
 interface DiskSpaceStatus {
   freeBytes: number;
