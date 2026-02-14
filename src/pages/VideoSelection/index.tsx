@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowLeft, Video, FolderOpen } from "lucide-react";
+import { ArrowLeft, Video, FolderOpen, Loader2 } from "lucide-react";
 import { BrandLogo } from "../../components/BrandLogo";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ExportOptions, Project } from "../../types/project";
 import { ProjectCard } from "./ProjectCard";
+import { useExportStore } from "../../stores";
 
 function EmptyState({ onRecord }: { onRecord: () => void }) {
   return (
@@ -61,6 +62,7 @@ export function VideoSelectionPage() {
     compression: "social",
     resolution: "1080p",
   });
+  const activeExportCount = useExportStore((state) => state.activeExportCount);
 
   // Determine where we came from for the back button
   const cameFromEditor = location.state?.from === "editor";
@@ -307,32 +309,40 @@ export function VideoSelectionPage() {
             <span className="text-sm font-medium text-foreground/80">My Recordings</span>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleGoToRecorder}
-          disabled={isBatchExporting}
-          className="gap-2"
-        >
-          <Video className="size-4" strokeWidth={1.75} />
-          New Recording
-        </Button>
-        <Button
-          variant={selectionMode ? "default" : "outline"}
-          size="sm"
-          disabled={isBatchExporting}
-          onClick={() => {
-            setSelectionMode((active) => {
-              const next = !active;
-              if (!next) {
-                setSelectedProjectIds([]);
-              }
-              return next;
-            });
-          }}
-        >
-          {selectionMode ? "Done Selecting" : "Batch Export"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGoToRecorder}
+            disabled={isBatchExporting}
+            className="gap-2"
+          >
+            <Video className="size-4" strokeWidth={1.75} />
+            New Recording
+          </Button>
+          <Button
+            variant={selectionMode ? "default" : "outline"}
+            size="sm"
+            disabled={isBatchExporting}
+            onClick={() => {
+              setSelectionMode((active) => {
+                const next = !active;
+                if (!next) {
+                  setSelectedProjectIds([]);
+                }
+                return next;
+              });
+            }}
+          >
+            {selectionMode ? "Done Selecting" : "Batch Export"}
+          </Button>
+          {activeExportCount > 0 && (
+            <div className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              {activeExportCount} exporting
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Main content */}
