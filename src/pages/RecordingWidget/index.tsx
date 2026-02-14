@@ -95,6 +95,10 @@ export function RecordingWidget() {
           setPermissionError(
             "Screen recording permission was revoked. Stop recording and re-enable permission in System Settings."
           );
+        } else {
+          setPermissionError((current) =>
+            current?.includes("permission was revoked") ? null : current
+          );
         }
       } catch (error) {
         console.error("Failed to check recording permission:", error);
