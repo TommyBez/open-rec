@@ -980,7 +980,9 @@ fn normalize_opened_project_id(raw: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    if let Some(stripped) = trimmed.strip_suffix(".openrec") {
+    let lowered = trimmed.to_ascii_lowercase();
+    if lowered.ends_with(".openrec") && trimmed.len() > ".openrec".len() {
+        let stripped = &trimmed[..trimmed.len() - ".openrec".len()];
         if !stripped.trim().is_empty() {
             return Some(stripped.to_string());
         }
@@ -997,12 +999,20 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
         return normalize_opened_project_id(&name);
     }
 
-    if path.file_name()?.to_string_lossy() == "project.json" {
+    if path
+        .file_name()?
+        .to_string_lossy()
+        .eq_ignore_ascii_case("project.json")
+    {
         let parent_name = path.parent()?.file_name()?.to_string_lossy();
         return normalize_opened_project_id(&parent_name);
     }
 
-    if path.extension().and_then(|ext| ext.to_str()) == Some("openrec") {
+    if path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("openrec"))
+    {
         match std::fs::read_to_string(path) {
             Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
                 Ok(json) => {
@@ -1453,6 +1463,10 @@ mod tests {
             Some("example-project")
         );
         assert_eq!(
+            normalize_opened_project_id("EXAMPLE-PROJECT.OPENREC").as_deref(),
+            Some("EXAMPLE-PROJECT")
+        );
+        assert_eq!(
             normalize_opened_project_id("already-normalized").as_deref(),
             Some("already-normalized")
         );
@@ -1557,6 +1571,19 @@ mod tests {
 
         let resolved = project_id_from_opened_path(&empty_dir);
         assert_eq!(resolved, None);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_project_id_from_uppercase_openrec_extension() {
+        let root = create_test_dir("openrec-uppercase-extension");
+        let association_path = root.join("UpperCasePayload.OPENREC");
+        std::fs::write(&association_path, r#"{"projectId":"uppercase-project"}"#)
+            .expect("failed to write association file");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("uppercase-project"));
 
         let _ = std::fs::remove_dir_all(root);
     }
