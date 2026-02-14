@@ -329,6 +329,16 @@ export function EditorPage() {
   }, [isDirty, project, saveProject]);
 
   useEffect(() => {
+    if (!project) return;
+    const intervalId = window.setInterval(() => {
+      if (isDirty) {
+        saveProject().catch(console.error);
+      }
+    }, 10000);
+    return () => clearInterval(intervalId);
+  }, [isDirty, project, saveProject]);
+
+  useEffect(() => {
     const flushSave = () => {
       if (isDirty) {
         saveProject().catch(console.error);
