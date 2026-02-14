@@ -1066,10 +1066,13 @@ async fn export_project(
                     );
                 }
                 CommandEvent::Terminated(status) => {
-                    let was_registered = export_jobs_clone
-                        .lock()
-                        .map(|mut jobs| jobs.remove(&job_id_for_task).is_some())
-                        .unwrap_or(false);
+                    let was_registered = match export_jobs_clone.lock() {
+                        Ok(mut jobs) => jobs.remove(&job_id_for_task).is_some(),
+                        Err(error) => {
+                            eprintln!("Failed to lock export jobs state on termination: {}", error);
+                            false
+                        }
+                    };
 
                     if !was_registered {
                         break;
