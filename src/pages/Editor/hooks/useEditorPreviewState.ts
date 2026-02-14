@@ -91,8 +91,10 @@ export function useEditorPreviewState({
     const x = useDraft ? zoomDraft.x : activeZoom.x;
     const y = useDraft ? zoomDraft.y : activeZoom.y;
 
-    const originX = 50 + (x / (project?.resolution.width ?? 1920)) * 100;
-    const originY = 50 + (y / (project?.resolution.height ?? 1080)) * 100;
+    const previewWidth = Math.max(1, project?.resolution.width ?? 1920);
+    const previewHeight = Math.max(1, project?.resolution.height ?? 1080);
+    const originX = 50 + (x / previewWidth) * 100;
+    const originY = 50 + (y / previewHeight) * 100;
     return {
       transform: `scale(${scale})`,
       transformOrigin: `${originX}% ${originY}%`,
