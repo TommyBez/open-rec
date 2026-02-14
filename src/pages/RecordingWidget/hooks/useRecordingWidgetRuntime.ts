@@ -200,9 +200,11 @@ export function useRecordingWidgetRuntime() {
   useEffect(() => {
     if (state !== "recording" && state !== "paused") return;
     const intervalId = window.setInterval(async () => {
+      const activeProjectId = resolveActiveProjectId();
+      if (!activeProjectId) return;
       try {
         const diskStatus = await invoke<DiskSpaceStatus>("check_recording_disk_space");
-        if (!diskStatus.sufficient && projectId && !autoStopForDiskRef.current) {
+        if (!diskStatus.sufficient && !autoStopForDiskRef.current) {
           autoStopForDiskRef.current = true;
           setPermissionError(
             "Recording stopped automatically because free disk space dropped below 5 GB."
@@ -228,7 +230,8 @@ export function useRecordingWidgetRuntime() {
   }, [state]);
 
   useEffect(() => {
-    if (state !== "recording" || !projectId || elapsedTime < 300) return;
+    const activeProjectId = resolveActiveProjectId();
+    if (state !== "recording" || !activeProjectId || elapsedTime < 300) return;
     if (elapsedTime - lastAutoSegmentAtRef.current < 300) return;
     if (autoSegmentInFlightRef.current) return;
 
@@ -236,12 +239,12 @@ export function useRecordingWidgetRuntime() {
     void (async () => {
       try {
         await withTimeout(
-          invoke("pause_recording", { projectId }),
+          invoke("pause_recording", { projectId: activeProjectId }),
           PAUSE_RESUME_TIMEOUT_MS,
           "Pause operation timed out during auto-segmentation."
         );
         await withTimeout(
-          invoke("resume_recording", { projectId }),
+          invoke("resume_recording", { projectId: activeProjectId }),
           PAUSE_RESUME_TIMEOUT_MS,
           "Resume operation timed out during auto-segmentation."
         );
