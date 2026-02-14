@@ -1,7 +1,6 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { XIcon } from "lucide-react"
-
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -22,13 +21,11 @@ function DialogPortal({
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
 }
-
 function DialogClose({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Close>) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
-
 function DialogOverlay({
   className,
   ...props
@@ -78,7 +75,6 @@ function DialogContent({
     </DialogPortal>
   )
 }
-
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -88,7 +84,6 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
     />
   )
 }
-
 function DialogFooter({
   className,
   showCloseButton = false,
@@ -115,7 +110,6 @@ function DialogFooter({
     </div>
   )
 }
-
 function DialogTitle({
   className,
   ...props
@@ -128,7 +122,6 @@ function DialogTitle({
     />
   )
 }
-
 function DialogDescription({
   className,
   ...props
