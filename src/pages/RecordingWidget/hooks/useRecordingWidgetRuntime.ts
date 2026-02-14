@@ -129,11 +129,18 @@ export function useRecordingWidgetRuntime() {
           );
         } else {
           setPermissionError((current) =>
-            current?.includes("permission was revoked") ? null : current
+            current?.includes("permission was revoked") ||
+            current?.includes("Unable to verify screen recording permission")
+              ? null
+              : current
           );
         }
       } catch (error) {
         console.error("Failed to check recording permission:", error);
+        setPermissionError((current) =>
+          current ??
+          "Unable to verify screen recording permission. Check System Settings if controls become unresponsive."
+        );
       }
     }, 3000);
     return () => clearInterval(intervalId);
