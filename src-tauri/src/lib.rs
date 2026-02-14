@@ -71,6 +71,67 @@ fn ensure_recording_disk_headroom(recordings_dir: &PathBuf) -> Result<(), AppErr
     Ok(())
 }
 
+fn terminate_process_by_pid(pid: u32) -> Result<(), AppError> {
+    #[cfg(unix)]
+    {
+        let status = std::process::Command::new("kill")
+            .arg("-TERM")
+            .arg(pid.to_string())
+            .status()
+            .map_err(|e| {
+                AppError::Message(format!("Failed to terminate process {}: {}", pid, e))
+            })?;
+        if !status.success() {
+            return Err(AppError::Message(format!(
+                "Failed to terminate process {}",
+                pid
+            )));
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let status = std::process::Command::new("taskkill")
+            .arg("/PID")
+            .arg(pid.to_string())
+            .arg("/F")
+            .status()
+            .map_err(|e| {
+                AppError::Message(format!("Failed to terminate process {}: {}", pid, e))
+            })?;
+        if !status.success() {
+            return Err(AppError::Message(format!(
+                "Failed to terminate process {}",
+                pid
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn cleanup_active_exports(export_jobs: &SharedExportJobs) -> Result<(), AppError> {
+    let pids = {
+        let mut jobs = export_jobs
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Failed to lock export jobs state: {}", e)))?;
+        let pids = jobs.values().copied().collect::<Vec<_>>();
+        jobs.clear();
+        pids
+    };
+
+    for pid in pids {
+        if let Err(error) = terminate_process_by_pid(pid) {
+            eprintln!(
+                "Failed to terminate export pid {} during app cleanup: {}",
+                pid, error
+            );
+        }
+    }
+
+    Ok(())
+}
+
 async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), AppError> {
     let shell = app.shell();
     let (mut rx, _child) = shell
@@ -640,35 +701,7 @@ fn cancel_export(
         jobs.remove(&job_id)
             .ok_or_else(|| AppError::Message("Export job not found".to_string()))?
     };
-
-    #[cfg(unix)]
-    {
-        let status = std::process::Command::new("kill")
-            .arg("-TERM")
-            .arg(pid.to_string())
-            .status()
-            .map_err(|e| AppError::Message(format!("Failed to cancel export process: {}", e)))?;
-        if !status.success() {
-            return Err(AppError::Message(
-                "Failed to cancel export process".to_string(),
-            ));
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        let status = std::process::Command::new("taskkill")
-            .arg("/PID")
-            .arg(pid.to_string())
-            .arg("/F")
-            .status()
-            .map_err(|e| AppError::Message(format!("Failed to cancel export process: {}", e)))?;
-        if !status.success() {
-            return Err(AppError::Message(
-                "Failed to cancel export process".to_string(),
-            ));
-        }
-    }
+    terminate_process_by_pid(pid)?;
 
     let _ = app.emit(
         "export-cancelled",
@@ -781,6 +814,9 @@ pub fn run() {
                 if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                     if let Some(state) = app_handle.try_state::<SharedRecorderState>() {
                         let _ = recording::cleanup_active_recordings(&state);
+                    }
+                    if let Some(export_jobs) = app_handle.try_state::<SharedExportJobs>() {
+                        let _ = cleanup_active_exports(&export_jobs);
                     }
                 }
             });
