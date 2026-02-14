@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { ArrowLeft, Film, Download, FolderOpen, Loader2 } from "lucide-react";
+import { ArrowLeft, Film, Download, FolderOpen, Keyboard, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -289,6 +289,23 @@ export const EditorHeader = memo(function EditorHeader({
             </button>
           </TooltipTrigger>
           <TooltipContent>My Recordings</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Keyboard shortcuts"
+            >
+              <Keyboard className="size-4.5" strokeWidth={1.75} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <div className="space-y-0.5 text-xs">
+              <p>J/K/L transport · ←/→ frame step</p>
+              <p>1/2/3/4 tools · A/B/T/⇧A annotations</p>
+              <p>⌘S save · ⌘D duplicate annotation</p>
+            </div>
+          </TooltipContent>
         </Tooltip>
         <Button 
           onClick={onExport}
