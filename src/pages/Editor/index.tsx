@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { AnimatePresence, motion } from "motion/react";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
-import { ZoomInspector } from "../../components/ZoomInspector";
-import { SpeedInspector } from "../../components/SpeedInspector";
-import { AnnotationInspector } from "../../components/AnnotationInspector";
 import { useProject } from "../../hooks/useProject";
 import { useEditorStore, useExportStore } from "../../stores";
 import { Annotation, ZoomEffect, SpeedEffect } from "../../types/project";
@@ -15,6 +11,7 @@ import { Annotation, ZoomEffect, SpeedEffect } from "../../types/project";
 import { EditorHeader } from "./components/EditorHeader";
 import { VideoPreview } from "./components/VideoPreview";
 import { PlaybackControls } from "./components/PlaybackControls";
+import { EditorInspectors } from "./components/EditorInspectors";
 import { useEditorKeyboardShortcuts } from "./hooks/useEditorKeyboardShortcuts";
 import { useVideoPlayback } from "./hooks/useVideoPlayback";
 import { useWaveformData } from "./hooks/useWaveformData";
@@ -398,73 +395,22 @@ export function EditorPage() {
           />
         </div>
 
-        {/* Zoom Inspector Sidebar */}
-        <AnimatePresence>
-          {selectedZoom && (
-            <motion.aside
-              key="zoom-inspector"
-              className="shrink-0 overflow-hidden"
-              initial={{ width: 0, opacity: 0, x: 16 }}
-              animate={{ width: 256, opacity: 1, x: 0 }}
-              exit={{ width: 0, opacity: 0, x: 16 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              aria-label="Zoom settings"
-            >
-              <ZoomInspector
-                zoom={selectedZoom}
-                resolution={project.resolution}
-                onCommit={handleZoomCommit}
-                onClose={handleCloseZoomInspector}
-                onDraftChange={handleZoomDraftChange}
-              />
-            </motion.aside>
-          )}
-        </AnimatePresence>
-
-        {/* Speed Inspector Sidebar */}
-        <AnimatePresence>
-          {selectedSpeed && (
-            <motion.aside
-              key="speed-inspector"
-              className="shrink-0 overflow-hidden"
-              initial={{ width: 0, opacity: 0, x: 16 }}
-              animate={{ width: 256, opacity: 1, x: 0 }}
-              exit={{ width: 0, opacity: 0, x: 16 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              aria-label="Speed settings"
-            >
-              <SpeedInspector
-                speed={selectedSpeed}
-                onCommit={handleSpeedCommit}
-                onClose={handleCloseSpeedInspector}
-                onDraftChange={handleSpeedDraftChange}
-              />
-            </motion.aside>
-          )}
-        </AnimatePresence>
-
-        {/* Annotation Inspector Sidebar */}
-        <AnimatePresence>
-          {selectedAnnotation && (
-            <motion.aside
-              key="annotation-inspector"
-              className="shrink-0 overflow-hidden"
-              initial={{ width: 0, opacity: 0, x: 16 }}
-              animate={{ width: 256, opacity: 1, x: 0 }}
-              exit={{ width: 0, opacity: 0, x: 16 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              aria-label="Annotation settings"
-            >
-              <AnnotationInspector
-                annotation={selectedAnnotation}
-                maxDuration={project.duration}
-                onCommit={handleAnnotationCommit}
-                onDuplicate={handleDuplicateSelectedAnnotation}
-                onClose={handleCloseAnnotationInspector}
-              />
-            </motion.aside>
-          )}
-        </AnimatePresence>
+        <EditorInspectors
+          selectedZoom={selectedZoom}
+          selectedSpeed={selectedSpeed}
+          selectedAnnotation={selectedAnnotation}
+          resolution={project.resolution}
+          maxDuration={project.duration}
+          onZoomCommit={handleZoomCommit}
+          onCloseZoom={handleCloseZoomInspector}
+          onZoomDraftChange={handleZoomDraftChange}
+          onSpeedCommit={handleSpeedCommit}
+          onCloseSpeed={handleCloseSpeedInspector}
+          onSpeedDraftChange={handleSpeedDraftChange}
+          onAnnotationCommit={handleAnnotationCommit}
+          onDuplicateAnnotation={handleDuplicateSelectedAnnotation}
+          onCloseAnnotation={handleCloseAnnotationInspector}
+        />
       </div>
 
       <div className="relative z-10 animate-fade-up-delay-3">
