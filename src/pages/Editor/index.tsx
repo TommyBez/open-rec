@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useCallback, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "motion/react";
 import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
@@ -20,6 +19,7 @@ import { useEditorKeyboardShortcuts } from "./hooks/useEditorKeyboardShortcuts";
 import { useVideoPlayback } from "./hooks/useVideoPlayback";
 import { useWaveformData } from "./hooks/useWaveformData";
 import { useEditedTimelineMetrics } from "./hooks/useEditedTimelineMetrics";
+import { useEditorAutosaveLifecycle } from "./hooks/useEditorAutosaveLifecycle";
 
 // Hoisted static JSX elements
 const atmosphericGradient = (
@@ -256,55 +256,7 @@ export function EditorPage() {
     }
   }, [projectId]);
 
-  // Auto-save
-  useEffect(() => {
-    if (isDirty && project) {
-      const timeout = setTimeout(() => saveProject().catch(console.error), 5000);
-      return () => clearTimeout(timeout);
-    }
-  }, [isDirty, project, saveProject]);
-
-  useEffect(() => {
-    if (!project) return;
-    const intervalId = window.setInterval(() => {
-      if (isDirty) {
-        saveProject().catch(console.error);
-      }
-    }, 10000);
-    return () => clearInterval(intervalId);
-  }, [isDirty, project, saveProject]);
-
-  useEffect(() => {
-    const flushSave = () => {
-      if (isDirty) {
-        saveProject().catch(console.error);
-      }
-    };
-    window.addEventListener("beforeunload", flushSave);
-    return () => window.removeEventListener("beforeunload", flushSave);
-  }, [isDirty, saveProject]);
-
-  useEffect(() => {
-    const currentWindow = getCurrentWindow();
-    let closeInProgress = false;
-
-    const unlistenClosePromise = currentWindow.onCloseRequested((event) => {
-      if (!isDirty || closeInProgress) {
-        return;
-      }
-      event.preventDefault();
-      closeInProgress = true;
-      saveProject()
-        .catch(console.error)
-        .finally(() => {
-          currentWindow.close().catch(console.error);
-        });
-    });
-
-    return () => {
-      unlistenClosePromise.then((unlisten) => unlisten());
-    };
-  }, [isDirty, saveProject]);
+  useEditorAutosaveLifecycle({ project, isDirty, saveProject });
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedZoomId) { deleteZoom(selectedZoomId); selectZoom(null); }
