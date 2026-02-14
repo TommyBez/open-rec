@@ -483,7 +483,7 @@ async fn export_project(
                             .as_secs_f64()
                             .min(expected_duration * 0.98)
                     });
-                    app_clone.emit("export-progress", progress).ok();
+                    let _ = app_clone.emit("export-progress", progress);
                 }
                 CommandEvent::Terminated(status) => {
                     let was_registered = export_jobs_clone
@@ -496,11 +496,9 @@ async fn export_project(
                     }
 
                     if status.code == Some(0) {
-                        app_clone
-                            .emit("export-complete", &output_path_for_event)
-                            .ok();
+                        let _ = app_clone.emit("export-complete", &output_path_for_event);
                     } else {
-                        app_clone.emit("export-error", "Export failed").ok();
+                        let _ = app_clone.emit("export-error", "Export failed");
                     }
                 }
                 _ => {}
@@ -587,7 +585,7 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let run_result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
@@ -596,7 +594,7 @@ pub fn run() {
             let app_data_dir = app
                 .path()
                 .app_data_dir()
-                .expect("Failed to get app data directory");
+                .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
             let recorder_state = Arc::new(Mutex::new(RecorderState::new(app_data_dir)));
             app.manage(recorder_state);
             let export_jobs: SharedExportJobs = Arc::new(Mutex::new(HashMap::new()));
@@ -619,6 +617,9 @@ pub fn run() {
             export_project,
             cancel_export,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(error) = run_result {
+        eprintln!("error while running tauri application: {error}");
+    }
 }
