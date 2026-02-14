@@ -629,9 +629,19 @@ pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), AppE
 
     for session in state_guard.sessions.values_mut() {
         if let Some(stream) = session.stream.as_ref() {
-            let _ = stream.stop_capture();
+            if let Err(error) = stream.stop_capture() {
+                eprintln!(
+                    "Failed to stop active capture stream during cleanup for {}: {:?}",
+                    session.project_id, error
+                );
+            }
             if let Some(recording_output) = session.recording_output.as_ref() {
-                let _ = stream.remove_recording_output(recording_output);
+                if let Err(error) = stream.remove_recording_output(recording_output) {
+                    eprintln!(
+                        "Failed to detach recording output during cleanup for {}: {:?}",
+                        session.project_id, error
+                    );
+                }
             }
         }
 
@@ -639,7 +649,16 @@ pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), AppE
         session.recording_output = None;
         session.state = RecordingState::Stopped;
 
-        let _ = wait_for_file_ready(&session.current_segment_path, Duration::from_secs(5));
+        if let Err(error) =
+            wait_for_file_ready(&session.current_segment_path, Duration::from_secs(5))
+        {
+            eprintln!(
+                "Recording file was not finalized during cleanup for {} ({}): {}",
+                session.project_id,
+                session.current_segment_path.display(),
+                error
+            );
+        }
     }
 
     state_guard.sessions.clear();

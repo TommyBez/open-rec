@@ -704,8 +704,6 @@ pub fn build_ffmpeg_args(
     options: &ExportOptions,
     output_path: &PathBuf,
 ) -> Vec<String> {
-    let _ = validate_export_inputs(project, options);
-
     let camera_path = project.camera_video_path.as_ref().cloned();
     let microphone_path = project.microphone_audio_path.as_ref().cloned();
     let screen_has_audio = has_audio_stream(&project.screen_video_path);

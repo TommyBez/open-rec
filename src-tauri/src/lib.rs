@@ -457,9 +457,13 @@ async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), AppE
             if status.code == Some(0) {
                 return Ok(());
             }
+            let exit_code = match status.code {
+                Some(code) => code.to_string(),
+                None => "unknown (terminated by signal)".to_string(),
+            };
             return Err(AppError::Message(format!(
-                "ffmpeg failed with exit code: {:?}",
-                status.code.unwrap_or(-1)
+                "ffmpeg failed with exit code: {}",
+                exit_code
             )));
         }
     }
