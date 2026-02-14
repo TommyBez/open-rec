@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Annotation, Project } from "../../../types/project";
 
 interface UseEditorProjectLoaderOptions {
-  setProject: (project: Project) => void;
+  replaceProject: (project: Project) => void;
   setDuration: (duration: number) => void;
   setIsLoading: (loading: boolean) => void;
 }
@@ -87,7 +87,7 @@ function buildFallbackProject(id: string): Project {
 }
 
 export function useEditorProjectLoader({
-  setProject,
+  replaceProject,
   setDuration,
   setIsLoading,
 }: UseEditorProjectLoaderOptions) {
@@ -97,18 +97,18 @@ export function useEditorProjectLoader({
       try {
         const result = await invoke<Project>("load_project", { projectId: id });
         const normalizedProject = normalizeProject(result);
-        setProject(normalizedProject);
+        replaceProject(normalizedProject);
         setDuration(normalizedProject.duration);
       } catch (error) {
         console.error("Failed to load project:", error);
         const fallbackProject = buildFallbackProject(id);
-        setProject(fallbackProject);
+        replaceProject(fallbackProject);
         setDuration(fallbackProject.duration);
       } finally {
         setIsLoading(false);
       }
     },
-    [setDuration, setIsLoading, setProject]
+    [replaceProject, setDuration, setIsLoading]
   );
 
   return { loadProject };

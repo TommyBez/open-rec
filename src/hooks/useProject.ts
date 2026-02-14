@@ -5,7 +5,7 @@ import { Annotation, AudioMixSettings, CameraOverlaySettings, ColorCorrectionSet
 const MAX_HISTORY_SIZE = 50;
 
 export function useProject(initialProject: Project | null) {
-  const [project, setProject] = useState<Project | null>(initialProject);
+  const [project, setProjectState] = useState<Project | null>(initialProject);
   const [isDirty, setIsDirty] = useState(false);
   
   // History for undo functionality
@@ -30,7 +30,7 @@ export function useProject(initialProject: Project | null) {
 
   // Undo: restore previous state
   const undo = useCallback(() => {
-    setProject((currentState) => {
+    setProjectState((currentState) => {
       if (!currentState || historyRef.current.length === 0) return currentState;
       const previousState = historyRef.current.pop();
       if (!previousState) return currentState;
@@ -47,7 +47,7 @@ export function useProject(initialProject: Project | null) {
 
   // Redo: restore the latest undone state
   const redo = useCallback(() => {
-    setProject((currentState) => {
+    setProjectState((currentState) => {
       if (!currentState || futureRef.current.length === 0) return currentState;
       const nextState = futureRef.current.pop();
       if (!nextState) return currentState;
@@ -64,7 +64,7 @@ export function useProject(initialProject: Project | null) {
 
   // Update project and mark as dirty
   const updateProject = useCallback((updater: (p: Project) => Project) => {
-    setProject((prev) => {
+    setProjectState((prev) => {
       if (!prev) return prev;
       const updated = updater(prev);
       if (updated === prev) {
@@ -76,6 +76,15 @@ export function useProject(initialProject: Project | null) {
       return updated;
     });
   }, [pushToHistory]);
+
+  const replaceProject = useCallback((nextProject: Project) => {
+    historyRef.current = [];
+    futureRef.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+    setIsDirty(false);
+    setProjectState(nextProject);
+  }, []);
 
   // Save project to backend
   const saveProject = useCallback(async () => {
@@ -610,7 +619,8 @@ export function useProject(initialProject: Project | null) {
 
   return {
     project,
-    setProject,
+    setProject: setProjectState,
+    replaceProject,
     isDirty,
     saveProject,
     renameProject,

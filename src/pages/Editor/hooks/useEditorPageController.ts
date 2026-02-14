@@ -27,6 +27,7 @@ export function useEditorPageController({
   const {
     project,
     setProject,
+    replaceProject,
     isDirty,
     saveProject,
     renameProject,
@@ -79,7 +80,11 @@ export function useEditorPageController({
   } = useEditorStore();
 
   const activeExportCount = useExportStore((state) => state.activeExportCount);
-  const { loadProject } = useEditorProjectLoader({ setProject, setDuration, setIsLoading });
+  const { loadProject } = useEditorProjectLoader({
+    replaceProject,
+    setDuration,
+    setIsLoading,
+  });
   const {
     selectedZoom,
     selectedSpeed,
