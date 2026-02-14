@@ -5,6 +5,7 @@ import { useRecordingStore, RecordingState } from "../../../stores";
 import {
   clearStoredCurrentProjectId,
   getStoredCurrentProjectId,
+  setStoredCurrentProjectId,
 } from "../../../lib/currentProjectStorage";
 import { toErrorMessage } from "../../../lib/errorMessage";
 import { withTimeout } from "../../../lib/withTimeout";
@@ -93,6 +94,7 @@ export function useRecordingWidgetRuntime() {
           return;
         }
         if (event.payload.projectId) {
+          setStoredCurrentProjectId(event.payload.projectId);
           setProjectId(event.payload.projectId);
         }
       }
