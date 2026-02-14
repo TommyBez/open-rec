@@ -763,7 +763,7 @@ async fn stop_screen_recording(
         &app,
         "recording-state-changed",
         serde_json::json!({
-            "state": "stopped",
+            "state": "idle",
             "projectId": &project_id
         }),
     );
