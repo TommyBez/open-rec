@@ -1,5 +1,5 @@
 import { memo } from "react";
-import {SkipBack, Pause, Play, SkipForward, Scissors, ZoomIn, Gauge, Trash2, Undo2} from "lucide-react";
+import {SkipBack, Pause, Play, SkipForward, Scissors, ZoomIn, Gauge, Trash2, Undo2, Redo2} from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -21,6 +21,7 @@ interface PlaybackControlsProps {
   editedDuration: number;
   isPlaying: boolean;
   canUndo: boolean;
+  canRedo: boolean;
   canDelete: boolean;
   canDeleteZoom: boolean;
   canDeleteSpeed: boolean;
@@ -30,6 +31,7 @@ interface PlaybackControlsProps {
   onSkipBackward: () => void;
   onSkipForward: () => void;
   onUndo: () => void;
+  onRedo: () => void;
   onDelete: () => void;
   onToggleTool: (tool: "cut" | "zoom" | "speed") => void;
 }
@@ -39,6 +41,7 @@ export const PlaybackControls = memo(function PlaybackControls({
   editedDuration,
   isPlaying,
   canUndo,
+  canRedo,
   canDelete,
   canDeleteZoom,
   canDeleteSpeed,
@@ -48,6 +51,7 @@ export const PlaybackControls = memo(function PlaybackControls({
   onSkipBackward,
   onSkipForward,
   onUndo,
+  onRedo,
   onDelete,
   onToggleTool,
 }: PlaybackControlsProps) {
@@ -83,6 +87,25 @@ export const PlaybackControls = memo(function PlaybackControls({
             </span>
           </TooltipTrigger>
           <TooltipContent>Undo (⌘Z)</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <button 
+                onClick={onRedo}
+                disabled={!canRedo}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-lg transition-colors",
+                  canRedo 
+                    ? "text-muted-foreground hover:bg-muted hover:text-foreground" 
+                    : "text-muted-foreground/30 cursor-not-allowed"
+                )}
+              >
+                <Redo2 className="size-4" strokeWidth={1.75} />
+              </button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Redo (⇧⌘Z)</TooltipContent>
         </Tooltip>
       </div>
 

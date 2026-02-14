@@ -10,7 +10,9 @@ export function useProject(initialProject: Project | null) {
   
   // History for undo functionality
   const historyRef = useRef<Project[]>([]);
+  const futureRef = useRef<Project[]>([]);
   const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   // Generate a unique ID for new effects
   const generateId = () => crypto.randomUUID();
@@ -21,19 +23,43 @@ export function useProject(initialProject: Project | null) {
       ...historyRef.current.slice(-(MAX_HISTORY_SIZE - 1)),
       currentProject,
     ];
+    futureRef.current = [];
     setCanUndo(true);
+    setCanRedo(false);
   }, []);
 
   // Undo: restore previous state
   const undo = useCallback(() => {
-    if (historyRef.current.length === 0) return;
-    
-    const previousState = historyRef.current.pop();
-    if (previousState) {
-      setProject(previousState);
-      setIsDirty(true);
+    setProject((currentState) => {
+      if (!currentState || historyRef.current.length === 0) return currentState;
+      const previousState = historyRef.current.pop();
+      if (!previousState) return currentState;
+      futureRef.current = [
+        ...futureRef.current.slice(-(MAX_HISTORY_SIZE - 1)),
+        currentState,
+      ];
       setCanUndo(historyRef.current.length > 0);
-    }
+      setCanRedo(futureRef.current.length > 0);
+      setIsDirty(true);
+      return previousState;
+    });
+  }, []);
+
+  // Redo: restore the latest undone state
+  const redo = useCallback(() => {
+    setProject((currentState) => {
+      if (!currentState || futureRef.current.length === 0) return currentState;
+      const nextState = futureRef.current.pop();
+      if (!nextState) return currentState;
+      historyRef.current = [
+        ...historyRef.current.slice(-(MAX_HISTORY_SIZE - 1)),
+        currentState,
+      ];
+      setCanUndo(historyRef.current.length > 0);
+      setCanRedo(futureRef.current.length > 0);
+      setIsDirty(true);
+      return nextState;
+    });
   }, []);
 
   // Update project and mark as dirty
@@ -431,7 +457,9 @@ export function useProject(initialProject: Project | null) {
     renameProject,
     // History
     canUndo,
+    canRedo,
     undo,
+    redo,
     // Cutting
     cutAt,
     toggleSegment,

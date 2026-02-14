@@ -57,7 +57,9 @@ export function EditorPage() {
     renameProject,
     updateCameraOverlay,
     canUndo,
+    canRedo,
     undo,
+    redo,
     cutAt,
     deleteSegment,
     addZoom,
@@ -257,14 +259,19 @@ export function EditorPage() {
   // Keyboard shortcut for undo
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+      const isModifier = e.metaKey || e.ctrlKey;
+      if (isModifier && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         if (canUndo) undo();
+      }
+      if (isModifier && ((e.key === "z" && e.shiftKey) || e.key.toLowerCase() === "y")) {
+        e.preventDefault();
+        if (canRedo) redo();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canUndo, undo]);
+  }, [canUndo, canRedo, undo, redo]);
 
   async function loadProject(id: string) {
     setIsLoading(true);
@@ -384,6 +391,7 @@ export function EditorPage() {
             editedDuration={editedDuration}
             isPlaying={isPlaying}
             canUndo={canUndo}
+            canRedo={canRedo}
             canDelete={canDelete}
             canDeleteZoom={canDeleteZoom}
             canDeleteSpeed={canDeleteSpeed}
@@ -393,6 +401,7 @@ export function EditorPage() {
             onSkipBackward={skipBackward}
             onSkipForward={skipForward}
             onUndo={undo}
+            onRedo={redo}
             onDelete={handleDeleteSelected}
             onToggleTool={toggleTool}
           />
