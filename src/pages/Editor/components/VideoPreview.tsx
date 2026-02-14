@@ -1,6 +1,7 @@
 import { memo, forwardRef, CSSProperties, useEffect, useMemo, useRef } from "react";
 import { ZoomIn, Gauge, Film } from "lucide-react";
 import { ZoomEffect, SpeedEffect } from "../../../types/project";
+import { useCameraOverlayDrag } from "../hooks/useCameraOverlayDrag";
 
 interface VideoPreviewProps {
   videoSrc: string;
@@ -12,9 +13,12 @@ interface VideoPreviewProps {
   isPlaying: boolean;
   resolution: { width: number; height: number };
   cameraSrc?: string;
-  cameraOverlayPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  cameraOverlayPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom";
   cameraOverlayScale: number;
   cameraOverlayMargin: number;
+  cameraOverlayCustomX: number;
+  cameraOverlayCustomY: number;
+  onCameraOverlayCustomPositionChange?: (x: number, y: number) => void;
   cameraOffsetMs?: number;
 }
 
@@ -33,14 +37,37 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
       cameraOverlayPosition,
       cameraOverlayScale,
       cameraOverlayMargin,
+      cameraOverlayCustomX,
+      cameraOverlayCustomY,
+      onCameraOverlayCustomPositionChange,
       cameraOffsetMs,
     },
     ref
   ) {
+    const previewFrameRef = useRef<HTMLDivElement>(null);
     const cameraVideoRef = useRef<HTMLVideoElement>(null);
     const cameraOffsetSeconds = (cameraOffsetMs ?? 0) / 1000;
     const cameraTime = currentSourceTime - cameraOffsetSeconds;
     const showCamera = Boolean(cameraSrc) && cameraTime >= 0;
+    const isCustomCameraOverlay = cameraOverlayPosition === "custom";
+    const cameraOverlayWidthPercent = Math.min(40, Math.max(12, cameraOverlayScale * 100));
+    const {
+      customOverlayStyle,
+      isDragging,
+      handlePointerDown,
+    } = useCameraOverlayDrag({
+      enabled:
+        showCamera &&
+        isCustomCameraOverlay &&
+        typeof onCameraOverlayCustomPositionChange === "function",
+      customX: cameraOverlayCustomX,
+      customY: cameraOverlayCustomY,
+      containerRef: previewFrameRef,
+      overlayRef: cameraVideoRef,
+      onCommit: (x, y) => {
+        onCameraOverlayCustomPositionChange?.(x, y);
+      },
+    });
 
     useEffect(() => {
       const camera = cameraVideoRef.current;
@@ -69,12 +96,19 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
       const margin = Math.max(0, cameraOverlayMargin);
       const style: CSSProperties = {
         position: "absolute",
-        width: `${Math.max(12, cameraOverlayScale * 100)}%`,
-        maxWidth: "40%",
+        width: `${cameraOverlayWidthPercent}%`,
         borderRadius: "8px",
         overflow: "hidden",
         boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+        touchAction: "none",
       };
+      if (isCustomCameraOverlay) {
+        return {
+          ...style,
+          ...customOverlayStyle,
+          cursor: isDragging ? "grabbing" : "grab",
+        };
+      }
       if (cameraOverlayPosition === "top-left" || cameraOverlayPosition === "bottom-left") {
         style.left = `${margin}px`;
       } else {
@@ -86,7 +120,14 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
         style.bottom = `${margin}px`;
       }
       return style;
-    }, [cameraOverlayMargin, cameraOverlayPosition, cameraOverlayScale]);
+    }, [
+      cameraOverlayMargin,
+      cameraOverlayPosition,
+      cameraOverlayWidthPercent,
+      customOverlayStyle,
+      isCustomCameraOverlay,
+      isDragging,
+    ]);
 
     if (!videoSrc) {
       return (
@@ -108,7 +149,10 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
 
     return (
       <div className="studio-panel flex flex-1 items-center justify-center overflow-hidden rounded-xl">
-        <div className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-lg">
+        <div
+          ref={previewFrameRef}
+          className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-lg"
+        >
           <video
             ref={ref}
             src={videoSrc}
@@ -121,8 +165,9 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
               src={cameraSrc}
               muted
               playsInline
-              className="pointer-events-none"
+              className={isCustomCameraOverlay ? "pointer-events-auto select-none" : "pointer-events-none"}
               style={cameraOverlayStyle}
+              onPointerDown={isCustomCameraOverlay ? handlePointerDown : undefined}
             />
           )}
           {/* Effect indicator badges */}

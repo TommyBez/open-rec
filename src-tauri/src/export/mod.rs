@@ -417,6 +417,11 @@ fn build_camera_overlay_coordinates(project: &Project) -> String {
         crate::project::CameraOverlayPosition::TopRight => format!("W-w-{margin}:{margin}"),
         crate::project::CameraOverlayPosition::BottomLeft => format!("{margin}:H-h-{margin}"),
         crate::project::CameraOverlayPosition::BottomRight => format!("W-w-{margin}:H-h-{margin}"),
+        crate::project::CameraOverlayPosition::Custom => format!(
+            "(W-w)*{:.6}:(H-h)*{:.6}",
+            project.edits.camera_overlay.custom_x.clamp(0.0, 1.0),
+            project.edits.camera_overlay.custom_y.clamp(0.0, 1.0)
+        ),
     }
 }
 

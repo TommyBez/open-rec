@@ -12,11 +12,11 @@ interface EditorHeaderProps {
   isDirty: boolean;
   onRename: (name: string) => void;
   hasCameraTrack: boolean;
-  cameraOverlayPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  cameraOverlayPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom";
   cameraOverlayScale: number;
   cameraOverlayMargin: number;
   onCameraOverlayPositionChange: (
-    position: "top-left" | "top-right" | "bottom-left" | "bottom-right"
+    position: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom"
   ) => void;
   onCameraOverlayScaleChange: (scale: number) => void;
   onCameraOverlayMarginChange: (margin: number) => void;
@@ -55,6 +55,7 @@ export const EditorHeader = memo(function EditorHeader({
     onRename(draftName);
     setIsRenaming(false);
   };
+  const marginDisabled = cameraOverlayPosition === "custom";
 
   return (
     <header className="relative z-10 flex items-center justify-between border-b border-border/50 bg-card/30 px-4 py-3 backdrop-blur-sm animate-fade-up">
@@ -117,6 +118,7 @@ export const EditorHeader = memo(function EditorHeader({
                     | "top-right"
                     | "bottom-left"
                     | "bottom-right"
+                    | "custom"
                 )
               }
               className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80 outline-none focus:border-primary/50"
@@ -126,6 +128,7 @@ export const EditorHeader = memo(function EditorHeader({
               <option value="top-right">Cam TR</option>
               <option value="bottom-left">Cam BL</option>
               <option value="bottom-right">Cam BR</option>
+              <option value="custom">Cam Drag</option>
             </select>
             <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
               Scale
@@ -149,10 +152,11 @@ export const EditorHeader = memo(function EditorHeader({
                 max={100}
                 step={1}
                 value={cameraOverlayMargin}
+                disabled={marginDisabled}
                 onChange={(event) =>
                   onCameraOverlayMarginChange(Number(event.target.value) || cameraOverlayMargin)
                 }
-                className="w-10 bg-transparent text-right text-xs outline-none"
+                className="w-10 bg-transparent text-right text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
               />
             </label>
           </div>

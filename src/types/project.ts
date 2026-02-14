@@ -27,9 +27,11 @@ export interface EditDecisionList {
 }
 
 export interface CameraOverlaySettings {
-  position: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  position: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom";
   margin: number;
   scale: number;
+  customX: number;
+  customY: number;
 }
 
 export interface Segment {

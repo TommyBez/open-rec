@@ -32,14 +32,19 @@ const loadingSpinner = (
 );
 
 function normalizeProject(project: Project): Project {
+  const overlay = project.edits.cameraOverlay;
   return {
     ...project,
     edits: {
       ...project.edits,
-      cameraOverlay: project.edits.cameraOverlay ?? {
-        position: "bottom-right",
-        margin: 20,
-        scale: 0.25,
+      cameraOverlay: {
+        ...(overlay ?? {
+          position: "bottom-right",
+          margin: 20,
+          scale: 0.25,
+        }),
+        customX: overlay?.customX ?? 1,
+        customY: overlay?.customY ?? 1,
       },
     },
   };
@@ -396,6 +401,8 @@ export function EditorPage() {
             position: "bottom-right",
             margin: 20,
             scale: 0.25,
+            customX: 1,
+            customY: 1,
           },
         },
       };
@@ -481,6 +488,15 @@ export function EditorPage() {
             cameraOverlayPosition={project.edits.cameraOverlay.position}
             cameraOverlayScale={project.edits.cameraOverlay.scale}
             cameraOverlayMargin={project.edits.cameraOverlay.margin}
+            cameraOverlayCustomX={project.edits.cameraOverlay.customX}
+            cameraOverlayCustomY={project.edits.cameraOverlay.customY}
+            onCameraOverlayCustomPositionChange={(x, y) =>
+              updateCameraOverlay({
+                position: "custom",
+                customX: Math.min(1, Math.max(0, x)),
+                customY: Math.min(1, Math.max(0, y)),
+              })
+            }
             cameraOffsetMs={project.cameraOffsetMs}
           />
           

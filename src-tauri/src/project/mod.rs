@@ -44,6 +44,10 @@ pub struct CameraOverlaySettings {
     pub position: CameraOverlayPosition,
     pub margin: u32,
     pub scale: f64,
+    #[serde(default = "default_camera_overlay_custom_x")]
+    pub custom_x: f64,
+    #[serde(default = "default_camera_overlay_custom_y")]
+    pub custom_y: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +57,15 @@ pub enum CameraOverlayPosition {
     TopRight,
     BottomLeft,
     BottomRight,
+    Custom,
+}
+
+fn default_camera_overlay_custom_x() -> f64 {
+    1.0
+}
+
+fn default_camera_overlay_custom_y() -> f64 {
+    1.0
 }
 
 impl Default for CameraOverlaySettings {
@@ -61,6 +74,8 @@ impl Default for CameraOverlaySettings {
             position: CameraOverlayPosition::BottomRight,
             margin: 20,
             scale: 0.25,
+            custom_x: default_camera_overlay_custom_x(),
+            custom_y: default_camera_overlay_custom_y(),
         }
     }
 }
