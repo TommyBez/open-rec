@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useRecordingStore } from "../../../stores";
 import {
+  DiskSpaceStatus,
   CaptureSource,
   RecordingOptions as RecordingOptionsType,
   StartRecordingResult,
@@ -24,11 +25,6 @@ import {
 import { toErrorMessage } from "../../../lib/errorMessage";
 import { withTimeout } from "../../../lib/withTimeout";
 import { useRecordingCountdown } from "./useRecordingCountdown";
-
-interface DiskSpaceStatus {
-  freeBytes: number;
-  sufficient: boolean;
-}
 
 interface UseRecorderRuntimeOptions {
   onRecordingStoppedNavigate: (projectId: string) => void;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useRecordingStore, RecordingState } from "../../../stores";
-import { BackendRecordingState } from "../../../types/project";
+import { BackendRecordingState, DiskSpaceStatus } from "../../../types/project";
 import {
   clearStoredCurrentProjectId,
   getStoredCurrentProjectId,
@@ -10,10 +10,6 @@ import {
 } from "../../../lib/currentProjectStorage";
 import { toErrorMessage } from "../../../lib/errorMessage";
 import { withTimeout } from "../../../lib/withTimeout";
-
-interface DiskSpaceStatus {
-  sufficient: boolean;
-}
 
 const STOP_RECORDING_TIMEOUT_MS = 30_000;
 const PAUSE_RESUME_TIMEOUT_MS = 10_000;
