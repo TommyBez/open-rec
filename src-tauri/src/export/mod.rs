@@ -577,7 +577,13 @@ pub fn build_ffmpeg_args(
                 None
             };
 
-            let audio_output_label = match (screen_audio_label, microphone_audio_label) {
+            let microphone_processed_label = microphone_audio_label.map(|label| {
+                let cleaned_label = "[amicclean]".to_string();
+                filter_parts.push(format!("{}highpass=f=80{}", label, cleaned_label));
+                cleaned_label
+            });
+
+            let audio_output_label = match (screen_audio_label, microphone_processed_label) {
                 (Some(screen_label), Some(microphone_label)) => {
                     let ducked_label = "[aducked]".to_string();
                     let mixed_label = "[aout]".to_string();
@@ -738,7 +744,13 @@ pub fn build_ffmpeg_args(
                 None
             };
 
-            let audio_output_label = match (screen_audio_label, microphone_audio_label) {
+            let microphone_processed_label = microphone_audio_label.map(|label| {
+                let cleaned_label = "[amicclean]".to_string();
+                filter_parts.push(format!("{}highpass=f=80{}", label, cleaned_label));
+                cleaned_label
+            });
+
+            let audio_output_label = match (screen_audio_label, microphone_processed_label) {
                 (Some(screen_label), Some(microphone_label)) => {
                     let ducked_label = "[aducked]".to_string();
                     let mixed_label = "[aout]".to_string();
