@@ -67,6 +67,7 @@ This is useful for internal testing or distribution without an Apple Developer I
 
 See the installation and Gatekeeper instructions in
 [`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md).
+Unsigned release workflows also publish `.sha256` checksum files for each DMG.
 
 ### File associations
 
