@@ -48,11 +48,20 @@ jobs:
       - name: Build unsigned DMG
         run: pnpm tauri build --bundles dmg --target ${{ matrix.target }}
 
+      - name: Generate SHA256 checksum
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg
+          for dmg in *.dmg; do
+            shasum -a 256 "$dmg" > "$dmg.sha256"
+          done
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: openrec-${{ matrix.target }}-dmg
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.sha256
           if-no-files-found: error
 
   upload-release-assets:
@@ -90,7 +99,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           shopt -s globstar nullglob
-          for file in dist-artifacts/**/*.dmg dist-artifacts/UNSIGNED_BUILD_NOTES.md; do
+          for file in dist-artifacts/**/*.dmg dist-artifacts/**/*.sha256 dist-artifacts/UNSIGNED_BUILD_NOTES.md; do
             echo "Uploading $file"
             gh release upload "$RELEASE_TAG" "$file" --clobber
           done
