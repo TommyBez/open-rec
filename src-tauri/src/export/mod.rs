@@ -485,6 +485,39 @@ fn apply_video_annotations(
     current_video_label
 }
 
+fn build_annotation_drawbox_chain(project: &Project) -> String {
+    project
+        .edits
+        .annotations
+        .iter()
+        .filter_map(|annotation| {
+            let start_time = annotation.start_time.max(0.0);
+            let end_time = annotation.end_time.min(project.duration);
+            if end_time - start_time <= 0.01 {
+                return None;
+            }
+
+            let x = annotation.x.clamp(0.0, 1.0);
+            let y = annotation.y.clamp(0.0, 1.0);
+            let width = annotation.width.clamp(0.02, 1.0);
+            let height = annotation.height.clamp(0.02, 1.0);
+            let opacity = annotation.opacity.clamp(0.1, 1.0);
+            let thickness = annotation.thickness.max(1);
+            let color = annotation
+                .color
+                .chars()
+                .filter(|character| !character.is_whitespace())
+                .collect::<String>();
+
+            Some(format!(
+                ",drawbox=x=iw*{:.6}:y=ih*{:.6}:w=iw*{:.6}:h=ih*{:.6}:color={}@{:.3}:t={}:enable='between(t,{:.6},{:.6})'",
+                x, y, width, height, color, opacity, thickness, start_time, end_time
+            ))
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
 /// Build ffmpeg arguments for export
 pub fn build_ffmpeg_args(
     project: &Project,
@@ -779,19 +812,28 @@ pub fn build_ffmpeg_args(
             }
         }
         ExportFormat::Gif => {
+            let annotation_chain = build_annotation_drawbox_chain(project);
             if camera_path.is_some() {
                 let camera_scale = project.edits.camera_overlay.scale.max(0.1);
                 let overlay_coordinates = build_camera_overlay_coordinates(project);
                 args.push("-filter_complex".to_string());
                 args.push(format!(
-                    "[1:v]scale=iw*{camera_scale}:ih*{camera_scale}[cam];[0:v][cam]overlay={overlay_coordinates},fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                    "[1:v]scale=iw*{camera_scale}:ih*{camera_scale}[cam];[0:v][cam]overlay={overlay_coordinates}{annotation_chain},fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
                     options.frame_rate.min(30),
                     options.resolution.height().min(720)
                 ));
             } else {
+                let annotation_prefix = annotation_chain
+                    .strip_prefix(',')
+                    .unwrap_or(&annotation_chain);
                 args.push("-vf".to_string());
                 args.push(format!(
-                    "fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                    "{}fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                    if annotation_prefix.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{annotation_prefix},")
+                    },
                     options.frame_rate.min(30),
                     options.resolution.height().min(720)
                 ));
