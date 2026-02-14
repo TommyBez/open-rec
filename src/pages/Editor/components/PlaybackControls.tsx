@@ -161,19 +161,19 @@ export const PlaybackControls = memo(function PlaybackControls({
           active={selectedTool === "cut"}
           onClick={() => onToggleTool("cut")}
           icon={<Scissors className="size-4" strokeWidth={1.75} />}
-          tooltip={selectedTool === "cut" ? "Deactivate cut tool" : "Cut tool (click on timeline)"}
+          tooltip={selectedTool === "cut" ? "Deactivate cut tool (1)" : "Cut tool (1, click on timeline)"}
         />
         <ToolButton
           active={selectedTool === "zoom"}
           onClick={() => onToggleTool("zoom")}
           icon={<ZoomIn className="size-4" strokeWidth={1.75} />}
-          tooltip={selectedTool === "zoom" ? "Deactivate zoom tool" : "Zoom tool (click on timeline)"}
+          tooltip={selectedTool === "zoom" ? "Deactivate zoom tool (2)" : "Zoom tool (2, click on timeline)"}
         />
         <ToolButton
           active={selectedTool === "speed"}
           onClick={() => onToggleTool("speed")}
           icon={<Gauge className="size-4" strokeWidth={1.75} />}
-          tooltip={selectedTool === "speed" ? "Deactivate speed tool" : "Speed tool (click on timeline)"}
+          tooltip={selectedTool === "speed" ? "Deactivate speed tool (3)" : "Speed tool (3, click on timeline)"}
         />
         
         {/* Separator */}
@@ -199,12 +199,12 @@ export const PlaybackControls = memo(function PlaybackControls({
           </TooltipTrigger>
           <TooltipContent>
             {canDeleteZoom 
-              ? "Delete selected zoom" 
+              ? "Delete selected zoom (Delete/Backspace)" 
               : canDeleteSpeed
-              ? "Delete selected speed"
+              ? "Delete selected speed (Delete/Backspace)"
               : canDeleteSegment 
-              ? "Delete selected segment" 
-              : "Select an item to delete"}
+              ? "Delete selected segment (Delete/Backspace)" 
+              : "Select an item to delete (Delete/Backspace)"}
           </TooltipContent>
         </Tooltip>
       </div>
