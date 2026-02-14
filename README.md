@@ -55,6 +55,14 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
+### Unsigned macOS build
+
+OpenRec is configured to build as an unsigned macOS app (`signingIdentity: null`).
+This is useful for internal testing or distribution without an Apple Developer ID.
+
+See the installation and Gatekeeper instructions in
+[`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md).
+
 ## Project Structure
 
 ```
