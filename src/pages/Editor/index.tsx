@@ -7,7 +7,7 @@ import { ExportModal } from "../../components/ExportModal";
 import { ZoomInspector } from "../../components/ZoomInspector";
 import { SpeedInspector } from "../../components/SpeedInspector";
 import { useProject } from "../../hooks/useProject";
-import { useEditorStore } from "../../stores";
+import { useEditorStore, useExportStore } from "../../stores";
 import { Project, ZoomEffect, SpeedEffect } from "../../types/project";
 
 // Extracted components
@@ -94,6 +94,7 @@ export function EditorPage() {
     setShowExportModal,
     setIsLoading,
   } = useEditorStore();
+  const activeExportCount = useExportStore((state) => state.activeExportCount);
   const [jklRateMultiplier, setJklRateMultiplier] = useState(1);
 
   // Derived state
@@ -406,6 +407,7 @@ export function EditorPage() {
         onBack={handleBack}
         onExport={handleExport}
         onOpenVideos={handleOpenVideos}
+        activeExportCount={activeExportCount}
       />
 
       <div className="relative z-10 flex min-h-0 flex-1">

@@ -3,3 +3,5 @@ export type { RecordingState } from "./recordingStore";
 
 export { useEditorStore } from "./editorStore";
 export type { EditorTool } from "./editorStore";
+
+export { useExportStore } from "./exportStore";

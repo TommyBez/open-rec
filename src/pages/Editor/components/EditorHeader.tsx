@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { ArrowLeft, Film, Download, FolderOpen } from "lucide-react";
+import { ArrowLeft, Film, Download, FolderOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -23,6 +23,7 @@ interface EditorHeaderProps {
   onBack: () => void;
   onExport: () => void;
   onOpenVideos: () => void;
+  activeExportCount: number;
 }
 
 export const EditorHeader = memo(function EditorHeader({
@@ -39,6 +40,7 @@ export const EditorHeader = memo(function EditorHeader({
   onBack,
   onExport,
   onOpenVideos,
+  activeExportCount,
 }: EditorHeaderProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [draftName, setDraftName] = useState(projectName);
@@ -174,6 +176,12 @@ export const EditorHeader = memo(function EditorHeader({
           <Download className="size-4" strokeWidth={1.75} />
           Export
         </Button>
+        {activeExportCount > 0 && (
+          <div className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" />
+            {activeExportCount} exporting
+          </div>
+        )}
       </div>
     </header>
   );
