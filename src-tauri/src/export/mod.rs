@@ -608,6 +608,13 @@ pub fn build_ffmpeg_args(
                 } else if audio_label == "[0:a]" {
                     args.push("-map".to_string());
                     args.push("0:a?".to_string());
+                } else if audio_label.starts_with('[')
+                    && audio_label.ends_with(":a]")
+                    && audio_label.len() >= 5
+                {
+                    let stream = audio_label.trim_start_matches('[').trim_end_matches(']');
+                    args.push("-map".to_string());
+                    args.push(stream.to_string());
                 }
             } else if !filter_parts.is_empty() {
                 args.push("-an".to_string());
