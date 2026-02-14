@@ -75,6 +75,14 @@ export function useRecordingWidgetRuntime() {
   }, [projectId, setProjectId, state, setRecordingState]);
 
   useEffect(() => {
+    const hasPersistedSession = Boolean(projectId ?? getStoredCurrentProjectId());
+    if (!hasPersistedSession && state !== "idle") {
+      resetRecording();
+      setPermissionError(null);
+    }
+  }, [projectId, resetRecording, state]);
+
+  useEffect(() => {
     const unlistenState = listen<{ state: RecordingState; projectId: string }>(
       "recording-state-changed",
       (event) => {
