@@ -77,6 +77,8 @@ jobs:
           path: dist-artifacts
 
       - name: Build unsigned changelog note
+        env:
+          RELEASE_BODY: ${{ github.event.release.body }}
         run: |
           cat > dist-artifacts/UNSIGNED_BUILD_NOTES.md <<'EOF'
           # Unsigned OpenRec builds
@@ -92,6 +94,15 @@ jobs:
 
           For full instructions see `docs/UNSIGNED_MAC_INSTALL.md`.
           EOF
+          {
+            echo "# OpenRec Release Changelog"
+            echo
+            if [ -n "$RELEASE_BODY" ]; then
+              printf '%s\n' "$RELEASE_BODY"
+            else
+              echo "_No release notes were provided._"
+            fi
+          } > dist-artifacts/RELEASE_CHANGELOG.md
 
       - name: Upload release assets
         env:
@@ -99,7 +110,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           shopt -s globstar nullglob
-          for file in dist-artifacts/**/*.dmg dist-artifacts/**/*.sha256 dist-artifacts/UNSIGNED_BUILD_NOTES.md; do
+          for file in dist-artifacts/**/*.dmg dist-artifacts/**/*.sha256 dist-artifacts/UNSIGNED_BUILD_NOTES.md dist-artifacts/RELEASE_CHANGELOG.md; do
             echo "Uploading $file"
             gh release upload "$RELEASE_TAG" "$file" --clobber
           done
