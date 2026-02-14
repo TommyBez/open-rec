@@ -48,8 +48,16 @@
     "fileAssociations": [
       {
         "ext": ["openrec"],
-        "mimeType": "application/json",
-        "rank": "Owner"
+        "name": "OpenRec Project",
+        "description": "OpenRec editable recording project",
+        "role": "Editor",
+        "mimeType": "application/x-openrec-project",
+        "contentTypes": ["com.tommaso.open-rec.project"],
+        "rank": "Owner",
+        "exportedType": {
+          "identifier": "com.tommaso.open-rec.project",
+          "conformsTo": ["public.json", "public.data"]
+        }
       }
     ],
     "macOS": {
