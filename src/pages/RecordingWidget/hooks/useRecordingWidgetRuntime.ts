@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useRecordingStore, RecordingState } from "../../../stores";
+import { withTimeout } from "../../../lib/withTimeout";
 
 interface DiskSpaceStatus {
   sufficient: boolean;
@@ -97,15 +98,11 @@ export function useRecordingWidgetRuntime() {
     const fallbackState = state === "paused" ? "paused" : "recording";
     try {
       beginRecordingStop();
-      await Promise.race([
+      await withTimeout(
         invoke("stop_screen_recording", { projectId: currentProjectId }),
-        new Promise<never>((_, reject) =>
-          window.setTimeout(
-            () => reject(new Error("Stopping recording timed out.")),
-            STOP_RECORDING_TIMEOUT_MS
-          )
-        ),
-      ]);
+        STOP_RECORDING_TIMEOUT_MS,
+        "Stopping recording timed out."
+      );
       localStorage.removeItem("currentProjectId");
       resetRecording();
       setPermissionError(null);

@@ -17,6 +17,7 @@ import {
   consumeTrayQuickRecordRequest,
   requestTrayQuickRecord,
 } from "../../../lib/trayQuickRecord";
+import { withTimeout } from "../../../lib/withTimeout";
 import { useRecordingCountdown } from "./useRecordingCountdown";
 
 interface DiskSpaceStatus {
@@ -68,6 +69,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setRecordingStartTimeMs,
     setRecordingState,
   } = useRecordingStore();
+
+const START_RECORDING_TIMEOUT_MS = 15_000;
 
   const isRecording = ["starting", "recording", "paused"].includes(recordingState);
   const isActivelyRecording = recordingState === "recording";
@@ -312,12 +315,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         codec,
       };
 
-      const result = await Promise.race([
+      const result = await withTimeout(
         invoke<StartRecordingResult>("start_screen_recording", { options }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Recording start timed out")), 15000)
-        ),
-      ]);
+        START_RECORDING_TIMEOUT_MS,
+        "Recording start timed out"
+      );
 
       setProjectId(result.projectId);
       setRecordingStartTimeMs(result.recordingStartTimeMs);
