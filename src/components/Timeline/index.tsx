@@ -143,6 +143,30 @@ export function Timeline({
   // Use edited duration for timeline display
   const timelineDuration = editedDuration;
 
+  const snapDisplayTimes = useMemo(() => {
+    const points = new Set<number>([0, timelineDuration]);
+    segmentDisplayInfo.forEach((info) => {
+      points.add(info.displayStart);
+      points.add(info.displayEnd);
+    });
+    return Array.from(points).sort((a, b) => a - b);
+  }, [segmentDisplayInfo, timelineDuration]);
+
+  const getSnappedDisplayTime = useCallback(
+    (displayTime: number) => {
+      const snapThreshold = Math.max(timelineDuration * 0.005, 0.15);
+      let snapped = displayTime;
+      for (const point of snapDisplayTimes) {
+        if (Math.abs(displayTime - point) <= snapThreshold) {
+          snapped = point;
+          break;
+        }
+      }
+      return snapped;
+    },
+    [snapDisplayTimes, timelineDuration]
+  );
+
   // Generate time markers based on edited duration
   const markers: { time: number; label: string }[] = [];
   const interval = timelineDuration > 300 ? 60 : timelineDuration > 60 ? 30 : 10;
@@ -162,7 +186,8 @@ export function Timeline({
     const percentage = Math.max(0, Math.min(1, x / rect.width));
     
     // Calculate display time from click position
-    const displayTime = percentage * timelineDuration;
+    const rawDisplayTime = percentage * timelineDuration;
+    const displayTime = getSnappedDisplayTime(rawDisplayTime);
     
     // Convert display time to source time for seeking/cutting
     const sourceTime = displayToSourceTime(displayTime);
