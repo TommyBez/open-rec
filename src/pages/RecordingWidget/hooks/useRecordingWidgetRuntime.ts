@@ -31,13 +31,14 @@ export function useRecordingWidgetRuntime() {
   const lastAutoSegmentAtRef = useRef(0);
   const autoSegmentInFlightRef = useRef(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const resolveActiveProjectId = () => projectId ?? getStoredCurrentProjectId();
 
   useEffect(() => {
     let cancelled = false;
 
     async function hydrateRecordingSession() {
       const storedProjectId = getStoredCurrentProjectId();
-      const effectiveProjectId = projectId ?? storedProjectId;
+      const effectiveProjectId = resolveActiveProjectId();
       if (!effectiveProjectId) return;
 
       if (storedProjectId && !projectId) {
@@ -72,7 +73,7 @@ export function useRecordingWidgetRuntime() {
   }, [projectId, setProjectId, state, setRecordingState]);
 
   useEffect(() => {
-    const hasPersistedSession = Boolean(projectId ?? getStoredCurrentProjectId());
+    const hasPersistedSession = Boolean(resolveActiveProjectId());
     if (!hasPersistedSession && state !== "idle") {
       resetRecording();
       setPermissionError(null);
@@ -105,13 +106,13 @@ export function useRecordingWidgetRuntime() {
     const unlistenFinalizing = listen<{ projectId: string }>(
       "recording-finalizing",
       (event) => {
-        const activeProjectId = projectId ?? getStoredCurrentProjectId();
+        const activeProjectId = resolveActiveProjectId();
         if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
         setRecordingState("stopping");
       }
     );
     const unlistenStopped = listen<string>("recording-stopped", (stoppedProjectId) => {
-      const activeProjectId = projectId ?? getStoredCurrentProjectId();
+      const activeProjectId = resolveActiveProjectId();
       if (!activeProjectId || stoppedProjectId.payload !== activeProjectId) return;
       clearStoredCurrentProjectId();
       resetRecording();
@@ -170,7 +171,7 @@ export function useRecordingWidgetRuntime() {
   }, [state]);
 
   async function stopRecording() {
-    const currentProjectId = projectId ?? getStoredCurrentProjectId();
+    const currentProjectId = resolveActiveProjectId();
     if (!currentProjectId) {
       setPermissionError("No active recording session was found.");
       resetRecording();
@@ -258,7 +259,7 @@ export function useRecordingWidgetRuntime() {
 
   async function togglePause() {
     if (state === "stopping") return;
-    const currentProjectId = projectId ?? getStoredCurrentProjectId();
+    const currentProjectId = resolveActiveProjectId();
     if (!currentProjectId) {
       setPermissionError("No active recording session was found.");
       return;
@@ -289,13 +290,13 @@ export function useRecordingWidgetRuntime() {
 
   useEffect(() => {
     const unlistenStartStop = listen("global-shortcut-start-stop", () => {
-      const hasActiveProject = Boolean(projectId ?? getStoredCurrentProjectId());
+      const hasActiveProject = Boolean(resolveActiveProjectId());
       if (hasActiveProject && (state === "recording" || state === "paused")) {
         void stopRecording();
       }
     });
     const unlistenTogglePause = listen("global-shortcut-toggle-pause", () => {
-      const hasActiveProject = Boolean(projectId ?? getStoredCurrentProjectId());
+      const hasActiveProject = Boolean(resolveActiveProjectId());
       if (hasActiveProject && (state === "recording" || state === "paused")) {
         void togglePause();
       }
