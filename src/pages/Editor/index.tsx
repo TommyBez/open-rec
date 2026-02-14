@@ -9,7 +9,7 @@ import { SpeedInspector } from "../../components/SpeedInspector";
 import { AnnotationInspector } from "../../components/AnnotationInspector";
 import { useProject } from "../../hooks/useProject";
 import { useEditorStore, useExportStore } from "../../stores";
-import { Annotation, Project, ZoomEffect, SpeedEffect } from "../../types/project";
+import { Annotation, ZoomEffect, SpeedEffect } from "../../types/project";
 
 // Extracted components
 import { EditorHeader } from "./components/EditorHeader";
@@ -20,6 +20,7 @@ import { useVideoPlayback } from "./hooks/useVideoPlayback";
 import { useWaveformData } from "./hooks/useWaveformData";
 import { useEditedTimelineMetrics } from "./hooks/useEditedTimelineMetrics";
 import { useEditorAutosaveLifecycle } from "./hooks/useEditorAutosaveLifecycle";
+import { useEditorProjectLoader } from "./hooks/useEditorProjectLoader";
 
 // Hoisted static JSX elements
 const atmosphericGradient = (
@@ -35,42 +36,6 @@ const loadingSpinner = (
     </div>
   </div>
 );
-
-function normalizeProject(project: Project): Project {
-  const overlay = project.edits.cameraOverlay;
-  const audioMix = project.edits.audioMix;
-  const colorCorrection = project.edits.colorCorrection;
-  const annotations = project.edits.annotations;
-  return {
-    ...project,
-    edits: {
-      ...project.edits,
-      cameraOverlay: {
-        ...(overlay ?? {
-          position: "bottom-right",
-          margin: 20,
-          scale: 0.25,
-        }),
-        customX: overlay?.customX ?? 1,
-        customY: overlay?.customY ?? 1,
-      },
-      audioMix: {
-        systemVolume: audioMix?.systemVolume ?? 1,
-        microphoneVolume: audioMix?.microphoneVolume ?? 1,
-        microphoneNoiseGate: audioMix?.microphoneNoiseGate ?? false,
-      },
-      colorCorrection: {
-        brightness: colorCorrection?.brightness ?? 0,
-        contrast: colorCorrection?.contrast ?? 1,
-        saturation: colorCorrection?.saturation ?? 1,
-      },
-      annotations: (annotations ?? []).map((annotation) => ({
-        ...annotation,
-        mode: annotation.mode ?? "outline",
-      })),
-    },
-  };
-}
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -130,6 +95,11 @@ export function EditorPage() {
     setIsLoading,
   } = useEditorStore();
   const activeExportCount = useExportStore((state) => state.activeExportCount);
+  const { loadProject } = useEditorProjectLoader({
+    setProject,
+    setDuration,
+    setIsLoading,
+  });
   const [jklRateMultiplier, setJklRateMultiplier] = useState(1);
   const [annotationInsertMode, setAnnotationInsertMode] =
     useState<"outline" | "blur" | "text" | "arrow">("outline");
@@ -254,7 +224,7 @@ export function EditorPage() {
     if (projectId) {
       loadProject(projectId);
     }
-  }, [projectId]);
+  }, [projectId, loadProject]);
 
   useEditorAutosaveLifecycle({ project, isDirty, saveProject });
 
@@ -316,53 +286,6 @@ export function EditorPage() {
     createAnnotationAtPlayhead,
     setJklRateMultiplier,
   });
-
-  async function loadProject(id: string) {
-    setIsLoading(true);
-    try {
-      const result = await invoke<Project>("load_project", { projectId: id });
-      const normalizedProject = normalizeProject(result);
-      setProject(normalizedProject);
-      setDuration(normalizedProject.duration);
-    } catch (error) {
-      console.error("Failed to load project:", error);
-      const mockProject: Project = {
-        id: id,
-        name: `Recording ${id.slice(0, 8)}`,
-        createdAt: new Date().toISOString(),
-        screenVideoPath: "",
-        duration: 274.8,
-        resolution: { width: 1920, height: 1080 },
-        edits: {
-          segments: [{ id: crypto.randomUUID(), startTime: 0, endTime: 274.8, enabled: true }],
-          zoom: [],
-          speed: [],
-          annotations: [],
-          cameraOverlay: {
-            position: "bottom-right",
-            margin: 20,
-            scale: 0.25,
-            customX: 1,
-            customY: 1,
-          },
-          audioMix: {
-            systemVolume: 1,
-            microphoneVolume: 1,
-            microphoneNoiseGate: false,
-          },
-          colorCorrection: {
-            brightness: 0,
-            contrast: 1,
-            saturation: 1,
-          },
-        },
-      };
-      setProject(mockProject);
-      setDuration(mockProject.duration);
-    } finally {
-      setIsLoading(false);
-    }
-  }
 
   // Memoized handlers
   const handleTimelineClick = useCallback((time: number) => {
