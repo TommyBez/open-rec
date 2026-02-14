@@ -54,6 +54,7 @@ export function VideoSelectionPage() {
   const [stopBatchRequested, setStopBatchRequested] = useState(false);
   const stopBatchRequestedRef = useRef(false);
   const [batchStatus, setBatchStatus] = useState<string | null>(null);
+  const [batchHistory, setBatchHistory] = useState<string[]>([]);
   const [batchOptions, setBatchOptions] = useState<ExportOptions>({
     format: "mp4",
     frameRate: 30,
@@ -187,6 +188,7 @@ export function VideoSelectionPage() {
     setIsBatchExporting(true);
     setStopBatchRequested(false);
     stopBatchRequestedRef.current = false;
+    setBatchHistory([]);
     setBatchStatus(`Preparing batch export (0/${selectedProjectIds.length})...`);
 
     let completed = 0;
@@ -197,7 +199,9 @@ export function VideoSelectionPage() {
         break;
       }
       const projectId = selectedProjectIds[i];
-      setBatchStatus(`Exporting ${i + 1}/${selectedProjectIds.length}...`);
+      const projectName =
+        projects.find((project) => project.id === projectId)?.name ?? `Project ${i + 1}`;
+      setBatchStatus(`Exporting ${i + 1}/${selectedProjectIds.length}: ${projectName}`);
       try {
         const started = await invoke<{ jobId: string }>("export_project", {
           projectId,
@@ -208,11 +212,14 @@ export function VideoSelectionPage() {
         setCurrentBatchJobId(null);
         if (result.ok) {
           completed += 1;
+          setBatchHistory((history) => [...history, `✓ ${projectName}`]);
         } else {
           failed += 1;
+          setBatchHistory((history) => [...history, `✗ ${projectName} (${result.message})`]);
         }
       } catch (err) {
         failed += 1;
+        setBatchHistory((history) => [...history, `✗ ${projectName} (failed to start)`]);
         console.error("Batch export failed for project:", projectId, err);
       }
     }
@@ -375,6 +382,13 @@ export function VideoSelectionPage() {
         {batchStatus && (
           <div className="mb-3 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             {batchStatus}
+          </div>
+        )}
+        {batchHistory.length > 0 && (
+          <div className="mb-3 max-h-24 overflow-auto rounded-lg border border-border/50 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+            {batchHistory.map((entry, index) => (
+              <div key={`${entry}-${index}`}>{entry}</div>
+            ))}
           </div>
         )}
 
