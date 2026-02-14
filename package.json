@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "pnpm run check:component-size && tsc && vite build",
     "check:component-size": "node ./check-component-size.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
