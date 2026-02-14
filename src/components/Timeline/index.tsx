@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { ZoomIn, Film, Timer } from "lucide-react";
 import type { Segment, ZoomEffect, SpeedEffect, Annotation } from "../../types/project";
 import { cn } from "@/lib/utils";
+import { useTimelineDisplayMetrics } from "./hooks/useTimelineDisplayMetrics";
 
 interface TimelineProps {
   duration: number;
@@ -79,124 +80,14 @@ export function Timeline({
   const [localAnnotationOverride, setLocalAnnotationOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
   const rafIdRef = useRef<number | null>(null);
 
-  // Calculate display positions for segments (shifted left to fill gaps)
-  const { segmentDisplayInfo, editedDuration, sourceToDisplayTime, displayToSourceTime } = useMemo(() => {
-    // Sort segments by start time
-    const sortedSegments = [...segments]
-      .filter((s) => s.enabled)
-      .sort((a, b) => a.startTime - b.startTime);
-    
-    // Calculate display positions (contiguous, no gaps)
-    // Clamp segment times to video duration to handle invalid data
-    let displayOffset = 0;
-    const displayInfo = new Map<string, { displayStart: number; displayEnd: number; segment: Segment; clampedStart: number; clampedEnd: number }>();
-    
-    for (const seg of sortedSegments) {
-      // Clamp segment times to valid range [0, duration]
-      const clampedStart = Math.max(0, Math.min(seg.startTime, duration));
-      const clampedEnd = Math.max(0, Math.min(seg.endTime, duration));
-      const segDuration = Math.max(0, clampedEnd - clampedStart);
-      
-      if (segDuration > 0) {
-        displayInfo.set(seg.id, {
-          displayStart: displayOffset,
-          displayEnd: displayOffset + segDuration,
-          segment: seg,
-          clampedStart,
-          clampedEnd,
-        });
-        displayOffset += segDuration;
-      }
-    }
-    
-    // Total edited duration (use video duration if no valid segments)
-    const totalEditedDuration = displayOffset > 0 ? displayOffset : duration;
-    
-    // Function to convert source time to display time
-    const sourceToDisplay = (sourceTime: number): number => {
-      let displayTime = 0;
-      for (const seg of sortedSegments) {
-        const info = displayInfo.get(seg.id);
-        if (!info) continue;
-        
-        if (sourceTime >= info.clampedStart && sourceTime <= info.clampedEnd) {
-          // Time is within this segment
-          return info.displayStart + (sourceTime - info.clampedStart);
-        } else if (sourceTime > info.clampedEnd) {
-          // Time is after this segment, accumulate its duration
-          displayTime = info.displayEnd;
-        }
-      }
-      return displayTime;
-    };
-    
-    // Function to convert display time back to source time
-    const displayToSource = (displayTime: number): number => {
-      for (const seg of sortedSegments) {
-        const info = displayInfo.get(seg.id);
-        if (!info) continue;
-        
-        if (displayTime >= info.displayStart && displayTime <= info.displayEnd) {
-          // Display time is within this segment's display range
-          const offsetInSegment = displayTime - info.displayStart;
-          return info.clampedStart + offsetInSegment;
-        }
-      }
-      // If beyond all segments, return the end of the last segment (clamped to duration)
-      if (sortedSegments.length > 0) {
-        const lastSeg = sortedSegments[sortedSegments.length - 1];
-        const lastInfo = displayInfo.get(lastSeg.id);
-        if (lastInfo) return lastInfo.clampedEnd;
-      }
-      return Math.min(displayTime, duration); // Fallback, clamped to duration
-    };
-    
-    return {
-      segmentDisplayInfo: displayInfo,
-      editedDuration: totalEditedDuration,
-      sourceToDisplayTime: sourceToDisplay,
-      displayToSourceTime: displayToSource,
-    };
-  }, [segments, duration]);
-
-  // Use edited duration for timeline display
-  const timelineDuration = editedDuration;
-
-  const snapDisplayTimes = useMemo(() => {
-    const points = new Set<number>([0, timelineDuration]);
-    segmentDisplayInfo.forEach((info) => {
-      points.add(info.displayStart);
-      points.add(info.displayEnd);
-    });
-    return Array.from(points).sort((a, b) => a - b);
-  }, [segmentDisplayInfo, timelineDuration]);
-
-  const getSnappedDisplayTime = useCallback(
-    (displayTime: number) => {
-      const snapThreshold = Math.max(timelineDuration * 0.005, 0.15);
-      let snapped = displayTime;
-      for (const point of snapDisplayTimes) {
-        if (Math.abs(displayTime - point) <= snapThreshold) {
-          snapped = point;
-          break;
-        }
-      }
-      return snapped;
-    },
-    [snapDisplayTimes, timelineDuration]
-  );
-
-  // Generate time markers based on edited duration
-  const markers: { time: number; label: string }[] = [];
-  const interval = timelineDuration > 300 ? 60 : timelineDuration > 60 ? 30 : 10;
-  for (let t = 0; t <= timelineDuration; t += interval) {
-    const mins = Math.floor(t / 60);
-    const secs = t % 60;
-    markers.push({
-      time: t,
-      label: `${mins}:${secs.toString().padStart(2, "0")}`,
-    });
-  }
+  const {
+    segmentDisplayInfo,
+    timelineDuration,
+    sourceToDisplayTime,
+    displayToSourceTime,
+    getSnappedDisplayTime,
+    markers,
+  } = useTimelineDisplayMetrics(segments, duration);
 
   const buildWaveformBars = useCallback(
     (waveform: number[]) => {
