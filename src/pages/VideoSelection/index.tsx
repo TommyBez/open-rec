@@ -60,7 +60,6 @@ export function VideoSelectionPage() {
   } = useVideoSelectionState();
   const activeExportCount = useExportStore((state) => state.activeExportCount);
 
-  // Loading state
   if (isLoading) {
     return (
       <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background p-5">
@@ -77,10 +76,7 @@ export function VideoSelectionPage() {
   }
   return (
     <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background">
-      {/* Atmospheric background */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
-
-      {/* Header */}
       <VideoSelectionHeader
         cameFromEditor={cameFromEditor}
         isBatchExporting={isBatchExporting}
@@ -91,7 +87,6 @@ export function VideoSelectionPage() {
         onToggleSelectionMode={toggleSelectionMode}
       />
 
-      {/* Main content */}
       <main className="relative z-10 flex flex-1 flex-col overflow-hidden p-4">
         {selectionMode && (
           <BatchExportToolbar
