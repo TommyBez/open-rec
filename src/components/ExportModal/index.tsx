@@ -35,6 +35,7 @@ type ExportFormat = ExportOptionsType["format"];
 type FrameRate = ExportOptionsType["frameRate"];
 type Compression = ExportOptionsType["compression"];
 type Resolution = ExportOptionsType["resolution"];
+type ExportPreset = "youtube-4k" | "web-discord" | "prores-master" | "custom";
 
 type ExportStatus = "idle" | "exporting" | "complete" | "error";
 
@@ -54,6 +55,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
   const unlistenRefs = useRef<UnlistenFn[]>([]);
 
   const displayDuration = editedDuration ?? project.duration;
+  const activePreset = detectActivePreset(options);
 
   useEffect(() => {
     return () => {
@@ -192,6 +194,38 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
         </DialogHeader>
 
         <div className="flex flex-col gap-5 py-4">
+          <div className="flex flex-col gap-2.5">
+            <Label className="text-muted-foreground text-xs">Preset</Label>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={activePreset === "youtube-4k" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setOptions(getPresetOptions("youtube-4k"))}
+              >
+                YouTube 4K
+              </Button>
+              <Button
+                variant={activePreset === "web-discord" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setOptions(getPresetOptions("web-discord"))}
+              >
+                Web (Discord/Slack)
+              </Button>
+              <Button
+                variant={activePreset === "prores-master" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setOptions(getPresetOptions("prores-master"))}
+              >
+                ProRes Master
+              </Button>
+              {activePreset === "custom" && (
+                <Badge variant="secondary" className="px-2.5 py-1 text-[10px] uppercase tracking-wider">
+                  Custom
+                </Badge>
+              )}
+            </div>
+          </div>
+
           {/* Format and Frame Rate Row */}
           <div className="flex gap-6">
             {/* Format */}
@@ -205,7 +239,7 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
                 }}
                 variant="outline"
               >
-                {(["mp4", "gif"] as ExportFormat[]).map((format) => (
+                {(["mp4", "mov", "gif"] as ExportFormat[]).map((format) => (
                   <ToggleGroupItem key={format} value={format} className="px-4">
                     {format.toUpperCase()}
                   </ToggleGroupItem>
@@ -469,7 +503,17 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
 }
 
 function calculateEstimatedSize(duration: number, options: ExportOptionsType): string {
-  // Rough estimates based on compression preset
+  // Rough estimates based on format and compression preset
+  if (options.format === "mov") {
+    const proresBitrates: Record<Resolution, number> = {
+      "720p": 100, // Mbps
+      "1080p": 220,
+      "4k": 650,
+    };
+    const sizeMB = (duration * proresBitrates[options.resolution]) / 8;
+    return sizeMB >= 1000 ? `${(sizeMB / 1000).toFixed(2)} GB` : `${sizeMB.toFixed(2)} MB`;
+  }
+
   const bitrates: Record<Compression, number> = {
     minimal: 20, // Mbps
     social: 8,
@@ -494,7 +538,8 @@ function calculateEstimatedTime(duration: number, options: ExportOptionsType): s
     "4k": 1.5,
   };
 
-  const seconds = Math.ceil(duration * multipliers[options.resolution]);
+  const formatMultiplier = options.format === "mov" ? 1.8 : 1.0;
+  const seconds = Math.ceil(duration * multipliers[options.resolution] * formatMultiplier);
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
 
@@ -502,4 +547,48 @@ function calculateEstimatedTime(duration: number, options: ExportOptionsType): s
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
   return `${secs}s`;
+}
+
+function getPresetOptions(preset: Exclude<ExportPreset, "custom">): ExportOptionsType {
+  switch (preset) {
+    case "youtube-4k":
+      return {
+        format: "mp4",
+        frameRate: 60,
+        compression: "minimal",
+        resolution: "4k",
+      };
+    case "web-discord":
+      return {
+        format: "mp4",
+        frameRate: 30,
+        compression: "web",
+        resolution: "1080p",
+      };
+    case "prores-master":
+      return {
+        format: "mov",
+        frameRate: 30,
+        compression: "minimal",
+        resolution: "4k",
+      };
+  }
+}
+
+function detectActivePreset(options: ExportOptionsType): ExportPreset {
+  const entries: Array<Exclude<ExportPreset, "custom">> = [
+    "youtube-4k",
+    "web-discord",
+    "prores-master",
+  ];
+  const matched = entries.find((preset) => {
+    const presetOptions = getPresetOptions(preset);
+    return (
+      presetOptions.format === options.format &&
+      presetOptions.frameRate === options.frameRate &&
+      presetOptions.compression === options.compression &&
+      presetOptions.resolution === options.resolution
+    );
+  });
+  return matched ?? "custom";
 }

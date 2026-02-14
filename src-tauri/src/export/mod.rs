@@ -19,6 +19,7 @@ pub struct ExportOptions {
 pub enum ExportFormat {
     Mp4,
     Gif,
+    Mov,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -443,7 +444,7 @@ pub fn build_ffmpeg_args(
     };
 
     match options.format {
-        ExportFormat::Mp4 => {
+        ExportFormat::Mp4 | ExportFormat::Mov => {
             let mut filter_parts: Vec<String> = Vec::new();
             let mut current_video_label = "[0:v]".to_string();
 
@@ -572,31 +573,41 @@ pub fn build_ffmpeg_args(
                 Some("[vout]".to_string())
             };
 
-            // Video codec (prefer macOS hardware acceleration when available)
+            // Video codec
             args.push("-c:v".to_string());
-            if cfg!(target_os = "macos") {
-                args.push("h264_videotoolbox".to_string());
-                args.push("-b:v".to_string());
-                args.push(format!("{}k", target_video_bitrate_kbps(options)));
-                args.push("-allow_sw".to_string());
-                args.push("1".to_string());
+            if matches!(options.format, ExportFormat::Mov) {
+                args.push("prores_ks".to_string());
+                args.push("-profile:v".to_string());
+                args.push("3".to_string());
+                args.push("-pix_fmt".to_string());
+                args.push("yuv422p10le".to_string());
             } else {
-                args.push("libx264".to_string());
-                args.push("-crf".to_string());
-                args.push(options.compression.crf().to_string());
-                args.push("-preset".to_string());
-                args.push(options.compression.preset().to_string());
+                if cfg!(target_os = "macos") {
+                    args.push("h264_videotoolbox".to_string());
+                    args.push("-b:v".to_string());
+                    args.push(format!("{}k", target_video_bitrate_kbps(options)));
+                    args.push("-allow_sw".to_string());
+                    args.push("1".to_string());
+                } else {
+                    args.push("libx264".to_string());
+                    args.push("-crf".to_string());
+                    args.push(options.compression.crf().to_string());
+                    args.push("-preset".to_string());
+                    args.push(options.compression.preset().to_string());
+                }
+                args.push("-pix_fmt".to_string());
+                args.push("yuv420p".to_string());
             }
-            args.push("-pix_fmt".to_string());
-            args.push("yuv420p".to_string());
 
             // Audio codec
             args.push("-c:a".to_string());
-            args.push("aac".to_string());
-
-            // Audio bitrate
-            args.push("-b:a".to_string());
-            args.push(format!("{}k", options.compression.audio_bitrate()));
+            if matches!(options.format, ExportFormat::Mov) {
+                args.push("pcm_s16le".to_string());
+            } else {
+                args.push("aac".to_string());
+                args.push("-b:a".to_string());
+                args.push(format!("{}k", options.compression.audio_bitrate()));
+            }
 
             // Frame rate
             args.push("-r".to_string());
@@ -645,9 +656,6 @@ pub fn build_ffmpeg_args(
                 args.push("-map".to_string());
                 args.push("0:a?".to_string());
             }
-
-            args.push("-pix_fmt".to_string());
-            args.push("yuv420p".to_string());
         }
         ExportFormat::Gif => {
             if camera_path.is_some() {
@@ -685,6 +693,7 @@ pub fn get_export_output_path(
     let extension = match options.format {
         ExportFormat::Mp4 => "mp4",
         ExportFormat::Gif => "gif",
+        ExportFormat::Mov => "mov",
     };
 
     let filename = format!(
