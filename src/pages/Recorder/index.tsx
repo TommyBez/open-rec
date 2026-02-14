@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -17,6 +17,10 @@ import { SourceTypeButton } from "../../components/SourceTypeButton";
 import { RecordButton } from "../../components/RecordButton";
 import { useRecordingStore } from "../../stores";
 import { StartRecordingResult } from "../../types/project";
+import {
+  loadRecordingPreferences,
+  saveRecordingPreferences,
+} from "../../lib/recordingPreferencesStore";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -41,6 +45,7 @@ export interface RecordingOptions {
 
 export function RecorderPage() {
   const navigate = useNavigate();
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   
   // Use zustand store for state management
   const {
@@ -93,6 +98,47 @@ export function RecorderPage() {
   useEffect(() => {
     checkPermission();
   }, []);
+
+  // Hydrate persisted recording preferences from plugin store
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydratePreferences() {
+      const persisted = await loadRecordingPreferences();
+      if (!persisted || cancelled) {
+        setPreferencesLoaded(true);
+        return;
+      }
+
+      setSourceType(persisted.sourceType);
+      setCaptureCamera(persisted.captureCamera);
+      setCaptureMicrophone(persisted.captureMicrophone);
+      setCaptureSystemAudio(persisted.captureSystemAudio);
+      setPreferencesLoaded(true);
+    }
+
+    hydratePreferences();
+    return () => {
+      cancelled = true;
+    };
+  }, [setCaptureCamera, setCaptureMicrophone, setCaptureSystemAudio, setSourceType]);
+
+  // Persist preferences to plugin store
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    void saveRecordingPreferences({
+      sourceType,
+      captureCamera,
+      captureMicrophone,
+      captureSystemAudio,
+    });
+  }, [
+    preferencesLoaded,
+    sourceType,
+    captureCamera,
+    captureMicrophone,
+    captureSystemAudio,
+  ]);
 
   // Load capture sources when permission is granted and source type changes
   useEffect(() => {

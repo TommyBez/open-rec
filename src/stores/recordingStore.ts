@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 import { CaptureSource } from "../types/project";
 
 export type RecordingState = "idle" | "starting" | "recording" | "paused";
@@ -51,9 +50,7 @@ interface RecordingStore {
   resetRecording: () => void;
 }
 
-export const useRecordingStore = create<RecordingStore>()(
-  persist(
-    (set) => ({
+export const useRecordingStore = create<RecordingStore>((set) => ({
   // Initial state
   state: "idle",
   elapsedTime: 0,
@@ -108,17 +105,4 @@ export const useRecordingStore = create<RecordingStore>()(
     projectId: null,
     recordingStartTimeMs: null,
   }),
-    }),
-    {
-      name: "openrec-recording-preferences-v1",
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        sourceType: state.sourceType,
-        selectedSource: state.selectedSource,
-        captureCamera: state.captureCamera,
-        captureMicrophone: state.captureMicrophone,
-        captureSystemAudio: state.captureSystemAudio,
-      }),
-    }
-  )
-);
+}));
