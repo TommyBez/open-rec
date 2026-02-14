@@ -1217,6 +1217,14 @@ pub fn get_export_output_path(
         })
         .collect::<String>()
         .replace(' ', "_");
+    let sanitized_project_name = if sanitized_project_name
+        .chars()
+        .all(|character| character == '_' || character.is_whitespace())
+    {
+        "recording".to_string()
+    } else {
+        sanitized_project_name
+    };
 
     let filename = format!(
         "{}_{}_{}.{}",
