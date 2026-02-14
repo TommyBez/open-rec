@@ -15,6 +15,7 @@ import { EditorHeader } from "./components/EditorHeader";
 import { VideoPreview } from "./components/VideoPreview";
 import { PlaybackControls } from "./components/PlaybackControls";
 import { useVideoPlayback } from "./hooks/useVideoPlayback";
+import { useWaveformData } from "./hooks/useWaveformData";
 
 // Hoisted static JSX elements
 const atmosphericGradient = (
@@ -166,6 +167,8 @@ export function EditorPage() {
     if (!project?.cameraVideoPath) return "";
     return convertFileSrc(project.cameraVideoPath);
   }, [project?.cameraVideoPath]);
+  const screenWaveform = useWaveformData(project?.screenVideoPath);
+  const microphoneWaveform = useWaveformData(project?.microphoneAudioPath);
 
   // Segments and duration calculation
   const { enabledSegments, editedDuration, sourceToEditedTime } = useMemo(() => {
@@ -574,6 +577,8 @@ export function EditorPage() {
           segments={project.edits.segments}
           zoom={project.edits.zoom}
           speed={project.edits.speed}
+          screenWaveform={screenWaveform}
+          microphoneWaveform={microphoneWaveform}
           onSeek={handleTimelineClick}
           selectedTool={selectedTool}
           selectedSegmentId={selectedSegmentId}

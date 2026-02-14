@@ -9,6 +9,8 @@ interface TimelineProps {
   segments: Segment[];
   zoom: ZoomEffect[];
   speed?: SpeedEffect[];
+  screenWaveform?: number[];
+  microphoneWaveform?: number[];
   onSeek: (time: number) => void;
   selectedTool: "cut" | "zoom" | "speed" | null;
   selectedSegmentId: string | null;
@@ -29,6 +31,8 @@ export function Timeline({
   segments,
   zoom,
   speed = [],
+  screenWaveform = [],
+  microphoneWaveform = [],
   onSeek,
   selectedTool,
   selectedSegmentId,
@@ -178,6 +182,40 @@ export function Timeline({
       label: `${mins}:${secs.toString().padStart(2, "0")}`,
     });
   }
+
+  const buildWaveformBars = useCallback(
+    (waveform: number[]) => {
+      if (waveform.length === 0 || timelineDuration <= 0 || duration <= 0) {
+        return [];
+      }
+      const bars = Math.min(180, waveform.length);
+      return new Array(bars).fill(0).map((_, index) => {
+        const ratio = bars > 1 ? index / (bars - 1) : 0;
+        const displayTime = ratio * timelineDuration;
+        const sourceTime = displayToSourceTime(displayTime);
+        const sourceRatio = Math.max(0, Math.min(1, sourceTime / duration));
+        const sampleIndex = Math.min(
+          waveform.length - 1,
+          Math.floor(sourceRatio * (waveform.length - 1))
+        );
+        return {
+          id: `${index}-${sampleIndex}`,
+          leftPercent: ratio * 100,
+          amplitude: waveform[sampleIndex] ?? 0,
+        };
+      });
+    },
+    [displayToSourceTime, duration, timelineDuration]
+  );
+
+  const screenWaveformBars = useMemo(
+    () => buildWaveformBars(screenWaveform),
+    [buildWaveformBars, screenWaveform]
+  );
+  const microphoneWaveformBars = useMemo(
+    () => buildWaveformBars(microphoneWaveform),
+    [buildWaveformBars, microphoneWaveform]
+  );
 
   function handleTimelineClick(e: React.MouseEvent) {
     if (!timelineRef.current) return;
@@ -616,6 +654,8 @@ export function Timeline({
           <TrackLabel icon={<Film className="size-3.5" strokeWidth={1.75} />} label="Clips" />
           <TrackLabel icon={<ZoomIn className="size-3.5" strokeWidth={1.75} />} label="Zoom" />
           <TrackLabel icon={<Timer className="size-3.5" strokeWidth={1.75} />} label="Speed" />
+          {screenWaveformBars.length > 0 && <TrackLabel icon={<Film className="size-3.5" strokeWidth={1.75} />} label="Sys Aud" />}
+          {microphoneWaveformBars.length > 0 && <TrackLabel icon={<Film className="size-3.5" strokeWidth={1.75} />} label="Mic Aud" />}
         </div>
 
         {/* Content column - this is the interactive area */}
@@ -811,6 +851,22 @@ export function Timeline({
             )}
           </div>
 
+          {screenWaveformBars.length > 0 && (
+            <WaveformTrack
+              bars={screenWaveformBars}
+              barClassName="bg-sky-400/70"
+              trackClassName="bg-sky-500/10"
+            />
+          )}
+
+          {microphoneWaveformBars.length > 0 && (
+            <WaveformTrack
+              bars={microphoneWaveformBars}
+              barClassName="bg-emerald-400/70"
+              trackClassName="bg-emerald-500/10"
+            />
+          )}
+
           {/* Playhead */}
           <div
             className="pointer-events-none absolute inset-y-0 z-10"
@@ -846,6 +902,34 @@ function TrackLabel({
     <div className="flex h-10 items-center gap-1.5 text-muted-foreground/60">
       {icon}
       <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
+    </div>
+  );
+}
+
+function WaveformTrack({
+  bars,
+  barClassName,
+  trackClassName,
+}: {
+  bars: Array<{ id: string; leftPercent: number; amplitude: number }>;
+  barClassName: string;
+  trackClassName: string;
+}) {
+  return (
+    <div className={cn("relative h-10 w-full overflow-hidden rounded-lg", trackClassName)}>
+      {bars.map((bar) => {
+        const heightPercent = Math.max(8, Math.min(100, bar.amplitude * 100));
+        return (
+          <div
+            key={bar.id}
+            className={cn("absolute bottom-0 w-[0.9%] rounded-full opacity-90", barClassName)}
+            style={{
+              left: `${bar.leftPercent}%`,
+              height: `${heightPercent}%`,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
