@@ -181,11 +181,10 @@ pub fn validate_export_inputs(project: &Project, options: &ExportOptions) -> Res
 
     if matches!(options.format, ExportFormat::Wav | ExportFormat::Mp3) {
         let has_screen_audio = has_audio_stream(&project.screen_video_path);
-        let has_microphone_audio = project
-            .microphone_audio_path
-            .as_ref()
-            .map(|mic_path| std::path::Path::new(mic_path).exists())
-            .unwrap_or(false);
+        let has_microphone_audio = match project.microphone_audio_path.as_deref() {
+            Some(mic_path) => std::path::Path::new(mic_path).exists(),
+            None => false,
+        };
         if !has_screen_audio && !has_microphone_audio {
             return Err(AppError::Message(
                 "Audio export requires at least one audio source (system or microphone)"
