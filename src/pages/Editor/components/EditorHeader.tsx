@@ -303,6 +303,7 @@ export const EditorHeader = memo(function EditorHeader({
             <div className="space-y-0.5 text-xs">
               <p>J/K/L transport · ←/→ frame step</p>
               <p>1/2/3/4 tools · A/B/T/⇧A annotations</p>
+              <p>⌥ + arrows nudge selected annotation</p>
               <p>⌘S save · ⌘D duplicate annotation</p>
             </div>
           </TooltipContent>
