@@ -341,12 +341,16 @@ export function EditorPage() {
     if (!selectedAnnotationId) return;
     duplicateAnnotation(selectedAnnotationId);
   }, [duplicateAnnotation, selectedAnnotationId]);
+  const handleManualSaveShortcut = useCallback(() => {
+    saveProject().catch(console.error);
+  }, [saveProject]);
 
   useEditorKeyboardShortcuts({
     canUndo,
     canRedo,
     undo,
     redo,
+    saveProjectNow: handleManualSaveShortcut,
     isPlaying,
     togglePlay,
     skipBackward,

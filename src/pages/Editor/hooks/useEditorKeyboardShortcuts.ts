@@ -6,6 +6,7 @@ interface UseEditorKeyboardShortcutsOptions {
   canRedo: boolean;
   undo: () => void;
   redo: () => void;
+  saveProjectNow: () => void;
   isPlaying: boolean;
   togglePlay: () => void;
   skipBackward: () => void;
@@ -28,6 +29,7 @@ export function useEditorKeyboardShortcuts({
   canRedo,
   undo,
   redo,
+  saveProjectNow,
   isPlaying,
   togglePlay,
   skipBackward,
@@ -59,6 +61,10 @@ export function useEditorKeyboardShortcuts({
       if (isModifier && ((e.key === "z" && e.shiftKey) || e.key.toLowerCase() === "y")) {
         e.preventDefault();
         if (canRedo) redo();
+      }
+      if (isModifier && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        saveProjectNow();
       }
       if (isModifier && e.key.toLowerCase() === "d" && selectedAnnotationId) {
         e.preventDefault();
@@ -148,6 +154,7 @@ export function useEditorKeyboardShortcuts({
     canRedo,
     undo,
     redo,
+    saveProjectNow,
     isPlaying,
     togglePlay,
     skipBackward,
