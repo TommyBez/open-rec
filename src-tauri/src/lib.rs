@@ -731,30 +731,46 @@ fn cancel_export(
 
 /// Parse ffmpeg progress from stderr line
 fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
-    // FFmpeg outputs lines like: "frame=  100 fps=30 ... time=00:00:03.33 ..."
-    if let Some(time_idx) = line.find("time=") {
-        let time_str = &line[time_idx + 5..];
-        if let Some(end_idx) = time_str.find(' ') {
-            let time_part = &time_str[..end_idx];
-            // Parse time format HH:MM:SS.ff
-            let parts: Vec<&str> = time_part.split(':').collect();
-            if parts.len() == 3 {
-                let hours: f64 = match parts[0].parse() {
-                    Ok(value) => value,
-                    Err(_) => return None,
-                };
-                let minutes: f64 = match parts[1].parse() {
-                    Ok(value) => value,
-                    Err(_) => return None,
-                };
-                let seconds: f64 = match parts[2].parse() {
-                    Ok(value) => value,
-                    Err(_) => return None,
-                };
-                return Some(hours * 3600.0 + minutes * 60.0 + seconds);
+    fn parse_hhmmss(value: &str) -> Option<f64> {
+        let mut parts = value.trim().split(':');
+        let hours: f64 = parts.next()?.parse().ok()?;
+        let minutes: f64 = parts.next()?.parse().ok()?;
+        let seconds: f64 = parts.next()?.parse().ok()?;
+        if parts.next().is_some() {
+            return None;
+        }
+        Some(hours * 3600.0 + minutes * 60.0 + seconds)
+    }
+
+    // FFmpeg can emit either:
+    // 1) key/value progress (`out_time_ms=1234567`, `out_time=00:00:01.23`)
+    // 2) human stderr status (`... time=00:00:01.23 ...`)
+    if let Some(out_time_ms_idx) = line.find("out_time_ms=") {
+        let value = &line[out_time_ms_idx + "out_time_ms=".len()..];
+        let raw = value.split_whitespace().next().unwrap_or_default().trim();
+        if let Ok(microseconds) = raw.parse::<f64>() {
+            if microseconds >= 0.0 {
+                return Some(microseconds / 1_000_000.0);
             }
         }
     }
+
+    if let Some(out_time_idx) = line.find("out_time=") {
+        let value = &line[out_time_idx + "out_time=".len()..];
+        let raw = value.split_whitespace().next().unwrap_or_default().trim();
+        if let Some(seconds) = parse_hhmmss(raw) {
+            return Some(seconds);
+        }
+    }
+
+    if let Some(time_idx) = line.find("time=") {
+        let value = &line[time_idx + "time=".len()..];
+        let raw = value.split_whitespace().next().unwrap_or_default().trim();
+        if let Some(seconds) = parse_hhmmss(raw) {
+            return Some(seconds);
+        }
+    }
+
     None
 }
 
