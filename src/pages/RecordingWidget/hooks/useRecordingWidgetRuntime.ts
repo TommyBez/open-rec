@@ -15,6 +15,7 @@ interface DiskSpaceStatus {
 
 const STOP_RECORDING_TIMEOUT_MS = 30_000;
 const PAUSE_RESUME_TIMEOUT_MS = 10_000;
+type BackendRecordingState = "recording" | "paused" | "stopped";
 
 export function useRecordingWidgetRuntime() {
   const {
@@ -35,14 +36,42 @@ export function useRecordingWidgetRuntime() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storedProjectId = getStoredCurrentProjectId();
-    const effectiveProjectId = projectId ?? storedProjectId;
-    if (storedProjectId && !projectId) {
-      setProjectId(storedProjectId);
+    let cancelled = false;
+
+    async function hydrateRecordingSession() {
+      const storedProjectId = getStoredCurrentProjectId();
+      const effectiveProjectId = projectId ?? storedProjectId;
+      if (!effectiveProjectId) return;
+
+      if (storedProjectId && !projectId) {
+        setProjectId(storedProjectId);
+      }
+
+      if (state !== "idle") return;
+
+      try {
+        const backendState = await invoke<BackendRecordingState | null>("get_recording_state", {
+          projectId: effectiveProjectId,
+        });
+        if (cancelled) return;
+
+        if (backendState === "recording" || backendState === "paused") {
+          setRecordingState(backendState);
+          return;
+        }
+
+        clearStoredCurrentProjectId();
+        setProjectId(null);
+      } catch (error) {
+        console.error("Failed to hydrate recording session state:", error);
+      }
     }
-    if (state === "idle" && effectiveProjectId) {
-      setRecordingState("recording");
-    }
+
+    void hydrateRecordingSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, [projectId, setProjectId, state, setRecordingState]);
 
   useEffect(() => {

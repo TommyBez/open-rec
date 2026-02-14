@@ -636,6 +636,20 @@ pub fn set_media_offsets(
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+pub fn get_recording_state(
+    state: &SharedRecorderState,
+    project_id: &str,
+) -> Result<Option<RecordingState>, AppError> {
+    let state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    Ok(state_guard
+        .sessions
+        .get(project_id)
+        .map(|session| session.state))
+}
+
 /// Cleanup all active recording streams (used on app termination)
 #[cfg(target_os = "macos")]
 pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), AppError> {
@@ -726,6 +740,14 @@ pub fn set_media_offsets(
     Err(AppError::Message(
         "Screen capture is only supported on macOS".to_string(),
     ))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_recording_state(
+    _state: &SharedRecorderState,
+    _project_id: &str,
+) -> Result<Option<RecordingState>, AppError> {
+    Ok(None)
 }
 
 #[cfg(not(target_os = "macos"))]
