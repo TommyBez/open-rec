@@ -23,6 +23,7 @@ export interface EditDecisionList {
   segments: Segment[];
   zoom: ZoomEffect[];
   speed: SpeedEffect[];
+  annotations: Annotation[];
   cameraOverlay: CameraOverlaySettings;
   audioMix: AudioMixSettings;
 }
@@ -61,6 +62,19 @@ export interface SpeedEffect {
   startTime: number;
   endTime: number;
   speed: number;
+}
+
+export interface Annotation {
+  id: string;
+  startTime: number;
+  endTime: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  opacity: number;
+  thickness: number;
 }
 
 // Export options

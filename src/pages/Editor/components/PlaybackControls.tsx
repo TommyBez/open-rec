@@ -1,5 +1,5 @@
 import { memo } from "react";
-import {SkipBack, Pause, Play, SkipForward, Scissors, ZoomIn, Gauge, Trash2, Undo2, Redo2} from "lucide-react";
+import {SkipBack, Pause, Play, SkipForward, Scissors, ZoomIn, Gauge, Trash2, Undo2, Redo2, Square} from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -33,6 +33,7 @@ interface PlaybackControlsProps {
   onUndo: () => void;
   onRedo: () => void;
   onDelete: () => void;
+  onAddAnnotation: () => void;
   onToggleTool: (tool: "cut" | "zoom" | "speed") => void;
 }
 
@@ -53,6 +54,7 @@ export const PlaybackControls = memo(function PlaybackControls({
   onUndo,
   onRedo,
   onDelete,
+  onAddAnnotation,
   onToggleTool,
 }: PlaybackControlsProps) {
   return (
@@ -174,6 +176,12 @@ export const PlaybackControls = memo(function PlaybackControls({
           onClick={() => onToggleTool("speed")}
           icon={<Gauge className="size-4" strokeWidth={1.75} />}
           tooltip={selectedTool === "speed" ? "Deactivate speed tool (3)" : "Speed tool (3, click on timeline)"}
+        />
+        <ToolButton
+          active={false}
+          onClick={onAddAnnotation}
+          icon={<Square className="size-4" strokeWidth={1.75} />}
+          tooltip="Add annotation box (A)"
         />
         
         {/* Separator */}

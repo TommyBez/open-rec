@@ -35,6 +35,7 @@ const loadingSpinner = (
 function normalizeProject(project: Project): Project {
   const overlay = project.edits.cameraOverlay;
   const audioMix = project.edits.audioMix;
+  const annotations = project.edits.annotations;
   return {
     ...project,
     edits: {
@@ -52,6 +53,7 @@ function normalizeProject(project: Project): Project {
         systemVolume: audioMix?.systemVolume ?? 1,
         microphoneVolume: audioMix?.microphoneVolume ?? 1,
       },
+      annotations: annotations ?? [],
     },
   };
 }
@@ -80,6 +82,7 @@ export function EditorPage() {
     addSpeed,
     updateSpeed,
     deleteSpeed,
+    addAnnotation,
   } = useProject(null);
   
   const {
@@ -332,6 +335,16 @@ export function EditorPage() {
         skipBackward();
       }
 
+      if (e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        if (!project) return;
+        const startTime = Math.max(0, currentTime);
+        const endTime = Math.min(project.duration, startTime + 3);
+        if (endTime - startTime > 0.1) {
+          addAnnotation(startTime, endTime);
+        }
+      }
+
       if (e.key === "1") {
         e.preventDefault();
         toggleTool("cut");
@@ -376,6 +389,8 @@ export function EditorPage() {
     isPlaying,
     togglePlay,
     skipBackward,
+    project,
+    addAnnotation,
     toggleTool,
     selectedZoomId,
     selectedSpeedId,
@@ -406,6 +421,7 @@ export function EditorPage() {
           segments: [{ id: crypto.randomUUID(), startTime: 0, endTime: 274.8, enabled: true }],
           zoom: [],
           speed: [],
+          annotations: [],
           cameraOverlay: {
             position: "bottom-right",
             margin: 20,
@@ -449,6 +465,14 @@ export function EditorPage() {
   const handleOpenVideos = useCallback(() => {
     navigate("/videos", { state: { from: "editor", projectId } });
   }, [navigate, projectId]);
+  const handleAddAnnotation = useCallback(() => {
+    if (!project) return;
+    const startTime = Math.max(0, currentTime);
+    const endTime = Math.min(project.duration, startTime + 3);
+    if (endTime - startTime > 0.1) {
+      addAnnotation(startTime, endTime);
+    }
+  }, [addAnnotation, currentTime, project]);
 
   // Derived delete state
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
@@ -519,6 +543,7 @@ export function EditorPage() {
                 customY: Math.min(1, Math.max(0, y)),
               })
             }
+            annotations={project.edits.annotations}
             cameraOffsetMs={project.cameraOffsetMs}
           />
           
@@ -540,6 +565,7 @@ export function EditorPage() {
             onRedo={redo}
             onDelete={handleDeleteSelected}
             onToggleTool={toggleTool}
+            onAddAnnotation={handleAddAnnotation}
           />
         </div>
 

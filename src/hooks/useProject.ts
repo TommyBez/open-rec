@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { AudioMixSettings, CameraOverlaySettings, Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
+import { Annotation, AudioMixSettings, CameraOverlaySettings, Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
 
 const MAX_HISTORY_SIZE = 50;
 
@@ -436,6 +436,52 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [project, updateProject]);
 
+  const addAnnotation = useCallback((startTime: number, endTime: number) => {
+    updateProject((p) => ({
+      ...p,
+      edits: {
+        ...p.edits,
+        annotations: [
+          ...p.edits.annotations,
+          {
+            id: generateId(),
+            startTime,
+            endTime,
+            x: 0.12,
+            y: 0.12,
+            width: 0.3,
+            height: 0.2,
+            color: "#facc15",
+            opacity: 0.95,
+            thickness: 4,
+          },
+        ],
+      },
+    }));
+  }, [updateProject]);
+
+  const deleteAnnotation = useCallback((annotationId: string) => {
+    updateProject((p) => ({
+      ...p,
+      edits: {
+        ...p.edits,
+        annotations: p.edits.annotations.filter((annotation) => annotation.id !== annotationId),
+      },
+    }));
+  }, [updateProject]);
+
+  const updateAnnotation = useCallback((annotationId: string, updates: Partial<Annotation>) => {
+    updateProject((p) => ({
+      ...p,
+      edits: {
+        ...p.edits,
+        annotations: p.edits.annotations.map((annotation) =>
+          annotation.id === annotationId ? { ...annotation, ...updates } : annotation
+        ),
+      },
+    }));
+  }, [updateProject]);
+
   const updateCameraOverlay = useCallback((updates: Partial<CameraOverlaySettings>) => {
     updateProject((p) => ({
       ...p,
@@ -485,6 +531,9 @@ export function useProject(initialProject: Project | null) {
     addSpeed,
     updateSpeed,
     deleteSpeed,
+    addAnnotation,
+    updateAnnotation,
+    deleteAnnotation,
     setGlobalSpeed,
     updateCameraOverlay,
     updateAudioMix,

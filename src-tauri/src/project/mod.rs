@@ -35,6 +35,8 @@ pub struct EditDecisionList {
     pub zoom: Vec<ZoomEffect>,
     pub speed: Vec<SpeedEffect>,
     #[serde(default)]
+    pub annotations: Vec<Annotation>,
+    #[serde(default)]
     pub camera_overlay: CameraOverlaySettings,
     #[serde(default)]
     pub audio_mix: AudioMixSettings,
@@ -137,6 +139,21 @@ pub struct SpeedEffect {
     pub speed: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Annotation {
+    pub id: String,
+    pub start_time: f64,
+    pub end_time: f64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub color: String,
+    pub opacity: f64,
+    pub thickness: u32,
+}
+
 impl Project {
     /// Create a new project from recording paths
     pub fn new(
@@ -171,6 +188,7 @@ impl Project {
                 }],
                 zoom: vec![],
                 speed: vec![],
+                annotations: vec![],
                 camera_overlay: CameraOverlaySettings::default(),
                 audio_mix: AudioMixSettings::default(),
             },

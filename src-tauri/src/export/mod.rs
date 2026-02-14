@@ -440,6 +440,51 @@ fn build_camera_overlay_coordinates(project: &Project) -> String {
     }
 }
 
+fn apply_video_annotations(
+    filter_parts: &mut Vec<String>,
+    mut current_video_label: String,
+    project: &Project,
+) -> String {
+    for (index, annotation) in project.edits.annotations.iter().enumerate() {
+        let start_time = annotation.start_time.max(0.0);
+        let end_time = annotation.end_time.min(project.duration);
+        if end_time - start_time <= 0.01 {
+            continue;
+        }
+
+        let x = annotation.x.clamp(0.0, 1.0);
+        let y = annotation.y.clamp(0.0, 1.0);
+        let width = annotation.width.clamp(0.02, 1.0);
+        let height = annotation.height.clamp(0.02, 1.0);
+        let opacity = annotation.opacity.clamp(0.1, 1.0);
+        let thickness = annotation.thickness.max(1);
+        let color = annotation
+            .color
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>();
+
+        let next_label = format!("[vannot{}]", index);
+        filter_parts.push(format!(
+            "{}drawbox=x=iw*{:.6}:y=ih*{:.6}:w=iw*{:.6}:h=ih*{:.6}:color={}@{:.3}:t={}:enable='between(t,{:.6},{:.6})'{}",
+            current_video_label,
+            x,
+            y,
+            width,
+            height,
+            color,
+            opacity,
+            thickness,
+            start_time,
+            end_time,
+            next_label
+        ));
+        current_video_label = next_label;
+    }
+
+    current_video_label
+}
+
 /// Build ffmpeg arguments for export
 pub fn build_ffmpeg_args(
     project: &Project,
@@ -571,6 +616,9 @@ pub fn build_ffmpeg_args(
                 ));
                 current_video_label = "[vwithcam]".to_string();
             }
+
+            current_video_label =
+                apply_video_annotations(&mut filter_parts, current_video_label, project);
 
             let screen_audio_label = if screen_has_audio {
                 let (audio_filters, audio_label) =

@@ -1,6 +1,6 @@
 import { memo, forwardRef, CSSProperties, useEffect, useMemo, useRef } from "react";
 import { ZoomIn, Gauge, Film } from "lucide-react";
-import { ZoomEffect, SpeedEffect } from "../../../types/project";
+import { Annotation, ZoomEffect, SpeedEffect } from "../../../types/project";
 import { useCameraOverlayDrag } from "../hooks/useCameraOverlayDrag";
 
 interface VideoPreviewProps {
@@ -11,6 +11,7 @@ interface VideoPreviewProps {
   currentPlaybackRate: number;
   currentSourceTime: number;
   isPlaying: boolean;
+  annotations: Annotation[];
   resolution: { width: number; height: number };
   cameraSrc?: string;
   cameraOverlayPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom";
@@ -32,6 +33,7 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
       currentPlaybackRate,
       currentSourceTime,
       isPlaying,
+      annotations,
       resolution,
       cameraSrc,
       cameraOverlayPosition,
@@ -49,6 +51,14 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
     const cameraOffsetSeconds = (cameraOffsetMs ?? 0) / 1000;
     const cameraTime = currentSourceTime - cameraOffsetSeconds;
     const showCamera = Boolean(cameraSrc) && cameraTime >= 0;
+    const activeAnnotations = useMemo(
+      () =>
+        annotations.filter(
+          (annotation) =>
+            currentSourceTime >= annotation.startTime && currentSourceTime <= annotation.endTime
+        ),
+      [annotations, currentSourceTime]
+    );
     const isCustomCameraOverlay = cameraOverlayPosition === "custom";
     const cameraOverlayWidthPercent = Math.min(40, Math.max(12, cameraOverlayScale * 100));
     const {
@@ -170,6 +180,23 @@ export const VideoPreview = memo(forwardRef<HTMLVideoElement, VideoPreviewProps>
               onPointerDown={isCustomCameraOverlay ? handlePointerDown : undefined}
             />
           )}
+          {activeAnnotations.map((annotation) => (
+            <div
+              key={annotation.id}
+              className="pointer-events-none absolute"
+              style={{
+                left: `${Math.max(0, Math.min(1, annotation.x)) * 100}%`,
+                top: `${Math.max(0, Math.min(1, annotation.y)) * 100}%`,
+                width: `${Math.max(0.02, Math.min(1, annotation.width)) * 100}%`,
+                height: `${Math.max(0.02, Math.min(1, annotation.height)) * 100}%`,
+                borderStyle: "solid",
+                borderColor: annotation.color,
+                borderWidth: `${Math.max(1, annotation.thickness)}px`,
+                opacity: Math.max(0.1, Math.min(1, annotation.opacity)),
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.2)",
+              }}
+            />
+          ))}
           {/* Effect indicator badges */}
           <div className="absolute right-3 top-3 flex flex-col gap-1.5">
             {activeZoom && (
