@@ -119,3 +119,5 @@ export interface StartRecordingResult {
   cameraVideoPath?: string;
   recordingStartTimeMs: number;
 }
+
+export type BackendRecordingState = "recording" | "paused" | "stopped";

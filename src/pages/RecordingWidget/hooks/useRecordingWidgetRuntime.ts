@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useRecordingStore, RecordingState } from "../../../stores";
+import { BackendRecordingState } from "../../../types/project";
 import {
   clearStoredCurrentProjectId,
   getStoredCurrentProjectId,
@@ -16,7 +17,6 @@ interface DiskSpaceStatus {
 
 const STOP_RECORDING_TIMEOUT_MS = 30_000;
 const PAUSE_RESUME_TIMEOUT_MS = 10_000;
-type BackendRecordingState = "recording" | "paused" | "stopped";
 
 export function useRecordingWidgetRuntime() {
   const {
