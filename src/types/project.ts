@@ -26,6 +26,7 @@ export interface EditDecisionList {
   annotations: Annotation[];
   cameraOverlay: CameraOverlaySettings;
   audioMix: AudioMixSettings;
+  colorCorrection: ColorCorrectionSettings;
 }
 
 export interface CameraOverlaySettings {
@@ -39,6 +40,12 @@ export interface CameraOverlaySettings {
 export interface AudioMixSettings {
   systemVolume: number;
   microphoneVolume: number;
+}
+
+export interface ColorCorrectionSettings {
+  brightness: number;
+  contrast: number;
+  saturation: number;
 }
 
 export interface Segment {

@@ -36,6 +36,7 @@ const loadingSpinner = (
 function normalizeProject(project: Project): Project {
   const overlay = project.edits.cameraOverlay;
   const audioMix = project.edits.audioMix;
+  const colorCorrection = project.edits.colorCorrection;
   const annotations = project.edits.annotations;
   return {
     ...project,
@@ -53,6 +54,11 @@ function normalizeProject(project: Project): Project {
       audioMix: {
         systemVolume: audioMix?.systemVolume ?? 1,
         microphoneVolume: audioMix?.microphoneVolume ?? 1,
+      },
+      colorCorrection: {
+        brightness: colorCorrection?.brightness ?? 0,
+        contrast: colorCorrection?.contrast ?? 1,
+        saturation: colorCorrection?.saturation ?? 1,
       },
       annotations: (annotations ?? []).map((annotation) => ({
         ...annotation,
@@ -74,6 +80,7 @@ export function EditorPage() {
     renameProject,
     updateCameraOverlay,
     updateAudioMix,
+    updateColorCorrection,
     canUndo,
     canRedo,
     undo,
@@ -162,8 +169,13 @@ export function EditorPage() {
   );
 
   const videoZoomStyle = useMemo(() => {
+    const brightness = project?.edits.colorCorrection.brightness ?? 0;
+    const contrast = project?.edits.colorCorrection.contrast ?? 1;
+    const saturation = project?.edits.colorCorrection.saturation ?? 1;
+    const cssFilter = `brightness(${1 + brightness}) contrast(${contrast}) saturate(${saturation})`;
+
     if (!activeZoom) {
-      return { transform: 'scale(1)', transformOrigin: 'center center' };
+      return { transform: 'scale(1)', transformOrigin: 'center center', filter: cssFilter };
     }
     
     const useDraft = zoomDraft && selectedZoomId === activeZoom.id;
@@ -177,8 +189,9 @@ export function EditorPage() {
     return {
       transform: `scale(${scale})`,
       transformOrigin: `${originX}% ${originY}%`,
+      filter: cssFilter,
     };
-  }, [activeZoom, selectedZoomId, zoomDraft, project?.resolution]);
+  }, [activeZoom, selectedZoomId, zoomDraft, project?.resolution, project?.edits.colorCorrection]);
 
   const videoSrc = useMemo(() => {
     if (!project?.screenVideoPath) return "";
@@ -469,6 +482,11 @@ export function EditorPage() {
             systemVolume: 1,
             microphoneVolume: 1,
           },
+          colorCorrection: {
+            brightness: 0,
+            contrast: 1,
+            saturation: 1,
+          },
         },
       };
       setProject(mockProject);
@@ -536,6 +554,9 @@ export function EditorPage() {
         cameraOverlayMargin={project.edits.cameraOverlay.margin}
         audioSystemVolume={project.edits.audioMix.systemVolume}
         audioMicrophoneVolume={project.edits.audioMix.microphoneVolume}
+        colorBrightness={project.edits.colorCorrection.brightness}
+        colorContrast={project.edits.colorCorrection.contrast}
+        colorSaturation={project.edits.colorCorrection.saturation}
         onCameraOverlayPositionChange={(position) =>
           updateCameraOverlay({ position })
         }
@@ -550,6 +571,15 @@ export function EditorPage() {
         }
         onAudioMicrophoneVolumeChange={(volume) =>
           updateAudioMix({ microphoneVolume: Math.max(0, Math.min(2, volume)) })
+        }
+        onColorBrightnessChange={(value) =>
+          updateColorCorrection({ brightness: Math.max(-1, Math.min(1, value)) })
+        }
+        onColorContrastChange={(value) =>
+          updateColorCorrection({ contrast: Math.max(0.5, Math.min(2, value)) })
+        }
+        onColorSaturationChange={(value) =>
+          updateColorCorrection({ saturation: Math.max(0, Math.min(2, value)) })
         }
         onBack={handleBack}
         onExport={handleExport}

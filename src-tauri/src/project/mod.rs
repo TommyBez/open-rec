@@ -40,6 +40,8 @@ pub struct EditDecisionList {
     pub camera_overlay: CameraOverlaySettings,
     #[serde(default)]
     pub audio_mix: AudioMixSettings,
+    #[serde(default)]
+    pub color_correction: ColorCorrectionSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +63,17 @@ pub struct AudioMixSettings {
     pub system_volume: f64,
     #[serde(default = "default_microphone_volume")]
     pub microphone_volume: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorCorrectionSettings {
+    #[serde(default = "default_brightness")]
+    pub brightness: f64,
+    #[serde(default = "default_contrast")]
+    pub contrast: f64,
+    #[serde(default = "default_saturation")]
+    pub saturation: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +102,18 @@ fn default_microphone_volume() -> f64 {
     1.0
 }
 
+fn default_brightness() -> f64 {
+    0.0
+}
+
+fn default_contrast() -> f64 {
+    1.0
+}
+
+fn default_saturation() -> f64 {
+    1.0
+}
+
 impl Default for CameraOverlaySettings {
     fn default() -> Self {
         Self {
@@ -106,6 +131,16 @@ impl Default for AudioMixSettings {
         Self {
             system_volume: default_system_volume(),
             microphone_volume: default_microphone_volume(),
+        }
+    }
+}
+
+impl Default for ColorCorrectionSettings {
+    fn default() -> Self {
+        Self {
+            brightness: default_brightness(),
+            contrast: default_contrast(),
+            saturation: default_saturation(),
         }
     }
 }
@@ -210,6 +245,7 @@ impl Project {
                 annotations: vec![],
                 camera_overlay: CameraOverlaySettings::default(),
                 audio_mix: AudioMixSettings::default(),
+                color_correction: ColorCorrectionSettings::default(),
             },
         }
     }

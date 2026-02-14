@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Annotation, AudioMixSettings, CameraOverlaySettings, Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
+import { Annotation, AudioMixSettings, CameraOverlaySettings, ColorCorrectionSettings, Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
 
 const MAX_HISTORY_SIZE = 50;
 
@@ -514,6 +514,19 @@ export function useProject(initialProject: Project | null) {
     }));
   }, [updateProject]);
 
+  const updateColorCorrection = useCallback((updates: Partial<ColorCorrectionSettings>) => {
+    updateProject((p) => ({
+      ...p,
+      edits: {
+        ...p.edits,
+        colorCorrection: {
+          ...p.edits.colorCorrection,
+          ...updates,
+        },
+      },
+    }));
+  }, [updateProject]);
+
   return {
     project,
     setProject,
@@ -543,5 +556,6 @@ export function useProject(initialProject: Project | null) {
     setGlobalSpeed,
     updateCameraOverlay,
     updateAudioMix,
+    updateColorCorrection,
   };
 }

@@ -679,6 +679,25 @@ fn build_annotation_drawbox_chain(project: &Project) -> String {
         .join("")
 }
 
+fn build_color_correction_filter(project: &Project) -> Option<String> {
+    let settings = &project.edits.color_correction;
+    let brightness = settings.brightness.clamp(-1.0, 1.0);
+    let contrast = settings.contrast.clamp(0.5, 2.0);
+    let saturation = settings.saturation.clamp(0.0, 2.0);
+
+    if brightness.abs() <= 0.0001
+        && (contrast - 1.0).abs() <= 0.0001
+        && (saturation - 1.0).abs() <= 0.0001
+    {
+        None
+    } else {
+        Some(format!(
+            "eq=brightness={:.4}:contrast={:.4}:saturation={:.4}",
+            brightness, contrast, saturation
+        ))
+    }
+}
+
 /// Build ffmpeg arguments for export
 pub fn build_ffmpeg_args(
     project: &Project,
@@ -692,6 +711,7 @@ pub fn build_ffmpeg_args(
     let screen_has_audio = has_audio_stream(&project.screen_video_path);
     let timeline_pieces = build_timeline_pieces(project);
     let timeline_edited = timeline_is_edited(project, &timeline_pieces);
+    let color_correction_filter = build_color_correction_filter(project);
 
     let mut args = Vec::new();
 
@@ -880,9 +900,14 @@ pub fn build_ffmpeg_args(
             let final_video_label = if filter_parts.is_empty() {
                 None
             } else {
+                let correction_chain = color_correction_filter
+                    .as_ref()
+                    .map(|value| format!("{value},"))
+                    .unwrap_or_default();
                 filter_parts.push(format!(
-                    "{}scale=-2:{}[vout]",
+                    "{}{}scale=-2:{}[vout]",
                     current_video_label,
+                    correction_chain,
                     options.resolution.height()
                 ));
                 Some("[vout]".to_string())
@@ -935,7 +960,15 @@ pub fn build_ffmpeg_args(
                 args.push(video_map_label);
             } else {
                 args.push("-vf".to_string());
-                args.push(format!("scale=-2:{}", options.resolution.height()));
+                let correction_chain = color_correction_filter
+                    .as_ref()
+                    .map(|value| format!("{value},"))
+                    .unwrap_or_default();
+                args.push(format!(
+                    "{}scale=-2:{}",
+                    correction_chain,
+                    options.resolution.height()
+                ));
                 args.push("-map".to_string());
                 args.push("0:v".to_string());
             }
@@ -974,12 +1007,16 @@ pub fn build_ffmpeg_args(
         }
         ExportFormat::Gif => {
             let annotation_chain = build_annotation_drawbox_chain(project);
+            let correction_chain = color_correction_filter
+                .as_ref()
+                .map(|value| format!(",{value}"))
+                .unwrap_or_default();
             if camera_path.is_some() {
                 let camera_scale = project.edits.camera_overlay.scale.max(0.1);
                 let overlay_coordinates = build_camera_overlay_coordinates(project);
                 args.push("-filter_complex".to_string());
                 args.push(format!(
-                    "[1:v]scale=iw*{camera_scale}:ih*{camera_scale}[cam];[0:v][cam]overlay={overlay_coordinates}{annotation_chain},fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                    "[1:v]scale=iw*{camera_scale}:ih*{camera_scale}[cam];[0:v][cam]overlay={overlay_coordinates}{annotation_chain}{correction_chain},fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
                     options.frame_rate.min(30),
                     options.resolution.height().min(720)
                 ));
@@ -987,13 +1024,23 @@ pub fn build_ffmpeg_args(
                 let annotation_prefix = annotation_chain
                     .strip_prefix(',')
                     .unwrap_or(&annotation_chain);
+                let correction_prefix = correction_chain
+                    .strip_prefix(',')
+                    .unwrap_or(&correction_chain);
                 args.push("-vf".to_string());
                 args.push(format!(
                     "{}fps={},scale=-1:{}:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
-                    if annotation_prefix.is_empty() {
+                    if annotation_prefix.is_empty() && correction_prefix.is_empty() {
                         String::new()
                     } else {
-                        format!("{annotation_prefix},")
+                        let mut prefix_parts: Vec<&str> = Vec::new();
+                        if !annotation_prefix.is_empty() {
+                            prefix_parts.push(annotation_prefix);
+                        }
+                        if !correction_prefix.is_empty() {
+                            prefix_parts.push(correction_prefix);
+                        }
+                        format!("{},", prefix_parts.join(","))
                     },
                     options.frame_rate.min(30),
                     options.resolution.height().min(720)

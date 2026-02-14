@@ -18,6 +18,9 @@ interface EditorHeaderProps {
   cameraOverlayMargin: number;
   audioSystemVolume: number;
   audioMicrophoneVolume: number;
+  colorBrightness: number;
+  colorContrast: number;
+  colorSaturation: number;
   onCameraOverlayPositionChange: (
     position: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom"
   ) => void;
@@ -25,6 +28,9 @@ interface EditorHeaderProps {
   onCameraOverlayMarginChange: (margin: number) => void;
   onAudioSystemVolumeChange: (volume: number) => void;
   onAudioMicrophoneVolumeChange: (volume: number) => void;
+  onColorBrightnessChange: (value: number) => void;
+  onColorContrastChange: (value: number) => void;
+  onColorSaturationChange: (value: number) => void;
   onBack: () => void;
   onExport: () => void;
   onOpenVideos: () => void;
@@ -42,11 +48,17 @@ export const EditorHeader = memo(function EditorHeader({
   cameraOverlayMargin,
   audioSystemVolume,
   audioMicrophoneVolume,
+  colorBrightness,
+  colorContrast,
+  colorSaturation,
   onCameraOverlayPositionChange,
   onCameraOverlayScaleChange,
   onCameraOverlayMarginChange,
   onAudioSystemVolumeChange,
   onAudioMicrophoneVolumeChange,
+  onColorBrightnessChange,
+  onColorContrastChange,
+  onColorSaturationChange,
   onBack,
   onExport,
   onOpenVideos,
@@ -117,6 +129,53 @@ export const EditorHeader = memo(function EditorHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
+            Br
+            <input
+              type="number"
+              min={-1}
+              max={1}
+              step={0.05}
+              value={colorBrightness.toFixed(2)}
+              onChange={(event) =>
+                onColorBrightnessChange(Number(event.target.value) || 0)
+              }
+              className="w-10 bg-transparent text-right text-xs outline-none"
+              title="Brightness"
+            />
+          </label>
+          <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
+            Ct
+            <input
+              type="number"
+              min={0.5}
+              max={2}
+              step={0.05}
+              value={colorContrast.toFixed(2)}
+              onChange={(event) =>
+                onColorContrastChange(Number(event.target.value) || colorContrast)
+              }
+              className="w-10 bg-transparent text-right text-xs outline-none"
+              title="Contrast"
+            />
+          </label>
+          <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
+            Sat
+            <input
+              type="number"
+              min={0}
+              max={2}
+              step={0.05}
+              value={colorSaturation.toFixed(2)}
+              onChange={(event) =>
+                onColorSaturationChange(Number(event.target.value) || colorSaturation)
+              }
+              className="w-10 bg-transparent text-right text-xs outline-none"
+              title="Saturation"
+            />
+          </label>
+        </div>
         <div className="flex items-center gap-1.5">
           <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
             Sys
