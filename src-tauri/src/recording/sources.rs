@@ -111,8 +111,7 @@ pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource
 
 /// Fallback for non-macOS platforms
 #[cfg(not(target_os = "macos"))]
-pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, AppError> {
-    let _ = source_type;
+pub fn list_capture_sources(_source_type: SourceType) -> Result<Vec<CaptureSource>, AppError> {
     Err(AppError::Message(
         "Screen capture is only supported on macOS".to_string(),
     ))
