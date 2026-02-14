@@ -786,6 +786,21 @@ fn handle_opened_project_paths(app: &AppHandle, paths: Vec<PathBuf>) {
     }
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn collect_startup_opened_paths() -> Vec<PathBuf> {
+    std::env::args()
+        .skip(1)
+        .filter(|arg| !arg.starts_with('-'))
+        .map(|arg| {
+            if let Some(path) = arg.strip_prefix("file://") {
+                PathBuf::from(path)
+            } else {
+                PathBuf::from(arg)
+            }
+        })
+        .collect()
+}
+
 /// Open a project editor in a separate window
 #[tauri::command]
 fn open_project_window(app: AppHandle, project_id: String) -> Result<(), AppError> {
@@ -1177,6 +1192,14 @@ pub fn run() {
             tray_builder
                 .build(app)
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
+
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            {
+                let opened_paths = collect_startup_opened_paths();
+                if !opened_paths.is_empty() {
+                    handle_opened_project_paths(&app.handle().clone(), opened_paths);
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
