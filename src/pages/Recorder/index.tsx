@@ -21,6 +21,10 @@ import {
   loadRecordingPreferences,
   saveRecordingPreferences,
 } from "../../lib/recordingPreferencesStore";
+import {
+  consumeTrayQuickRecordRequest,
+  requestTrayQuickRecord,
+} from "../../lib/trayQuickRecord";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -49,6 +53,7 @@ export function RecorderPage() {
   const [preferredSourceId, setPreferredSourceId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
+  const pendingTrayQuickRecordRef = useRef(false);
   
   // Use zustand store for state management
   const {
@@ -243,6 +248,37 @@ export function RecorderPage() {
       unlisten.then((fn) => fn());
     };
   }, [recordingState, selectedSource, countdown]);
+
+  useEffect(() => {
+    const unlisten = listen("tray-quick-record", () => {
+      requestTrayQuickRecord();
+      pendingTrayQuickRecordRef.current = true;
+      setErrorMessage(null);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (consumeTrayQuickRecordRequest()) {
+      pendingTrayQuickRecordRef.current = true;
+      setErrorMessage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pendingTrayQuickRecordRef.current) return;
+    if (recordingState !== "idle" || countdown !== null) return;
+    if (hasPermission === false) {
+      pendingTrayQuickRecordRef.current = false;
+      setErrorMessage("Cannot quick-record because screen recording permission is not granted.");
+      return;
+    }
+    if (hasPermission === null || isLoadingSources || !selectedSource) return;
+    pendingTrayQuickRecordRef.current = false;
+    void handleStartRecording();
+  }, [countdown, hasPermission, isLoadingSources, recordingState, selectedSource]);
 
   async function loadSources() {
     setIsLoadingSources(true);

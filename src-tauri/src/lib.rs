@@ -33,6 +33,7 @@ const PAUSE_RESUME_SHORTCUT: &str = "CmdOrCtrl+Shift+P";
 const MIN_RECORDING_FREE_SPACE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 const TRAY_MENU_OPEN_RECORDER: &str = "tray.open-recorder";
 const TRAY_MENU_OPEN_PROJECTS: &str = "tray.open-projects";
+const TRAY_MENU_QUICK_RECORD: &str = "tray.quick-record";
 const TRAY_MENU_START_STOP: &str = "tray.start-stop";
 const TRAY_MENU_PAUSE_RESUME: &str = "tray.pause-resume";
 const TRAY_MENU_QUIT: &str = "tray.quit";
@@ -137,6 +138,14 @@ fn build_tray_menu<R: tauri::Runtime, M: Manager<R>>(
         None::<&str>,
     )
     .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+    let quick_record_item = MenuItem::with_id(
+        manager,
+        TRAY_MENU_QUICK_RECORD,
+        "Quick Record Last Settings",
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
     let start_stop_item = MenuItem::with_id(
         manager,
         TRAY_MENU_START_STOP,
@@ -195,6 +204,7 @@ fn build_tray_menu<R: tauri::Runtime, M: Manager<R>>(
         &[
             &open_recorder_item,
             &open_projects_item,
+            &quick_record_item,
             &recent_submenu,
             &separator_top,
             &start_stop_item,
@@ -1021,6 +1031,14 @@ pub fn run() {
                     TRAY_MENU_OPEN_PROJECTS => {
                         show_main_window(app_handle);
                         let _ = app_handle.emit("tray-open-projects", ());
+                    }
+                    TRAY_MENU_QUICK_RECORD => {
+                        show_main_window(app_handle);
+                        let app_handle = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                            let _ = app_handle.emit("tray-quick-record", ());
+                        });
                     }
                     TRAY_MENU_START_STOP => {
                         show_main_window(app_handle);

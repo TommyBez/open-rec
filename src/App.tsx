@@ -12,6 +12,7 @@ import { EditorPage } from "./pages/Editor";
 import { RecordingWidget } from "./pages/RecordingWidget";
 import { VideoSelectionPage } from "./pages/VideoSelection";
 import { useExportStore } from "./stores";
+import { requestTrayQuickRecord } from "./lib/trayQuickRecord";
 
 interface ExportCompleteEvent {
   jobId: string;
@@ -80,6 +81,12 @@ function App() {
           }
         })
       : Promise.resolve(() => undefined);
+    const unlistenTrayQuickRecordPromise = isMainWindow
+      ? listen("tray-quick-record", () => {
+          requestTrayQuickRecord();
+          navigate("/recorder");
+        })
+      : Promise.resolve(() => undefined);
 
     return () => {
       cancelled = true;
@@ -90,6 +97,7 @@ function App() {
       unlistenTrayRecorderPromise.then((unlisten) => unlisten());
       unlistenTrayProjectsPromise.then((unlisten) => unlisten());
       unlistenTrayProjectPromise.then((unlisten) => unlisten());
+      unlistenTrayQuickRecordPromise.then((unlisten) => unlisten());
     };
   }, [decrementActiveExports, incrementActiveExports, isMainWindow, navigate]);
 
