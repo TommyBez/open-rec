@@ -109,6 +109,7 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
   stopRecording: () => set({
     state: "idle",
     elapsedTime: 0,
+    projectId: null,
     recordingStartTimeMs: null,
   }),
   
