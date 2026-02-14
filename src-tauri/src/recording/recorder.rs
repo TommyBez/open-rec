@@ -213,27 +213,63 @@ fn resolve_capture_dimensions(
 ) -> Result<(u32, u32), AppError> {
     let (width, height) = match source_type {
         SourceType::Display => {
-            let display_id: u32 = source_id.parse().map_err(|_| "Invalid display ID")?;
-            let display = content
-                .displays()
-                .into_iter()
-                .find(|d| d.display_id() == display_id)
-                .ok_or("Display not found")?;
+            let display_id = parse_display_id(source_id)?;
+            let display = find_display(content, display_id)?;
             (display.width(), display.height())
         }
         SourceType::Window => {
-            let window_id: u32 = source_id.parse().map_err(|_| "Invalid window ID")?;
-            let window = content
-                .windows()
-                .iter()
-                .find(|w| w.window_id() == window_id)
-                .ok_or("Window not found")?;
+            let window_id = parse_window_id(source_id)?;
+            let window = find_window(content, window_id)?;
             let frame = window.frame();
             (frame.width.round() as u32, frame.height.round() as u32)
         }
     };
 
     Ok((make_even_dimension(width), make_even_dimension(height)))
+}
+
+#[cfg(target_os = "macos")]
+fn parse_display_id(source_id: &str) -> Result<u32, AppError> {
+    source_id
+        .parse()
+        .map_err(|_| AppError::Message(format!("Invalid display ID: {}", source_id)))
+}
+
+#[cfg(target_os = "macos")]
+fn parse_window_id(source_id: &str) -> Result<u32, AppError> {
+    source_id
+        .parse()
+        .map_err(|_| AppError::Message(format!("Invalid window ID: {}", source_id)))
+}
+
+#[cfg(target_os = "macos")]
+fn find_display(content: &SCShareableContent, display_id: u32) -> Result<SCDisplay, AppError> {
+    content
+        .displays()
+        .into_iter()
+        .find(|display| display.display_id() == display_id)
+        .ok_or_else(|| AppError::Message(format!("Display not found: {}", display_id)))
+}
+
+#[cfg(target_os = "macos")]
+fn find_window<'a>(
+    content: &'a SCShareableContent,
+    window_id: u32,
+) -> Result<&'a SCWindow, AppError> {
+    content
+        .windows()
+        .iter()
+        .find(|window| window.window_id() == window_id)
+        .ok_or_else(|| AppError::Message(format!("Window not found: {}", window_id)))
+}
+
+#[cfg(target_os = "macos")]
+fn create_recording_output(
+    config: &SCRecordingOutputConfiguration,
+) -> Result<SCRecordingOutput, AppError> {
+    SCRecordingOutput::new(config).ok_or_else(|| {
+        AppError::Message("Failed to create ScreenCaptureKit recording output".to_string())
+    })
 }
 
 fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), AppError> {
@@ -305,27 +341,16 @@ pub fn start_recording(
     // Create content filter based on source type
     let filter = match options.source_type {
         SourceType::Display => {
-            let display_id: u32 = options
-                .source_id
-                .parse()
-                .map_err(|_| "Invalid display ID")?;
-            let display = content
-                .displays()
-                .into_iter()
-                .find(|d| d.display_id() == display_id)
-                .ok_or("Display not found")?;
+            let display_id = parse_display_id(&options.source_id)?;
+            let display = find_display(&content, display_id)?;
             SCContentFilter::create()
                 .with_display(&display)
                 .with_excluding_windows(&[])
                 .build()
         }
         SourceType::Window => {
-            let window_id: u32 = options.source_id.parse().map_err(|_| "Invalid window ID")?;
-            let windows = content.windows();
-            let window = windows
-                .iter()
-                .find(|w| w.window_id() == window_id)
-                .ok_or("Window not found")?;
+            let window_id = parse_window_id(&options.source_id)?;
+            let window = find_window(&content, window_id)?;
             SCContentFilter::create().with_window(window).build()
         }
     };
@@ -353,8 +378,7 @@ pub fn start_recording(
         .with_video_codec(to_output_codec(options.codec))
         .with_output_file_type(SCRecordingOutputFileType::MP4);
 
-    let recording_output =
-        SCRecordingOutput::new(&recording_config).ok_or("Failed to create recording output")?;
+    let recording_output = create_recording_output(&recording_config)?;
 
     // Create and start stream
     let stream = SCStream::new(&filter, &config);
@@ -415,7 +439,7 @@ pub fn stop_recording(
     let mut session = state_guard
         .sessions
         .remove(project_id)
-        .ok_or("Recording session not found")?;
+        .ok_or_else(|| AppError::Message(format!("Recording session not found: {}", project_id)))?;
 
     let current_segment_path = session.current_segment_path.clone();
 
@@ -472,10 +496,13 @@ pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<
     let session = state_guard
         .sessions
         .get_mut(project_id)
-        .ok_or("Recording session not found")?;
+        .ok_or_else(|| AppError::Message(format!("Recording session not found: {}", project_id)))?;
 
     if session.state != RecordingState::Recording {
-        return Err("Recording is not active".to_string());
+        return Err(AppError::Message(format!(
+            "Recording is not active for project {}",
+            project_id
+        )));
     }
 
     // Stop current recording output
@@ -516,20 +543,26 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
     let session = state_guard
         .sessions
         .get_mut(project_id)
-        .ok_or("Recording session not found")?;
+        .ok_or_else(|| AppError::Message(format!("Recording session not found: {}", project_id)))?;
 
     if session.state != RecordingState::Paused {
-        return Err("Recording is not paused".to_string());
+        return Err(AppError::Message(format!(
+            "Recording is not paused for project {}",
+            project_id
+        )));
     }
 
     // Increment segment index
     session.segment_index += 1;
 
     // Get the project directory
-    let project_dir = session
-        .screen_video_path
-        .parent()
-        .ok_or("Invalid video path")?;
+    let project_dir = session.screen_video_path.parent().ok_or_else(|| {
+        AppError::Message(format!(
+            "Invalid video path for project {}: {}",
+            project_id,
+            session.screen_video_path.display()
+        ))
+    })?;
 
     // Create new segment file path
     let segment_path = project_dir.join(format!("screen_part{}.mp4", session.segment_index));
@@ -541,32 +574,16 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
     // Recreate filter
     let filter = match session.options.source_type {
         SourceType::Display => {
-            let display_id: u32 = session
-                .options
-                .source_id
-                .parse()
-                .map_err(|_| "Invalid display ID")?;
-            let display = content
-                .displays()
-                .into_iter()
-                .find(|d| d.display_id() == display_id)
-                .ok_or("Display not found")?;
+            let display_id = parse_display_id(&session.options.source_id)?;
+            let display = find_display(&content, display_id)?;
             SCContentFilter::create()
                 .with_display(&display)
                 .with_excluding_windows(&[])
                 .build()
         }
         SourceType::Window => {
-            let window_id: u32 = session
-                .options
-                .source_id
-                .parse()
-                .map_err(|_| "Invalid window ID")?;
-            let windows = content.windows();
-            let window = windows
-                .iter()
-                .find(|w| w.window_id() == window_id)
-                .ok_or("Window not found")?;
+            let window_id = parse_window_id(&session.options.source_id)?;
+            let window = find_window(&content, window_id)?;
             SCContentFilter::create().with_window(window).build()
         }
     };
@@ -588,8 +605,7 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
         .with_video_codec(to_output_codec(session.recording_codec))
         .with_output_file_type(SCRecordingOutputFileType::MP4);
 
-    let recording_output =
-        SCRecordingOutput::new(&recording_config).ok_or("Failed to create recording output")?;
+    let recording_output = create_recording_output(&recording_config)?;
 
     // Create and start new stream
     let stream = SCStream::new(&filter, &config);
@@ -624,7 +640,7 @@ pub fn set_media_offsets(
     let session = state_guard
         .sessions
         .get_mut(project_id)
-        .ok_or("Recording session not found")?;
+        .ok_or_else(|| AppError::Message(format!("Recording session not found: {}", project_id)))?;
 
     if let Some(offset) = camera_offset_ms {
         session.camera_offset_ms = Some(offset);
