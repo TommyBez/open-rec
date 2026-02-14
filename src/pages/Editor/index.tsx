@@ -527,6 +527,13 @@ export function EditorPage() {
         onColorSaturationChange={(value) =>
           updateColorCorrection({ saturation: Math.max(0, Math.min(2, value)) })
         }
+        onResetColorCorrection={() =>
+          updateColorCorrection({
+            brightness: 0,
+            contrast: 1,
+            saturation: 1,
+          })
+        }
         onBack={handleBack}
         onExport={handleExport}
         onOpenVideos={handleOpenVideos}

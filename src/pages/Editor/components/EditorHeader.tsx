@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { ArrowLeft, Film, Download, FolderOpen, Keyboard, Loader2 } from "lucide-react";
+import { ArrowLeft, Film, Download, FolderOpen, Keyboard, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -33,6 +33,7 @@ interface EditorHeaderProps {
   onColorBrightnessChange: (value: number) => void;
   onColorContrastChange: (value: number) => void;
   onColorSaturationChange: (value: number) => void;
+  onResetColorCorrection: () => void;
   onBack: () => void;
   onExport: () => void;
   onOpenVideos: () => void;
@@ -63,6 +64,7 @@ export const EditorHeader = memo(function EditorHeader({
   onColorBrightnessChange,
   onColorContrastChange,
   onColorSaturationChange,
+  onResetColorCorrection,
   onBack,
   onExport,
   onOpenVideos,
@@ -179,6 +181,13 @@ export const EditorHeader = memo(function EditorHeader({
               title="Saturation"
             />
           </label>
+          <button
+            onClick={onResetColorCorrection}
+            className="flex size-7 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title="Reset color correction"
+          >
+            <RotateCcw className="size-3.5" strokeWidth={1.75} />
+          </button>
         </div>
         <div className="flex items-center gap-1.5">
           <label className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-foreground/80">
