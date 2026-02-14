@@ -28,9 +28,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run component-size and type checks
-        run: |
-          pnpm run check:component-size
-          pnpm exec tsc --noEmit
+        run: pnpm run verify:frontend
 
       - name: Build frontend bundle
-        run: pnpm build
+        run: pnpm run build:frontend

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "pnpm run check:component-size && tsc && vite build",
+    "verify:frontend": "pnpm run check:component-size && tsc --noEmit",
+    "build:frontend": "vite build",
+    "build": "pnpm run verify:frontend && pnpm run build:frontend",
     "check:component-size": "node ./check-component-size.mjs",
     "preview": "vite preview",
     "tauri": "tauri"

@@ -47,8 +47,7 @@ A macOS screen and camera recording app with editing capabilities. Built with Ta
 pnpm install
 
 # Verify frontend constraints
-pnpm run check:component-size
-pnpm exec tsc --noEmit
+pnpm run verify:frontend
 
 # Run in development mode
 pnpm tauri dev
