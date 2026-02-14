@@ -26,6 +26,25 @@ use uuid::Uuid;
 type SharedExportJobs = Arc<Mutex<HashMap<String, u32>>>;
 const START_STOP_SHORTCUT: &str = "CmdOrCtrl+Shift+2";
 const PAUSE_RESUME_SHORTCUT: &str = "CmdOrCtrl+Shift+P";
+const MIN_RECORDING_FREE_SPACE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+
+fn ensure_recording_disk_headroom(recordings_dir: &PathBuf) -> Result<(), AppError> {
+    let free_bytes = fs2::available_space(recordings_dir).map_err(|error| {
+        AppError::Io(format!(
+            "Failed to check disk space for recordings directory: {}",
+            error
+        ))
+    })?;
+
+    if free_bytes < MIN_RECORDING_FREE_SPACE_BYTES {
+        return Err(AppError::Message(format!(
+            "Insufficient disk space. At least 5 GB free is required (currently {:.2} GB).",
+            free_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+        )));
+    }
+
+    Ok(())
+}
 
 async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), AppError> {
     let shell = app.shell();
@@ -181,7 +200,7 @@ fn request_permission() -> bool {
 /// List available capture sources (displays or windows)
 #[tauri::command]
 fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, AppError> {
-    recording::list_capture_sources(source_type).map_err(AppError::from)
+    recording::list_capture_sources(source_type)
 }
 
 /// Start screen recording
@@ -197,7 +216,15 @@ fn start_screen_recording(
         ));
     }
 
-    let result = do_start_recording(&state, options).map_err(AppError::from)?;
+    let recordings_dir = {
+        let state_guard = state
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+        state_guard.recordings_dir.clone()
+    };
+    ensure_recording_disk_headroom(&recordings_dir)?;
+
+    let result = do_start_recording(&state, options)?;
 
     // Emit event to notify frontend
     let _ = app.emit("recording-started", &result);
@@ -212,7 +239,7 @@ async fn stop_screen_recording(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
-    let stop_result = do_stop_recording(&state, &project_id).map_err(AppError::from)?;
+    let stop_result = do_stop_recording(&state, &project_id)?;
 
     let _ = app.emit(
         "recording-finalizing",
@@ -284,7 +311,6 @@ fn set_recording_media_offsets(
     microphone_offset_ms: Option<i64>,
 ) -> Result<(), AppError> {
     do_set_media_offsets(&state, &project_id, camera_offset_ms, microphone_offset_ms)
-        .map_err(AppError::from)
 }
 
 /// Pause screen recording
@@ -300,7 +326,7 @@ fn pause_recording(
         ));
     }
 
-    do_pause_recording(&state, &project_id).map_err(AppError::from)?;
+    do_pause_recording(&state, &project_id)?;
 
     app.emit(
         "recording-state-changed",
@@ -327,7 +353,7 @@ fn resume_recording(
         ));
     }
 
-    do_resume_recording(&state, &project_id).map_err(AppError::from)?;
+    do_resume_recording(&state, &project_id)?;
 
     app.emit(
         "recording-state-changed",
