@@ -24,6 +24,7 @@ interface TimelineProps {
   onUpdateSpeed?: (speedId: string, updates: Partial<SpeedEffect>) => void;
   selectedAnnotationId: string | null;
   onSelectAnnotation: (annotationId: string | null) => void;
+  onUpdateAnnotation?: (annotationId: string, updates: Partial<Annotation>) => void;
 }
 
 type DragMode = "move" | "resize-start" | "resize-end" | null;
@@ -49,6 +50,7 @@ export function Timeline({
   onUpdateSpeed,
   selectedAnnotationId,
   onSelectAnnotation,
+  onUpdateAnnotation,
 }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -64,10 +66,17 @@ export function Timeline({
   const [draggingSpeedId, setDraggingSpeedId] = useState<string | null>(null);
   const speedDragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
   const speedHasDraggedRef = useRef(false);
+
+  // Annotation drag state
+  const [annotationDragMode, setAnnotationDragMode] = useState<DragMode>(null);
+  const [draggingAnnotationId, setDraggingAnnotationId] = useState<string | null>(null);
+  const annotationDragStartRef = useRef<{ x: number; startTime: number; endTime: number } | null>(null);
+  const annotationHasDraggedRef = useRef(false);
   
   // Optimistic local state for smooth dragging (avoids parent re-renders during drag)
   const [localZoomOverride, setLocalZoomOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
   const [localSpeedOverride, setLocalSpeedOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
+  const [localAnnotationOverride, setLocalAnnotationOverride] = useState<{ id: string; startTime: number; endTime: number } | null>(null);
   const rafIdRef = useRef<number | null>(null);
 
   // Calculate display positions for segments (shifted left to fill gaps)
@@ -337,6 +346,34 @@ export function Timeline({
     };
   }
 
+  // Annotation segment click handler (selection)
+  function handleAnnotationClick(e: React.MouseEvent, annotationId: string) {
+    e.stopPropagation();
+    if (annotationHasDraggedRef.current) {
+      annotationHasDraggedRef.current = false;
+      return;
+    }
+    onSelectAnnotation(selectedAnnotationId === annotationId ? null : annotationId);
+  }
+
+  // Annotation segment mouse down for drag/resize
+  function handleAnnotationMouseDown(e: React.MouseEvent, annotationId: string, mode: DragMode) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const annotation = annotations.find((item) => item.id === annotationId);
+    if (!annotation || !timelineRef.current) return;
+
+    annotationHasDraggedRef.current = false;
+    setDraggingAnnotationId(annotationId);
+    setAnnotationDragMode(mode);
+    annotationDragStartRef.current = {
+      x: e.clientX,
+      startTime: annotation.startTime,
+      endTime: annotation.endTime,
+    };
+  }
+
   // Handle zoom drag/resize move - uses RAF and local state for smooth dragging
   const handleZoomDragMove = useCallback((e: MouseEvent) => {
     if (!draggingZoomId || !zoomDragMode || !zoomDragStartRef.current || !timelineRef.current) return;
@@ -553,6 +590,90 @@ export function Timeline({
     });
   }, [draggingSpeedId, speedDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime, getSnappedDisplayTime]);
 
+  // Handle annotation drag/resize move - uses RAF and local state for smooth dragging
+  const handleAnnotationDragMove = useCallback((e: MouseEvent) => {
+    if (!draggingAnnotationId || !annotationDragMode || !annotationDragStartRef.current || !timelineRef.current) return;
+
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+    }
+
+    const clientX = e.clientX;
+
+    rafIdRef.current = requestAnimationFrame(() => {
+      if (!annotationDragStartRef.current || !timelineRef.current) return;
+
+      const rect = timelineRef.current.getBoundingClientRect();
+      const deltaX = clientX - annotationDragStartRef.current.x;
+
+      if (Math.abs(deltaX) > 2) {
+        annotationHasDraggedRef.current = true;
+      }
+
+      const deltaDisplayTime = (deltaX / rect.width) * timelineDuration;
+      const { startTime: origStart, endTime: origEnd } = annotationDragStartRef.current;
+      const sourceDuration = origEnd - origStart;
+      const minDuration = 0.1;
+
+      const origDisplayStart = sourceToDisplayTime(origStart);
+      const origDisplayEnd = sourceToDisplayTime(origEnd);
+
+      let newStart: number;
+      let newEnd: number;
+
+      switch (annotationDragMode) {
+        case "move": {
+          let newDisplayStart = origDisplayStart + deltaDisplayTime;
+          newDisplayStart = Math.max(0, Math.min(timelineDuration, newDisplayStart));
+          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
+
+          newStart = displayToSourceTime(newDisplayStart);
+          newEnd = newStart + sourceDuration;
+          if (newEnd > duration) {
+            newEnd = duration;
+            newStart = Math.max(0, newEnd - sourceDuration);
+          }
+          break;
+        }
+        case "resize-start": {
+          let newDisplayStart = origDisplayStart + deltaDisplayTime;
+          newDisplayStart = Math.max(0, newDisplayStart);
+          newDisplayStart = getSnappedDisplayTime(newDisplayStart);
+
+          newStart = displayToSourceTime(newDisplayStart);
+          newEnd = origEnd;
+          if (newEnd - newStart < minDuration) {
+            newStart = newEnd - minDuration;
+          }
+          newStart = Math.max(0, newStart);
+          break;
+        }
+        case "resize-end": {
+          let newDisplayEnd = origDisplayEnd + deltaDisplayTime;
+          newDisplayEnd = Math.min(timelineDuration, newDisplayEnd);
+          newDisplayEnd = getSnappedDisplayTime(newDisplayEnd);
+
+          newStart = origStart;
+          newEnd = displayToSourceTime(newDisplayEnd);
+          if (newEnd - newStart < minDuration) {
+            newEnd = newStart + minDuration;
+          }
+          newEnd = Math.min(duration, newEnd);
+          break;
+        }
+        default:
+          newStart = origStart;
+          newEnd = origEnd;
+      }
+
+      setLocalAnnotationOverride({
+        id: draggingAnnotationId,
+        startTime: newStart,
+        endTime: newEnd,
+      });
+    });
+  }, [draggingAnnotationId, annotationDragMode, timelineDuration, duration, sourceToDisplayTime, displayToSourceTime, getSnappedDisplayTime]);
+
   // Handle zoom drag end - commit local state to parent
   const handleZoomDragEnd = useCallback(() => {
     // Cancel any pending RAF
@@ -607,11 +728,36 @@ export function Timeline({
     speedDragStartRef.current = null;
   }, [onSelectSpeed, localSpeedOverride, onUpdateSpeed]);
 
+  // Handle annotation drag end - commit local state to parent
+  const handleAnnotationDragEnd = useCallback(() => {
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+
+    if (localAnnotationOverride && onUpdateAnnotation) {
+      onUpdateAnnotation(localAnnotationOverride.id, {
+        startTime: localAnnotationOverride.startTime,
+        endTime: localAnnotationOverride.endTime,
+      });
+    }
+
+    if (annotationHasDraggedRef.current) {
+      onSelectAnnotation(null);
+    }
+
+    setLocalAnnotationOverride(null);
+    setDraggingAnnotationId(null);
+    setAnnotationDragMode(null);
+    annotationDragStartRef.current = null;
+  }, [onSelectAnnotation, localAnnotationOverride, onUpdateAnnotation]);
+
   useEffect(() => {
     function handleGlobalMouseUp() {
       setIsDragging(false);
       handleZoomDragEnd();
       handleSpeedDragEnd();
+      handleAnnotationDragEnd();
     }
     
     function handleGlobalMouseMove(e: MouseEvent) {
@@ -620,6 +766,9 @@ export function Timeline({
       }
       if (draggingSpeedId && speedDragMode) {
         handleSpeedDragMove(e);
+      }
+      if (draggingAnnotationId && annotationDragMode) {
+        handleAnnotationDragMove(e);
       }
     }
     
@@ -633,7 +782,7 @@ export function Timeline({
         cancelAnimationFrame(rafIdRef.current);
       }
     };
-  }, [draggingZoomId, zoomDragMode, handleZoomDragMove, handleZoomDragEnd, draggingSpeedId, speedDragMode, handleSpeedDragMove, handleSpeedDragEnd]);
+  }, [draggingZoomId, zoomDragMode, handleZoomDragMove, handleZoomDragEnd, draggingSpeedId, speedDragMode, handleSpeedDragMove, handleSpeedDragEnd, draggingAnnotationId, annotationDragMode, handleAnnotationDragMove, handleAnnotationDragEnd]);
 
   // Convert source time to display time for playhead position
   const displayTime = sourceToDisplayTime(currentTime);
@@ -794,35 +943,61 @@ export function Timeline({
           {annotations.length > 0 && (
             <div className="relative h-10 w-full overflow-hidden rounded-lg bg-amber-500/10">
               {annotations.map((annotation) => {
-                const displayStart = sourceToDisplayTime(annotation.startTime);
-                const displayEnd = sourceToDisplayTime(annotation.endTime);
+                const isDraggingThis = draggingAnnotationId === annotation.id;
+                const annotationTimes =
+                  isDraggingThis && localAnnotationOverride
+                    ? {
+                        startTime: localAnnotationOverride.startTime,
+                        endTime: localAnnotationOverride.endTime,
+                      }
+                    : {
+                        startTime: annotation.startTime,
+                        endTime: annotation.endTime,
+                      };
+                const displayStart = sourceToDisplayTime(annotationTimes.startTime);
+                const displayEnd = sourceToDisplayTime(annotationTimes.endTime);
                 const width = Math.max(0.4, displayEnd - displayStart);
                 const isSelected = selectedAnnotationId === annotation.id;
                 return (
-                  <button
+                  <div
                     key={annotation.id}
-                    type="button"
                     className={cn(
-                      "absolute h-full rounded-md border px-2 text-left text-[11px] font-medium text-amber-50 transition-all",
+                      "group/annotation absolute flex h-full items-center justify-between overflow-hidden rounded-md border px-2 text-left text-[11px] font-medium text-amber-50 select-none",
                       "bg-gradient-to-r from-amber-500/90 to-amber-600/80",
+                      !isDraggingThis && "transition-all",
                       isSelected
                         ? "border-white ring-2 ring-white ring-offset-1 ring-offset-background"
-                        : "border-amber-300/30"
+                        : "border-amber-300/30",
+                      isDraggingThis && "opacity-90"
                     )}
                     style={{
                       left: `${(displayStart / timelineDuration) * 100}%`,
                       width: `${(width / timelineDuration) * 100}%`,
+                      willChange: isDraggingThis ? "left, width" : "auto",
                     }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSelectAnnotation(
-                        selectedAnnotationId === annotation.id ? null : annotation.id
-                      );
-                    }}
-                    title="Annotation range"
+                    onClick={(event) => handleAnnotationClick(event, annotation.id)}
+                    title="Annotation range (drag to move)"
                   >
-                    Box
-                  </button>
+                    <div
+                      className="absolute left-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
+                      onMouseDown={(event) =>
+                        handleAnnotationMouseDown(event, annotation.id, "resize-start")
+                      }
+                    />
+                    <div
+                      className="absolute inset-x-2 inset-y-0 cursor-grab active:cursor-grabbing"
+                      onMouseDown={(event) =>
+                        handleAnnotationMouseDown(event, annotation.id, "move")
+                      }
+                    />
+                    <div
+                      className="absolute right-0 top-0 h-full w-2 cursor-ew-resize hover:bg-white/20"
+                      onMouseDown={(event) =>
+                        handleAnnotationMouseDown(event, annotation.id, "resize-end")
+                      }
+                    />
+                    <span className="pointer-events-none">Box</span>
+                  </div>
                 );
               })}
             </div>

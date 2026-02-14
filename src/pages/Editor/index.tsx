@@ -682,6 +682,7 @@ export function EditorPage() {
           onUpdateSpeed={updateSpeed}
           selectedAnnotationId={selectedAnnotationId}
           onSelectAnnotation={selectAnnotation}
+          onUpdateAnnotation={updateAnnotation}
         />
       </div>
 
