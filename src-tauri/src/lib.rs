@@ -4,7 +4,7 @@ mod project;
 mod recording;
 use error::AppError;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{
@@ -1011,10 +1011,18 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
 }
 
 fn handle_opened_project_paths(app: &AppHandle, paths: Vec<PathBuf>) {
+    let mut opened_project_ids = HashSet::new();
     for path in paths {
         let Some(project_id) = project_id_from_opened_path(&path) else {
+            eprintln!(
+                "Ignoring opened path because project id could not be resolved: {}",
+                path.display()
+            );
             continue;
         };
+        if !opened_project_ids.insert(project_id.clone()) {
+            continue;
+        }
         if let Err(error) = open_project_editor_window(app, &project_id) {
             eprintln!(
                 "Failed to open associated project for path {}: {}",
