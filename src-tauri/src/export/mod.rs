@@ -600,9 +600,7 @@ pub fn build_ffmpeg_args(
                         && audio_label.ends_with(":a]")
                         && audio_label.len() >= 5
                     {
-                        let stream = audio_label
-                            .trim_start_matches('[')
-                            .trim_end_matches(']');
+                        let stream = audio_label.trim_start_matches('[').trim_end_matches(']');
                         args.push(stream.to_string());
                     } else {
                         args.push(audio_label);

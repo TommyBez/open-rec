@@ -49,6 +49,8 @@ pub struct RecordingSession {
     pub start_time: chrono::DateTime<chrono::Utc>,
     pub recording_start_time_ms: i64,
     pub segment_index: u32,
+    pub capture_width: u32,
+    pub capture_height: u32,
     pub screen_segments: Vec<PathBuf>,
     pub current_segment_path: PathBuf,
     pub active_duration_ms: u64,
@@ -99,8 +101,50 @@ pub struct StopRecordingResult {
     pub camera_video_path: Option<PathBuf>,
     pub microphone_audio_path: Option<PathBuf>,
     pub duration_seconds: f64,
+    pub source_width: u32,
+    pub source_height: u32,
     pub camera_offset_ms: Option<i64>,
     pub microphone_offset_ms: Option<i64>,
+}
+
+fn make_even_dimension(value: u32) -> u32 {
+    let base = value.max(2);
+    if base % 2 == 0 {
+        base
+    } else {
+        base - 1
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_capture_dimensions(
+    content: &SCShareableContent,
+    source_type: SourceType,
+    source_id: &str,
+) -> Result<(u32, u32), String> {
+    let (width, height) = match source_type {
+        SourceType::Display => {
+            let display_id: u32 = source_id.parse().map_err(|_| "Invalid display ID")?;
+            let display = content
+                .displays()
+                .into_iter()
+                .find(|d| d.display_id() == display_id)
+                .ok_or("Display not found")?;
+            (display.width(), display.height())
+        }
+        SourceType::Window => {
+            let window_id: u32 = source_id.parse().map_err(|_| "Invalid window ID")?;
+            let window = content
+                .windows()
+                .iter()
+                .find(|w| w.window_id() == window_id)
+                .ok_or("Window not found")?;
+            let frame = window.frame();
+            (frame.width.round() as u32, frame.height.round() as u32)
+        }
+    };
+
+    Ok((make_even_dimension(width), make_even_dimension(height)))
 }
 
 fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), String> {
@@ -195,8 +239,13 @@ pub fn start_recording(
         }
     };
 
+    let (capture_width, capture_height) =
+        resolve_capture_dimensions(&content, options.source_type, &options.source_id)?;
+
     // Configure stream
     let config = SCStreamConfiguration::new()
+        .with_width(capture_width)
+        .with_height(capture_height)
         .with_pixel_format(PixelFormat::YCbCr_420v)
         .with_shows_cursor(true)
         .with_captures_audio(options.capture_system_audio)
@@ -234,6 +283,8 @@ pub fn start_recording(
         start_time: chrono::Utc::now(),
         recording_start_time_ms,
         segment_index: 0,
+        capture_width,
+        capture_height,
         screen_segments: vec![screen_video_path.clone()],
         current_segment_path: screen_video_path.clone(),
         active_duration_ms: 0,
@@ -303,6 +354,8 @@ pub fn stop_recording(
         camera_video_path: session.camera_video_path.clone(),
         microphone_audio_path: session.microphone_audio_path.clone(),
         duration_seconds: session.active_duration_ms as f64 / 1000.0,
+        source_width: session.capture_width,
+        source_height: session.capture_height,
         camera_offset_ms: session.camera_offset_ms,
         microphone_offset_ms: session.microphone_offset_ms,
     })
@@ -413,6 +466,8 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
 
     // Configure stream
     let config = SCStreamConfiguration::new()
+        .with_width(session.capture_width)
+        .with_height(session.capture_height)
         .with_pixel_format(PixelFormat::YCbCr_420v)
         .with_shows_cursor(true)
         .with_captures_audio(session.options.capture_system_audio)

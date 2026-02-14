@@ -219,8 +219,8 @@ async fn stop_screen_recording(
     let probed_duration =
         probe_video_duration(&stop_result.screen_video_path).filter(|d| d.is_finite() && *d > 0.0);
     let duration = probed_duration.unwrap_or(stop_result.duration_seconds.max(0.1));
-    let (width, height) =
-        probe_video_dimensions(&stop_result.screen_video_path).unwrap_or((1920, 1080));
+    let (width, height) = probe_video_dimensions(&stop_result.screen_video_path)
+        .unwrap_or((stop_result.source_width, stop_result.source_height));
 
     let project = Project::new(
         stop_result.project_id.clone(),
