@@ -109,7 +109,10 @@ fn open_videos_library_window(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> Result<Menu<R>, AppError> {
+fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(
+    manager: &M,
+    recordings_dir: &PathBuf,
+) -> Result<Menu<R>, AppError> {
     let new_window_item = MenuItem::with_id(
         manager,
         APP_MENU_NEW_WINDOW,
@@ -134,7 +137,19 @@ fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> Result<Menu<
         None::<&str>,
     )
     .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+    let quick_record_item = MenuItem::with_id(
+        manager,
+        TRAY_MENU_QUICK_RECORD,
+        "Quick Record Last Settings",
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+    let recent_submenu = build_recent_projects_submenu(manager, recordings_dir)
+        .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
     let quit_item = MenuItem::with_id(manager, TRAY_MENU_QUIT, "Quit OpenRec", true, None::<&str>)
+        .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+    let separator_primary = PredefinedMenuItem::separator(manager)
         .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
     let separator = PredefinedMenuItem::separator(manager)
         .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
@@ -147,6 +162,9 @@ fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> Result<Menu<
             &new_window_item,
             &open_recorder_item,
             &open_projects_item,
+            &quick_record_item,
+            &recent_submenu,
+            &separator_primary,
             &separator,
             &quit_item,
         ],
@@ -203,11 +221,47 @@ fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> 
     projects.into_iter().take(max_items).collect()
 }
 
+fn build_recent_projects_submenu<R: tauri::Runtime, M: Manager<R>>(
+    manager: &M,
+    recordings_dir: &PathBuf,
+) -> Result<Submenu<R>, AppError> {
+    let recent_projects = load_recent_projects_for_tray(recordings_dir, 6);
+
+    if recent_projects.is_empty() {
+        let no_recent_item = MenuItem::with_id(
+            manager,
+            "tray.recent.none",
+            "No recent projects",
+            false,
+            None::<&str>,
+        )
+        .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+        return Submenu::with_items(manager, "Recent Projects", true, &[&no_recent_item])
+            .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)));
+    }
+
+    let recent_items = recent_projects
+        .iter()
+        .map(|project| {
+            MenuItem::with_id(
+                manager,
+                format!("{TRAY_MENU_RECENT_PREFIX}{}", project.id),
+                truncate_tray_label(&project.name, 28),
+                true,
+                None::<&str>,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
+    let recent_item_refs = recent_items.iter().collect::<Vec<_>>();
+    Submenu::with_items(manager, "Recent Projects", true, &recent_item_refs)
+        .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))
+}
+
 fn build_tray_menu<R: tauri::Runtime, M: Manager<R>>(
     manager: &M,
     recordings_dir: &PathBuf,
 ) -> Result<Menu<R>, AppError> {
-    let recent_projects = load_recent_projects_for_tray(recordings_dir, 6);
     let open_recorder_item = MenuItem::with_id(
         manager,
         TRAY_MENU_OPEN_RECORDER,
@@ -250,36 +304,7 @@ fn build_tray_menu<R: tauri::Runtime, M: Manager<R>>(
     .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
     let quit_item = MenuItem::with_id(manager, TRAY_MENU_QUIT, "Quit OpenRec", true, None::<&str>)
         .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
-
-    let recent_submenu = if recent_projects.is_empty() {
-        let no_recent_item = MenuItem::with_id(
-            manager,
-            "tray.recent.none",
-            "No recent projects",
-            false,
-            None::<&str>,
-        )
-        .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
-        Submenu::with_items(manager, "Recent Projects", true, &[&no_recent_item])
-            .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?
-    } else {
-        let recent_items = recent_projects
-            .iter()
-            .map(|project| {
-                MenuItem::with_id(
-                    manager,
-                    format!("{TRAY_MENU_RECENT_PREFIX}{}", project.id),
-                    truncate_tray_label(&project.name, 28),
-                    true,
-                    None::<&str>,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
-        let recent_item_refs = recent_items.iter().collect::<Vec<_>>();
-        Submenu::with_items(manager, "Recent Projects", true, &recent_item_refs)
-            .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?
-    };
+    let recent_submenu = build_recent_projects_submenu(manager, recordings_dir)?;
 
     let separator_top = PredefinedMenuItem::separator(manager)
         .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
@@ -314,6 +339,17 @@ fn refresh_tray_menu(app: &AppHandle, recordings_dir: &PathBuf) {
         }
         Err(error) => {
             eprintln!("Failed to refresh tray menu: {}", error);
+        }
+    }
+
+    match build_app_menu(app, recordings_dir) {
+        Ok(menu) => {
+            if let Err(error) = app.set_menu(menu) {
+                eprintln!("Failed to refresh app menu: {}", error);
+            }
+        }
+        Err(error) => {
+            eprintln!("Failed to refresh app menu: {}", error);
         }
     }
 }
@@ -1316,7 +1352,7 @@ pub fn run() {
                 .build(app)
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
 
-            let app_menu = build_app_menu(app)
+            let app_menu = build_app_menu(app, &recordings_dir)
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
             app.set_menu(app_menu)
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
