@@ -308,10 +308,33 @@ export function EditorPage() {
         if (isPlaying) togglePlay();
         skipBackward();
       }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        const frameStep = (e.shiftKey ? 10 : 1) / 30;
+        seek(Math.max(0, currentTime - frameStep));
+      }
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        const frameStep = (e.shiftKey ? 10 : 1) / 30;
+        seek(Math.min(duration, currentTime + frameStep));
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canUndo, canRedo, undo, redo, isPlaying, togglePlay, skipBackward]);
+  }, [
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    isPlaying,
+    togglePlay,
+    skipBackward,
+    currentTime,
+    duration,
+    seek,
+  ]);
 
   async function loadProject(id: string) {
     setIsLoading(true);
