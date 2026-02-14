@@ -7,7 +7,7 @@ use error::AppError;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
@@ -584,7 +584,7 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let run_result = tauri::Builder::default()
+    let app_result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
@@ -617,9 +617,20 @@ pub fn run() {
             export_project,
             cancel_export,
         ])
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!());
 
-    if let Err(error) = run_result {
-        eprintln!("error while running tauri application: {error}");
+    match app_result {
+        Ok(app) => {
+            app.run(|app_handle, event| {
+                if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+                    if let Some(state) = app_handle.try_state::<SharedRecorderState>() {
+                        let _ = recording::cleanup_active_recordings(&state);
+                    }
+                }
+            });
+        }
+        Err(error) => {
+            eprintln!("error while running tauri application: {error}");
+        }
     }
 }

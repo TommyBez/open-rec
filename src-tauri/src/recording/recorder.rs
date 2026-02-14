@@ -532,6 +532,30 @@ pub fn set_media_offsets(
     Ok(())
 }
 
+/// Cleanup all active recording streams (used on app termination)
+#[cfg(target_os = "macos")]
+pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), String> {
+    let mut state_guard = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    for session in state_guard.sessions.values_mut() {
+        if let Some(stream) = session.stream.as_ref() {
+            let _ = stream.stop_capture();
+            if let Some(recording_output) = session.recording_output.as_ref() {
+                let _ = stream.remove_recording_output(recording_output);
+            }
+        }
+
+        session.stream = None;
+        session.recording_output = None;
+        session.state = RecordingState::Stopped;
+
+        let _ = wait_for_file_ready(&session.current_segment_path, Duration::from_secs(5));
+    }
+
+    state_guard.sessions.clear();
+    Ok(())
+}
+
 // Non-macOS stubs
 #[cfg(not(target_os = "macos"))]
 pub fn start_recording(
@@ -567,4 +591,9 @@ pub fn set_media_offsets(
     _microphone_offset_ms: Option<i64>,
 ) -> Result<(), String> {
     Err("Screen capture is only supported on macOS".to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn cleanup_active_recordings(_state: &SharedRecorderState) -> Result<(), String> {
+    Ok(())
 }
