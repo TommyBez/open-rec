@@ -372,6 +372,20 @@ export function RecorderPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (countdown === null) return;
+    function handleCancelCountdown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      setCountdown(null);
+    }
+    window.addEventListener("keydown", handleCancelCountdown);
+    return () => window.removeEventListener("keydown", handleCancelCountdown);
+  }, [countdown]);
+
   // Show permission request UI if permission not granted
   if (hasPermission === false) {
     return (
@@ -463,10 +477,11 @@ export function RecorderPage() {
 
       <main className="relative z-10 flex flex-1 flex-col gap-4">
         {countdown !== null && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-sm">
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-xl bg-black/40 backdrop-blur-sm">
             <span className="text-7xl font-semibold tracking-tight text-white drop-shadow-lg">
               {countdown}
             </span>
+            <span className="text-xs text-white/80">Press Esc to cancel</span>
           </div>
         )}
         {errorMessage && (
