@@ -20,6 +20,8 @@ interface RecordingStore {
   captureCamera: boolean;
   captureMicrophone: boolean;
   captureSystemAudio: boolean;
+  qualityPreset: "720p30" | "1080p30" | "1080p60" | "4k30" | "4k60";
+  codec: "h264" | "hevc";
   
   // Permission state
   hasPermission: boolean | null;
@@ -40,6 +42,8 @@ interface RecordingStore {
   setCaptureCamera: (enabled: boolean) => void;
   setCaptureMicrophone: (enabled: boolean) => void;
   setCaptureSystemAudio: (enabled: boolean) => void;
+  setQualityPreset: (preset: "720p30" | "1080p30" | "1080p60" | "4k30" | "4k60") => void;
+  setCodec: (codec: "h264" | "hevc") => void;
   setHasPermission: (permission: boolean | null) => void;
   setCameraReady: (ready: boolean) => void;
   
@@ -63,6 +67,8 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
   captureCamera: false,
   captureMicrophone: false,
   captureSystemAudio: false,
+  qualityPreset: "1080p30",
+  codec: "h264",
   hasPermission: null,
   cameraReady: false,
   
@@ -79,6 +85,8 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
   setCaptureCamera: (enabled) => set({ captureCamera: enabled }),
   setCaptureMicrophone: (enabled) => set({ captureMicrophone: enabled }),
   setCaptureSystemAudio: (enabled) => set({ captureSystemAudio: enabled }),
+  setQualityPreset: (qualityPreset) => set({ qualityPreset }),
+  setCodec: (codec) => set({ codec }),
   setHasPermission: (permission) => set({ hasPermission: permission }),
   setCameraReady: (ready) => set({ cameraReady: ready }),
   

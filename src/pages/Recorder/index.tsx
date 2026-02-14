@@ -16,7 +16,7 @@ import { StatusIndicator } from "../../components/StatusIndicator";
 import { SourceTypeButton } from "../../components/SourceTypeButton";
 import { RecordButton } from "../../components/RecordButton";
 import { useRecordingStore } from "../../stores";
-import { StartRecordingResult } from "../../types/project";
+import { RecordingOptions as RecordingOptionsType, StartRecordingResult } from "../../types/project";
 import {
   loadRecordingPreferences,
   saveRecordingPreferences,
@@ -33,14 +33,6 @@ export interface CaptureSource {
   name: string;
   type: "display" | "window";
   thumbnail?: string;
-}
-
-export interface RecordingOptions {
-  sourceId: string;
-  sourceType: "display" | "window";
-  captureCamera: boolean;
-  captureMicrophone: boolean;
-  captureSystemAudio: boolean;
 }
 
 export function RecorderPage() {
@@ -62,6 +54,8 @@ export function RecorderPage() {
     captureCamera,
     captureMicrophone,
     captureSystemAudio,
+    qualityPreset,
+    codec,
     hasPermission,
     cameraReady,
     setSourceType,
@@ -71,6 +65,8 @@ export function RecorderPage() {
     setCaptureCamera,
     setCaptureMicrophone,
     setCaptureSystemAudio,
+    setQualityPreset,
+    setCodec,
     setHasPermission,
     setCameraReady,
     beginRecordingStart,
@@ -117,6 +113,8 @@ export function RecorderPage() {
       setCaptureCamera(persisted.captureCamera);
       setCaptureMicrophone(persisted.captureMicrophone);
       setCaptureSystemAudio(persisted.captureSystemAudio);
+      setQualityPreset(persisted.qualityPreset ?? "1080p30");
+      setCodec(persisted.codec ?? "h264");
       setPreferencesLoaded(true);
     }
 
@@ -124,7 +122,14 @@ export function RecorderPage() {
     return () => {
       cancelled = true;
     };
-  }, [setCaptureCamera, setCaptureMicrophone, setCaptureSystemAudio, setSourceType]);
+  }, [
+    setCaptureCamera,
+    setCaptureMicrophone,
+    setCaptureSystemAudio,
+    setSourceType,
+    setQualityPreset,
+    setCodec,
+  ]);
 
   // Persist preferences to plugin store
   useEffect(() => {
@@ -134,6 +139,8 @@ export function RecorderPage() {
       captureCamera,
       captureMicrophone,
       captureSystemAudio,
+      qualityPreset,
+      codec,
     });
   }, [
     preferencesLoaded,
@@ -141,6 +148,8 @@ export function RecorderPage() {
     captureCamera,
     captureMicrophone,
     captureSystemAudio,
+    qualityPreset,
+    codec,
   ]);
 
   // Load capture sources when permission is granted and source type changes
@@ -230,12 +239,14 @@ export function RecorderPage() {
 
     beginRecordingStart();
     try {
-      const options: RecordingOptions = {
+      const options: RecordingOptionsType = {
         sourceId: selectedSource.id,
         sourceType: selectedSource.type,
         captureCamera,
         captureMicrophone,
         captureSystemAudio,
+        qualityPreset,
+        codec,
       };
       
       const result = await Promise.race([
@@ -484,6 +495,37 @@ export function RecorderPage() {
               enabled={captureSystemAudio}
               onToggle={() => setCaptureSystemAudio(!captureSystemAudio)}
             />
+          </div>
+        </div>
+
+        <div className="animate-fade-up-delay-3 space-y-2">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
+            Recording Quality
+          </span>
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={qualityPreset}
+              onChange={(event) =>
+                setQualityPreset(
+                  event.target.value as "720p30" | "1080p30" | "1080p60" | "4k30" | "4k60"
+                )
+              }
+              className="rounded-lg border border-border/60 bg-card/60 px-2 py-2 text-xs text-foreground/80 outline-none focus:border-primary/50"
+            >
+              <option value="720p30">720p @ 30 FPS</option>
+              <option value="1080p30">1080p @ 30 FPS</option>
+              <option value="1080p60">1080p @ 60 FPS</option>
+              <option value="4k30">4K @ 30 FPS</option>
+              <option value="4k60">4K @ 60 FPS</option>
+            </select>
+            <select
+              value={codec}
+              onChange={(event) => setCodec(event.target.value as "h264" | "hevc")}
+              className="rounded-lg border border-border/60 bg-card/60 px-2 py-2 text-xs text-foreground/80 outline-none focus:border-primary/50"
+            >
+              <option value="h264">Codec: H.264</option>
+              <option value="hevc">Codec: HEVC</option>
+            </select>
           </div>
         </div>
 

@@ -26,6 +26,40 @@ pub struct RecordingOptions {
     pub capture_camera: bool,
     pub capture_microphone: bool,
     pub capture_system_audio: bool,
+    #[serde(default = "default_quality_preset")]
+    pub quality_preset: RecordingQualityPreset,
+    #[serde(default = "default_recording_codec")]
+    pub codec: RecordingCodec,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RecordingQualityPreset {
+    #[serde(rename = "720p30")]
+    P72030,
+    #[serde(rename = "1080p30")]
+    P1080P30,
+    #[serde(rename = "1080p60")]
+    P1080P60,
+    #[serde(rename = "4k30")]
+    P4k30,
+    #[serde(rename = "4k60")]
+    P4k60,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RecordingCodec {
+    H264,
+    Hevc,
+}
+
+const fn default_quality_preset() -> RecordingQualityPreset {
+    RecordingQualityPreset::P1080P30
+}
+
+const fn default_recording_codec() -> RecordingCodec {
+    RecordingCodec::H264
 }
 
 /// Recording state
@@ -51,6 +85,8 @@ pub struct RecordingSession {
     pub segment_index: u32,
     pub capture_width: u32,
     pub capture_height: u32,
+    pub capture_fps: u32,
+    pub recording_codec: RecordingCodec,
     pub screen_segments: Vec<PathBuf>,
     pub current_segment_path: PathBuf,
     pub active_duration_ms: u64,
@@ -119,6 +155,51 @@ fn make_even_dimension(value: u32) -> u32 {
         base
     } else {
         base - 1
+    }
+}
+
+impl RecordingQualityPreset {
+    fn max_height(self) -> u32 {
+        match self {
+            RecordingQualityPreset::P72030 => 720,
+            RecordingQualityPreset::P1080P30 | RecordingQualityPreset::P1080P60 => 1080,
+            RecordingQualityPreset::P4k30 | RecordingQualityPreset::P4k60 => 2160,
+        }
+    }
+
+    fn fps(self) -> u32 {
+        match self {
+            RecordingQualityPreset::P72030
+            | RecordingQualityPreset::P1080P30
+            | RecordingQualityPreset::P4k30 => 30,
+            RecordingQualityPreset::P1080P60 | RecordingQualityPreset::P4k60 => 60,
+        }
+    }
+}
+
+fn resolve_output_dimensions(
+    source_width: u32,
+    source_height: u32,
+    preset: RecordingQualityPreset,
+) -> (u32, u32) {
+    if source_width == 0 || source_height == 0 {
+        return (1920, 1080);
+    }
+
+    let max_height = preset.max_height() as f64;
+    let source_height_f = source_height as f64;
+    let scale = (max_height / source_height_f).min(1.0);
+
+    let scaled_width = make_even_dimension((source_width as f64 * scale).round() as u32);
+    let scaled_height = make_even_dimension((source_height as f64 * scale).round() as u32);
+    (scaled_width, scaled_height)
+}
+
+#[cfg(target_os = "macos")]
+fn to_output_codec(codec: RecordingCodec) -> SCRecordingOutputCodec {
+    match codec {
+        RecordingCodec::H264 => SCRecordingOutputCodec::H264,
+        RecordingCodec::Hevc => SCRecordingOutputCodec::HEVC,
     }
 }
 
@@ -245,13 +326,17 @@ pub fn start_recording(
         }
     };
 
-    let (capture_width, capture_height) =
+    let (source_width, source_height) =
         resolve_capture_dimensions(&content, options.source_type, &options.source_id)?;
+    let (capture_width, capture_height) =
+        resolve_output_dimensions(source_width, source_height, options.quality_preset);
+    let capture_fps = options.quality_preset.fps();
 
     // Configure stream
     let config = SCStreamConfiguration::new()
         .with_width(capture_width)
         .with_height(capture_height)
+        .with_fps(capture_fps)
         .with_pixel_format(PixelFormat::YCbCr_420v)
         .with_shows_cursor(true)
         .with_captures_audio(options.capture_system_audio)
@@ -261,7 +346,7 @@ pub fn start_recording(
     // Configure recording output
     let recording_config = SCRecordingOutputConfiguration::new()
         .with_output_url(&screen_video_path)
-        .with_video_codec(SCRecordingOutputCodec::H264)
+        .with_video_codec(to_output_codec(options.codec))
         .with_output_file_type(SCRecordingOutputFileType::MP4);
 
     let recording_output =
@@ -291,6 +376,8 @@ pub fn start_recording(
         segment_index: 0,
         capture_width,
         capture_height,
+        capture_fps,
+        recording_codec: options.codec,
         screen_segments: vec![screen_video_path.clone()],
         current_segment_path: screen_video_path.clone(),
         active_duration_ms: 0,
@@ -474,6 +561,7 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
     let config = SCStreamConfiguration::new()
         .with_width(session.capture_width)
         .with_height(session.capture_height)
+        .with_fps(session.capture_fps)
         .with_pixel_format(PixelFormat::YCbCr_420v)
         .with_shows_cursor(true)
         .with_captures_audio(session.options.capture_system_audio)
@@ -483,7 +571,7 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
     // Configure new recording output
     let recording_config = SCRecordingOutputConfiguration::new()
         .with_output_url(&segment_path)
-        .with_video_codec(SCRecordingOutputCodec::H264)
+        .with_video_codec(to_output_codec(session.recording_codec))
         .with_output_file_type(SCRecordingOutputFileType::MP4);
 
     let recording_output =
