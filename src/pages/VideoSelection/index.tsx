@@ -383,6 +383,37 @@ export function VideoSelectionPage() {
               <option value="1080p">1080p</option>
               <option value="4k">4K</option>
             </select>
+            <select
+              value={String(batchOptions.frameRate)}
+              disabled={batchOptions.format === "mp3" || batchOptions.format === "wav"}
+              onChange={(event) =>
+                setBatchOptions((previous) => ({
+                  ...previous,
+                  frameRate: Number(event.target.value) as ExportOptions["frameRate"],
+                }))
+              }
+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs disabled:opacity-50"
+            >
+              <option value="24">24 FPS</option>
+              <option value="30">30 FPS</option>
+              <option value="60">60 FPS</option>
+            </select>
+            <select
+              value={batchOptions.compression}
+              disabled={batchOptions.format !== "mp4" && batchOptions.format !== "mp3"}
+              onChange={(event) =>
+                setBatchOptions((previous) => ({
+                  ...previous,
+                  compression: event.target.value as ExportOptions["compression"],
+                }))
+              }
+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs disabled:opacity-50"
+            >
+              <option value="minimal">Minimal</option>
+              <option value="social">Social</option>
+              <option value="web">Web</option>
+              <option value="potato">Potato</option>
+            </select>
             <Button
               size="sm"
               disabled={selectedProjectIds.length === 0 || isBatchExporting}
