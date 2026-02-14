@@ -204,14 +204,21 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   useEffect(() => {
     const unlisten = listen<string>("recording-stopped", (event) => {
       setRecordingState("idle");
+      setProjectId(null);
       setRecordingStartTimeMs(null);
+      clearStoredCurrentProjectId();
       onRecordingStoppedNavigate(event.payload);
     });
 
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [onRecordingStoppedNavigate, setRecordingState, setRecordingStartTimeMs]);
+  }, [
+    onRecordingStoppedNavigate,
+    setProjectId,
+    setRecordingState,
+    setRecordingStartTimeMs,
+  ]);
 
   useEffect(() => {
     const unlisten = listen("global-shortcut-start-stop", () => {
