@@ -16,6 +16,7 @@
     "core:event:default",
     "opener:default",
     "global-shortcut:default",
+    "notification:default",
     "store:default",
     "fs:default",
     "fs:allow-appdata-write-recursive",

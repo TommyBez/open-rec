@@ -164,9 +164,6 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
-      if (exportStatus === "exporting") {
-        return;
-      }
       cleanupListeners();
     }
     onOpenChange(nextOpen);
@@ -404,6 +401,9 @@ export function ExportModal({ project, editedDuration, open, onOpenChange, onSav
                     {options.format}{isAudioOnlyFormat ? "" : ` • ${options.resolution}`}
                   </span>
                 </div>
+                <p className="text-[11px] text-muted-foreground/80">
+                  You can close this dialog and continue editing while export runs in background.
+                </p>
               </motion.div>
             )}
           </AnimatePresence>
