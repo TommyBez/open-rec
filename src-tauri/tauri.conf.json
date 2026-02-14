@@ -55,7 +55,22 @@
     "macOS": {
       "minimumSystemVersion": "15.0",
       "entitlements": "./Entitlements.plist",
-      "signingIdentity": null
+      "signingIdentity": null,
+      "dmg": {
+        "background": "icons/icon.png",
+        "windowSize": {
+          "width": 720,
+          "height": 420
+        },
+        "appPosition": {
+          "x": 190,
+          "y": 190
+        },
+        "applicationFolderPosition": {
+          "x": 530,
+          "y": 190
+        }
+      }
     }
   },
   "plugins": {

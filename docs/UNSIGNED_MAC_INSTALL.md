@@ -10,6 +10,9 @@ Unsigned builds work, but macOS Gatekeeper will warn on first launch.
    - `x86_64-apple-darwin` for Intel Macs
 2. Open the DMG and drag **Open Rec.app** into **Applications**.
 
+The DMG now ships with a pre-arranged drag-and-drop layout (app icon + Applications link)
+and branded background image so install instructions are visible at first open.
+
 ## First launch (Gatekeeper bypass)
 
 Unsigned apps are blocked by default on first run.
