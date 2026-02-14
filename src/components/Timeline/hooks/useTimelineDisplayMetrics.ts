@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { Segment } from "../../../types/project";
 
-interface SegmentDisplayInfo {
+export interface SegmentDisplayInfo {
   displayStart: number;
   displayEnd: number;
   segment: Segment;
