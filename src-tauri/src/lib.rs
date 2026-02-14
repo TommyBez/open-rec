@@ -247,7 +247,7 @@ async fn stop_screen_recording(
         stop_result.camera_offset_ms,
         stop_result.microphone_offset_ms,
     );
-    project::save_project(&recordings_dir, &project).map_err(AppError::from)?;
+    project::save_project(&recordings_dir, &project)?;
 
     // First, show and prepare the main window BEFORE emitting events
     if let Some(main_window) = app.get_webview_window("main") {
@@ -376,7 +376,7 @@ fn load_project(
             .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::load_project(&recordings_dir, &project_id).map_err(AppError::from)
+    project::load_project(&recordings_dir, &project_id)
 }
 
 /// Save a project
@@ -391,7 +391,7 @@ fn save_project(
             .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::save_project(&recordings_dir, &project).map_err(AppError::from)
+    project::save_project(&recordings_dir, &project)
 }
 
 /// List all projects
@@ -403,7 +403,7 @@ fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<Project
             .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         state_guard.recordings_dir.clone()
     };
-    project::list_projects(&recordings_dir).map_err(AppError::from)
+    project::list_projects(&recordings_dir)
 }
 
 /// Export a project
@@ -421,8 +421,7 @@ async fn export_project(
             .lock()
             .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
         let recordings_dir = state_guard.recordings_dir.clone();
-        let project =
-            project::load_project(&recordings_dir, &project_id).map_err(AppError::from)?;
+        let project = project::load_project(&recordings_dir, &project_id)?;
         (recordings_dir, project)
     };
 

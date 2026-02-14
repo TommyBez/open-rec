@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::error::AppError;
+
 /// Project metadata and edit decision list
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,42 +134,43 @@ impl Project {
     }
 
     /// Load a project from its JSON file
-    pub fn load(project_dir: &PathBuf) -> Result<Self, String> {
+    pub fn load(project_dir: &PathBuf) -> Result<Self, AppError> {
         let project_file = project_dir.join("project.json");
         let content = std::fs::read_to_string(&project_file)
-            .map_err(|e| format!("Failed to read project file: {}", e))?;
-        serde_json::from_str(&content).map_err(|e| format!("Failed to parse project file: {}", e))
+            .map_err(|e| AppError::Io(format!("Failed to read project file: {}", e)))?;
+        serde_json::from_str(&content)
+            .map_err(|e| AppError::Message(format!("Failed to parse project file: {}", e)))
     }
 
     /// Save the project to its JSON file
-    pub fn save(&self, project_dir: &PathBuf) -> Result<(), String> {
+    pub fn save(&self, project_dir: &PathBuf) -> Result<(), AppError> {
         let project_file = project_dir.join("project.json");
         let content = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Failed to serialize project: {}", e))?;
+            .map_err(|e| AppError::Message(format!("Failed to serialize project: {}", e)))?;
         std::fs::write(&project_file, content)
-            .map_err(|e| format!("Failed to write project file: {}", e))
+            .map_err(|e| AppError::Io(format!("Failed to write project file: {}", e)))
     }
 }
 
 /// Load project by ID
-pub fn load_project(recordings_dir: &PathBuf, project_id: &str) -> Result<Project, String> {
+pub fn load_project(recordings_dir: &PathBuf, project_id: &str) -> Result<Project, AppError> {
     let project_dir = recordings_dir.join(project_id);
     if !project_dir.exists() {
-        return Err("Project not found".to_string());
+        return Err(AppError::Message("Project not found".to_string()));
     }
     Project::load(&project_dir)
 }
 
 /// Save project
-pub fn save_project(recordings_dir: &PathBuf, project: &Project) -> Result<(), String> {
+pub fn save_project(recordings_dir: &PathBuf, project: &Project) -> Result<(), AppError> {
     let project_dir = recordings_dir.join(&project.id);
     std::fs::create_dir_all(&project_dir)
-        .map_err(|e| format!("Failed to create project directory: {}", e))?;
+        .map_err(|e| AppError::Io(format!("Failed to create project directory: {}", e)))?;
     project.save(&project_dir)
 }
 
 /// List all projects
-pub fn list_projects(recordings_dir: &PathBuf) -> Result<Vec<Project>, String> {
+pub fn list_projects(recordings_dir: &PathBuf) -> Result<Vec<Project>, AppError> {
     let mut projects = Vec::new();
 
     if !recordings_dir.exists() {
@@ -175,7 +178,7 @@ pub fn list_projects(recordings_dir: &PathBuf) -> Result<Vec<Project>, String> {
     }
 
     let entries = std::fs::read_dir(recordings_dir)
-        .map_err(|e| format!("Failed to read recordings directory: {}", e))?;
+        .map_err(|e| AppError::Io(format!("Failed to read recordings directory: {}", e)))?;
 
     for entry in entries.flatten() {
         let path = entry.path();
