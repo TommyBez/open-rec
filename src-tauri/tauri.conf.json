@@ -45,6 +45,13 @@
     "externalBin": [
       "binaries/ffmpeg"
     ],
+    "fileAssociations": [
+      {
+        "ext": ["openrec"],
+        "mimeType": "application/json",
+        "rank": "Owner"
+      }
+    ],
     "macOS": {
       "minimumSystemVersion": "15.0",
       "entitlements": "./Entitlements.plist",

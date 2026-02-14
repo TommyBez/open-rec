@@ -5,7 +5,7 @@ mod recording;
 use error::AppError;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
@@ -736,6 +736,56 @@ fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), A
     Ok(())
 }
 
+fn normalize_opened_project_id(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(stripped) = trimmed.strip_suffix(".openrec") {
+        if !stripped.trim().is_empty() {
+            return Some(stripped.to_string());
+        }
+    }
+    Some(trimmed.to_string())
+}
+
+fn project_id_from_opened_path(path: &Path) -> Option<String> {
+    if path.is_dir() {
+        if !path.join("project.json").exists() {
+            return None;
+        }
+        let name = path.file_name()?.to_string_lossy();
+        return normalize_opened_project_id(&name);
+    }
+
+    if path.file_name()?.to_string_lossy() == "project.json" {
+        let parent_name = path.parent()?.file_name()?.to_string_lossy();
+        return normalize_opened_project_id(&parent_name);
+    }
+
+    if path.extension().and_then(|ext| ext.to_str()) == Some("openrec") {
+        let stem = path.file_stem()?.to_string_lossy();
+        return normalize_opened_project_id(&stem);
+    }
+
+    None
+}
+
+fn handle_opened_project_paths(app: &AppHandle, paths: Vec<PathBuf>) {
+    for path in paths {
+        let Some(project_id) = project_id_from_opened_path(&path) else {
+            continue;
+        };
+        if let Err(error) = open_project_editor_window(app, &project_id) {
+            eprintln!(
+                "Failed to open associated project for path {}: {}",
+                path.display(),
+                error
+            );
+        }
+    }
+}
+
 /// Open a project editor in a separate window
 #[tauri::command]
 fn open_project_window(app: AppHandle, project_id: String) -> Result<(), AppError> {
@@ -1153,6 +1203,17 @@ pub fn run() {
     match app_result {
         Ok(app) => {
             app.run(|app_handle, event| {
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                if let RunEvent::Opened { urls } = &event {
+                    let opened_paths = urls
+                        .iter()
+                        .filter_map(|url| url.to_file_path().ok())
+                        .collect::<Vec<_>>();
+                    if !opened_paths.is_empty() {
+                        handle_opened_project_paths(app_handle, opened_paths);
+                    }
+                }
+
                 if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                     if let Some(state) = app_handle.try_state::<SharedRecorderState>() {
                         let _ = recording::cleanup_active_recordings(&state);
