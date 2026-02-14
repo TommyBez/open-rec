@@ -685,6 +685,14 @@ fn start_screen_recording(
     let result = do_start_recording(&state, options)?;
 
     emit_with_log(&app, "recording-started", &result);
+    emit_with_log(
+        &app,
+        "recording-state-changed",
+        serde_json::json!({
+            "state": "recording",
+            "projectId": &result.project_id
+        }),
+    );
 
     Ok(result)
 }
