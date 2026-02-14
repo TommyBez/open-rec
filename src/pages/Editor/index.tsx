@@ -1,16 +1,14 @@
 import { useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Timeline } from "../../components/Timeline";
 import { ExportModal } from "../../components/ExportModal";
 import { useProject } from "../../hooks/useProject";
 import { useEditorStore, useExportStore } from "../../stores";
 
 // Extracted components
 import { EditorHeader } from "./components/EditorHeader";
-import { VideoPreview } from "./components/VideoPreview";
-import { PlaybackControls } from "./components/PlaybackControls";
-import { EditorInspectors } from "./components/EditorInspectors";
+import { EditorMainPane } from "./components/EditorMainPane";
+import { EditorTimelinePanel } from "./components/EditorTimelinePanel";
 import { useEditorKeyboardShortcuts } from "./hooks/useEditorKeyboardShortcuts";
 import { useVideoPlayback } from "./hooks/useVideoPlayback";
 import { useWaveformData } from "./hooks/useWaveformData";
@@ -315,98 +313,73 @@ export function EditorPage() {
         activeExportCount={activeExportCount}
       />
 
-      <div className="relative z-10 flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 animate-fade-up-delay-1">
-          <VideoPreview
-            ref={videoRef}
-            videoSrc={videoSrc}
-            videoZoomStyle={videoZoomStyle}
-            activeZoom={activeZoom}
-            activeSpeed={activeSpeed}
-            currentPlaybackRate={effectivePlaybackRate}
-            currentSourceTime={currentTime}
-            isPlaying={isPlaying}
-            annotations={project.edits.annotations}
-            previewFilter={previewFilter}
-            selectedAnnotationId={selectedAnnotationId}
-            onAnnotationPositionChange={handleAnnotationPositionChange}
-            resolution={project.resolution}
-            cameraSrc={cameraSrc}
-            cameraOverlayPosition={project.edits.cameraOverlay.position}
-            cameraOverlayScale={project.edits.cameraOverlay.scale}
-            cameraOverlayMargin={project.edits.cameraOverlay.margin}
-            cameraOverlayCustomX={project.edits.cameraOverlay.customX}
-            cameraOverlayCustomY={project.edits.cameraOverlay.customY}
-            onCameraOverlayCustomPositionChange={handleCameraOverlayCustomPositionChange}
-            cameraOffsetMs={project.cameraOffsetMs}
-          />
-          
-          <PlaybackControls
-            currentTime={sourceToEditedTime(currentTime)}
-            editedDuration={editedDuration}
-            isPlaying={isPlaying}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            canDelete={canDelete}
-            canDeleteZoom={canDeleteZoom}
-            canDeleteSpeed={canDeleteSpeed}
-            canDeleteSegment={!!canDeleteSegment}
-            canDeleteAnnotation={canDeleteAnnotation}
-            annotationMode={annotationInsertMode}
-            selectedTool={selectedTool}
-            onTogglePlay={togglePlay}
-            onSkipBackward={skipBackward}
-            onSkipForward={skipForward}
-            onUndo={undo}
-            onRedo={redo}
-            onDelete={handleDeleteSelected}
-            onToggleTool={toggleTool}
-          />
-        </div>
+      <EditorMainPane
+        project={project}
+        videoRef={videoRef}
+        videoSrc={videoSrc}
+        videoZoomStyle={videoZoomStyle}
+        activeZoom={activeZoom}
+        activeSpeed={activeSpeed}
+        effectivePlaybackRate={effectivePlaybackRate}
+        currentTime={currentTime}
+        isPlaying={isPlaying}
+        previewFilter={previewFilter}
+        selectedAnnotationId={selectedAnnotationId}
+        cameraSrc={cameraSrc}
+        onAnnotationPositionChange={handleAnnotationPositionChange}
+        onCameraOverlayCustomPositionChange={handleCameraOverlayCustomPositionChange}
+        sourceToEditedTime={sourceToEditedTime}
+        editedDuration={editedDuration}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        canDelete={canDelete}
+        canDeleteZoom={canDeleteZoom}
+        canDeleteSpeed={canDeleteSpeed}
+        canDeleteSegment={!!canDeleteSegment}
+        canDeleteAnnotation={canDeleteAnnotation}
+        annotationInsertMode={annotationInsertMode}
+        selectedTool={selectedTool}
+        onTogglePlay={togglePlay}
+        onSkipBackward={skipBackward}
+        onSkipForward={skipForward}
+        onUndo={undo}
+        onRedo={redo}
+        onDelete={handleDeleteSelected}
+        onToggleTool={toggleTool}
+        selectedZoom={selectedZoom}
+        selectedSpeed={selectedSpeed}
+        selectedAnnotation={selectedAnnotation}
+        onZoomCommit={handleZoomCommit}
+        onCloseZoom={handleCloseZoomInspector}
+        onZoomDraftChange={handleZoomDraftChange}
+        onSpeedCommit={handleSpeedCommit}
+        onCloseSpeed={handleCloseSpeedInspector}
+        onSpeedDraftChange={handleSpeedDraftChange}
+        onAnnotationCommit={handleAnnotationCommit}
+        onDuplicateAnnotation={handleDuplicateSelectedAnnotation}
+        onCloseAnnotation={handleCloseAnnotationInspector}
+      />
 
-        <EditorInspectors
-          selectedZoom={selectedZoom}
-          selectedSpeed={selectedSpeed}
-          selectedAnnotation={selectedAnnotation}
-          resolution={project.resolution}
-          maxDuration={project.duration}
-          onZoomCommit={handleZoomCommit}
-          onCloseZoom={handleCloseZoomInspector}
-          onZoomDraftChange={handleZoomDraftChange}
-          onSpeedCommit={handleSpeedCommit}
-          onCloseSpeed={handleCloseSpeedInspector}
-          onSpeedDraftChange={handleSpeedDraftChange}
-          onAnnotationCommit={handleAnnotationCommit}
-          onDuplicateAnnotation={handleDuplicateSelectedAnnotation}
-          onCloseAnnotation={handleCloseAnnotationInspector}
-        />
-      </div>
-
-      <div className="relative z-10 animate-fade-up-delay-3">
-        <Timeline
-          duration={duration}
-          currentTime={currentTime}
-          segments={project.edits.segments}
-          zoom={project.edits.zoom}
-          speed={project.edits.speed}
-          annotations={project.edits.annotations}
-          screenWaveform={screenWaveform}
-          microphoneWaveform={microphoneWaveform}
-          onSeek={handleTimelineClick}
-          selectedTool={selectedTool}
-          selectedSegmentId={selectedSegmentId}
-          onSelectSegment={selectSegment}
-          selectedZoomId={selectedZoomId}
-          onSelectZoom={selectZoom}
-          onUpdateZoom={updateZoom}
-          selectedSpeedId={selectedSpeedId}
-          onSelectSpeed={selectSpeed}
-          onUpdateSpeed={updateSpeed}
-          selectedAnnotationId={selectedAnnotationId}
-          onSelectAnnotation={selectAnnotation}
-          onUpdateAnnotation={updateAnnotation}
-        />
-      </div>
+      <EditorTimelinePanel
+        project={project}
+        duration={duration}
+        currentTime={currentTime}
+        screenWaveform={screenWaveform}
+        microphoneWaveform={microphoneWaveform}
+        selectedTool={selectedTool}
+        selectedSegmentId={selectedSegmentId}
+        selectedZoomId={selectedZoomId}
+        selectedSpeedId={selectedSpeedId}
+        selectedAnnotationId={selectedAnnotationId}
+        onSeek={handleTimelineClick}
+        onSelectSegment={selectSegment}
+        onSelectZoom={selectZoom}
+        onUpdateZoom={updateZoom}
+        onSelectSpeed={selectSpeed}
+        onUpdateSpeed={updateSpeed}
+        onSelectAnnotation={selectAnnotation}
+        onUpdateAnnotation={updateAnnotation}
+      />
 
       <ExportModal
         project={project}
