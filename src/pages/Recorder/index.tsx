@@ -46,6 +46,7 @@ export interface RecordingOptions {
 export function RecorderPage() {
   const navigate = useNavigate();
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   // Use zustand store for state management
   const {
@@ -154,6 +155,7 @@ export function RecorderPage() {
     } catch (error) {
       console.error("Failed to check permission:", error);
       setHasPermission(false);
+      setErrorMessage("Unable to check screen recording permission.");
     }
   }
 
@@ -166,6 +168,7 @@ export function RecorderPage() {
       }
     } catch (error) {
       console.error("Failed to request permission:", error);
+      setErrorMessage("Unable to request screen recording permission.");
     }
   }
 
@@ -202,6 +205,7 @@ export function RecorderPage() {
       }
     } catch (error) {
       console.error("Failed to load capture sources:", error);
+      setErrorMessage("Could not load capture sources. Check permissions and retry.");
       // For development, use mock data
       const mockSources: CaptureSource[] = sourceType === "display" 
         ? [{ id: "main", name: "Built-in Display", type: "display" }]
@@ -244,6 +248,7 @@ export function RecorderPage() {
       setRecordingStartTimeMs(result.recordingStartTimeMs);
       startRecording(result.projectId);
       localStorage.setItem("currentProjectId", result.projectId);
+      setErrorMessage(null);
       
       // Open the recording widget window
       await invoke("open_recording_widget");
@@ -256,6 +261,7 @@ export function RecorderPage() {
       setProjectId(null);
       setRecordingStartTimeMs(null);
       setRecordingState("idle");
+      setErrorMessage(String(error));
     }
   }
 
@@ -349,6 +355,11 @@ export function RecorderPage() {
       </header>
 
       <main className="relative z-10 flex flex-1 flex-col gap-4">
+        {errorMessage && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {errorMessage}
+          </div>
+        )}
         {/* Source Selector Panel */}
         <div className="studio-panel animate-fade-up-delay-1 rounded-xl p-1">
           <div className="flex gap-1">
