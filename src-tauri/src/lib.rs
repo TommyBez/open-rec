@@ -927,9 +927,25 @@ fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), A
 
     let title = {
         let mut resolved_title = None;
-        if let Ok(content) = std::fs::read_to_string(&project_file_path) {
-            if let Ok(project) = serde_json::from_str::<Project>(&content) {
-                resolved_title = Some(project.name);
+        match std::fs::read_to_string(&project_file_path) {
+            Ok(content) => match serde_json::from_str::<Project>(&content) {
+                Ok(project) => {
+                    resolved_title = Some(project.name);
+                }
+                Err(error) => {
+                    eprintln!(
+                        "Failed to parse project metadata while resolving window title ({}): {}",
+                        project_file_path.display(),
+                        error
+                    );
+                }
+            },
+            Err(error) => {
+                eprintln!(
+                    "Failed to read project metadata while resolving window title ({}): {}",
+                    project_file_path.display(),
+                    error
+                );
             }
         }
         format!(
