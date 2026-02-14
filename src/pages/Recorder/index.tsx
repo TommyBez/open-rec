@@ -144,8 +144,15 @@ export function RecorderPage() {
         sourceType,
       });
       setSources(result);
-      if (result.length > 0 && !selectedSource) {
+      const stillAvailable = selectedSource
+        ? result.find((source) => source.id === selectedSource.id)
+        : undefined;
+      if (stillAvailable) {
+        setSelectedSource(stillAvailable);
+      } else if (result.length > 0) {
         setSelectedSource(result[0]);
+      } else {
+        setSelectedSource(null);
       }
     } catch (error) {
       console.error("Failed to load capture sources:", error);
@@ -158,7 +165,7 @@ export function RecorderPage() {
             { id: "3", name: "Finder", type: "window" },
           ];
       setSources(mockSources);
-      if (mockSources.length > 0) {
+      if (mockSources.length > 0 && !selectedSource) {
         setSelectedSource(mockSources[0]);
       }
     } finally {
