@@ -22,6 +22,7 @@ A macOS screen and camera recording app with editing capabilities. Built with Ta
 - **My Recordings**
   - Browse and manage recorded projects
   - Open recordings in the editor
+  - Open `.openrec` project files directly from Finder/Explorer
 
 ## Tech Stack
 
@@ -66,6 +67,13 @@ This is useful for internal testing or distribution without an Apple Developer I
 
 See the installation and Gatekeeper instructions in
 [`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md).
+
+### File associations
+
+OpenRec registers the `.openrec` extension as a project document type.
+
+- Double-clicking a `.openrec` file opens the project in an editor window.
+- Tray and app menu recent-project entries also open project windows directly.
 
 ## Project Structure
 
