@@ -4,12 +4,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Monitor, AppWindow, Lock, FolderOpen } from "lucide-react";
+import { Monitor, AppWindow, FolderOpen } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { SourceSelector } from "../../components/SourceSelector";
 import { ToggleRow } from "../../components/ToggleRow";
 import { MicrophoneRecorder } from "../../components/MicrophoneRecorder";
-import { Button } from "@/components/ui/button";
 import { CameraPreview } from "../../components/CameraPreview";
 import { BrandLogo } from "../../components/BrandLogo";
 import { StatusIndicator } from "../../components/StatusIndicator";
@@ -35,6 +34,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { PermissionDeniedView, PermissionLoadingView } from "./components/PermissionViews";
 
 interface DiskSpaceStatus {
   freeBytes: number;
@@ -421,59 +421,12 @@ export function RecorderPage() {
 
   // Show permission request UI if permission not granted
   if (hasPermission === false) {
-    return (
-      <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background p-5">
-        {/* Atmospheric background gradient */}
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_25)_0%,transparent_50%)] opacity-40" />
-        
-        <header className="relative z-10 mb-6 animate-fade-up">
-          <BrandLogo />
-        </header>
-
-        <main className="relative z-10 flex flex-1 flex-col items-center justify-center gap-5 text-center">
-          <div className="animate-fade-up-delay-1 flex size-20 items-center justify-center rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm">
-            <Lock className="size-8 text-muted-foreground" strokeWidth={1.5} />
-          </div>
-          <div className="animate-fade-up-delay-2 space-y-2">
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">
-              Permission Required
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Open Rec needs access to record your screen.
-            </p>
-          </div>
-          <Button 
-            size="lg" 
-            onClick={requestPermission}
-            className="animate-fade-up-delay-3 mt-2 gap-2 bg-primary px-8 font-medium text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-primary/25"
-          >
-            Grant Permission
-          </Button>
-          <p className="animate-fade-up-delay-4 mt-4 max-w-[280px] text-xs leading-relaxed text-muted-foreground/70">
-            If the system dialog doesn't appear, go to{" "}
-            <span className="font-medium text-foreground/80">
-              System Settings → Privacy & Security → Screen Recording
-            </span>
-          </p>
-        </main>
-      </div>
-    );
+    return <PermissionDeniedView onRequestPermission={requestPermission} />;
   }
 
   // Show loading state while checking permission
   if (hasPermission === null) {
-    return (
-      <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background p-5">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_25)_0%,transparent_50%)] opacity-40" />
-        <header className="relative z-10 mb-6 animate-fade-up">
-          <BrandLogo />
-        </header>
-        <main className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3">
-          <div className="size-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
-          <p className="text-sm text-muted-foreground">Checking permissions...</p>
-        </main>
-      </div>
-    );
+    return <PermissionLoadingView />;
   }
 
   return (
