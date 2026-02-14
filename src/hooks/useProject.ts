@@ -548,42 +548,60 @@ export function useProject(initialProject: Project | null) {
   }, [updateProject]);
 
   const updateCameraOverlay = useCallback((updates: Partial<CameraOverlaySettings>) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        cameraOverlay: {
-          ...p.edits.cameraOverlay,
-          ...updates,
+    updateProject((p) => {
+      const hasChanges = Object.entries(updates).some(
+        ([key, value]) => p.edits.cameraOverlay[key as keyof CameraOverlaySettings] !== value
+      );
+      if (!hasChanges) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          cameraOverlay: {
+            ...p.edits.cameraOverlay,
+            ...updates,
+          },
         },
-      },
-    }));
+      };
+    });
   }, [updateProject]);
 
   const updateAudioMix = useCallback((updates: Partial<AudioMixSettings>) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        audioMix: {
-          ...p.edits.audioMix,
-          ...updates,
+    updateProject((p) => {
+      const hasChanges = Object.entries(updates).some(
+        ([key, value]) => p.edits.audioMix[key as keyof AudioMixSettings] !== value
+      );
+      if (!hasChanges) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          audioMix: {
+            ...p.edits.audioMix,
+            ...updates,
+          },
         },
-      },
-    }));
+      };
+    });
   }, [updateProject]);
 
   const updateColorCorrection = useCallback((updates: Partial<ColorCorrectionSettings>) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        colorCorrection: {
-          ...p.edits.colorCorrection,
-          ...updates,
+    updateProject((p) => {
+      const hasChanges = Object.entries(updates).some(
+        ([key, value]) => p.edits.colorCorrection[key as keyof ColorCorrectionSettings] !== value
+      );
+      if (!hasChanges) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          colorCorrection: {
+            ...p.edits.colorCorrection,
+            ...updates,
+          },
         },
-      },
-    }));
+      };
+    });
   }, [updateProject]);
 
   return {
