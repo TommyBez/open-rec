@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useRecordingStore, RecordingState } from "../../../stores";
+import { toErrorMessage } from "../../../lib/errorMessage";
 import { withTimeout } from "../../../lib/withTimeout";
 
 interface DiskSpaceStatus {
@@ -95,8 +96,8 @@ export function useRecordingWidgetRuntime() {
   }, [state]);
 
   async function stopRecording() {
-    if (!projectId) return;
-    const currentProjectId = projectId;
+    const currentProjectId = projectId ?? localStorage.getItem("currentProjectId");
+    if (!currentProjectId) return false;
     const fallbackState = state === "paused" ? "paused" : "recording";
     try {
       beginRecordingStop();
@@ -112,7 +113,7 @@ export function useRecordingWidgetRuntime() {
     } catch (error) {
       console.error("[RecordingWidget] Failed to stop recording:", error);
       setRecordingState(fallbackState);
-      setPermissionError(String(error));
+      setPermissionError(toErrorMessage(error, "Failed to stop recording."));
       return false;
     }
   }
@@ -168,7 +169,9 @@ export function useRecordingWidgetRuntime() {
         lastAutoSegmentAtRef.current = elapsedTime;
       } catch (error) {
         console.error("Auto-segmentation failed:", error);
-        setPermissionError(String(error));
+        setPermissionError(
+          toErrorMessage(error, "Auto-segmentation failed.")
+        );
       } finally {
         autoSegmentInFlightRef.current = false;
       }
@@ -195,7 +198,9 @@ export function useRecordingWidgetRuntime() {
       }
     } catch (error) {
       console.error("Failed to toggle pause:", error);
-      setPermissionError(String(error));
+      setPermissionError(
+        toErrorMessage(error, "Failed to pause/resume recording.")
+      );
     }
   }
 

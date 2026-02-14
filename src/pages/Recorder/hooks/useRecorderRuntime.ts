@@ -17,6 +17,7 @@ import {
   consumeTrayQuickRecordRequest,
   requestTrayQuickRecord,
 } from "../../../lib/trayQuickRecord";
+import { toErrorMessage } from "../../../lib/errorMessage";
 import { withTimeout } from "../../../lib/withTimeout";
 import { useRecordingCountdown } from "./useRecordingCountdown";
 
@@ -28,6 +29,8 @@ interface DiskSpaceStatus {
 interface UseRecorderRuntimeOptions {
   onRecordingStoppedNavigate: (projectId: string) => void;
 }
+
+const START_RECORDING_TIMEOUT_MS = 15_000;
 
 export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRuntimeOptions) {
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
@@ -69,8 +72,6 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setRecordingStartTimeMs,
     setRecordingState,
   } = useRecordingStore();
-
-const START_RECORDING_TIMEOUT_MS = 15_000;
 
   const isRecording = ["starting", "recording", "paused"].includes(recordingState);
   const isActivelyRecording = recordingState === "recording";
@@ -336,7 +337,9 @@ const START_RECORDING_TIMEOUT_MS = 15_000;
       setRecordingStartTimeMs(null);
       setRecordingState("idle");
       localStorage.removeItem("currentProjectId");
-      setErrorMessage(String(error));
+      setErrorMessage(
+        toErrorMessage(error, "Failed to start recording. Please try again.")
+      );
     }
   }
 
