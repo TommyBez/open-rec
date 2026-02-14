@@ -19,6 +19,7 @@ import { useEditedTimelineMetrics } from "./hooks/useEditedTimelineMetrics";
 import { useEditorAutosaveLifecycle } from "./hooks/useEditorAutosaveLifecycle";
 import { useEditorProjectLoader } from "./hooks/useEditorProjectLoader";
 import { useEditorPreviewState } from "./hooks/useEditorPreviewState";
+import { useEditorBoundedUpdaters } from "./hooks/useEditorBoundedUpdaters";
 
 // Hoisted static JSX elements
 const atmosphericGradient = (
@@ -265,6 +266,25 @@ export function EditorPage() {
   const handleOpenVideos = useCallback(() => {
     navigate("/videos", { state: { from: "editor", projectId } });
   }, [navigate, projectId]);
+  const {
+    handleCameraOverlayPositionChange,
+    handleCameraOverlayScaleChange,
+    handleCameraOverlayMarginChange,
+    handleCameraOverlayCustomPositionChange,
+    handleAudioSystemVolumeChange,
+    handleAudioMicrophoneVolumeChange,
+    handleMicrophoneNoiseGateChange,
+    handleColorBrightnessChange,
+    handleColorContrastChange,
+    handleColorSaturationChange,
+    handleResetColorCorrection,
+    handleAnnotationPositionChange,
+  } = useEditorBoundedUpdaters({
+    updateCameraOverlay,
+    updateAudioMix,
+    updateColorCorrection,
+    updateAnnotation,
+  });
 
   // Derived delete state
   const canDeleteSegment = selectedSegmentId !== null && project && project.edits.segments.length > 1;
@@ -294,40 +314,16 @@ export function EditorPage() {
         colorBrightness={project.edits.colorCorrection.brightness}
         colorContrast={project.edits.colorCorrection.contrast}
         colorSaturation={project.edits.colorCorrection.saturation}
-        onCameraOverlayPositionChange={(position) =>
-          updateCameraOverlay({ position })
-        }
-        onCameraOverlayScaleChange={(scale) =>
-          updateCameraOverlay({ scale: Math.max(0.1, Math.min(0.6, scale)) })
-        }
-        onCameraOverlayMarginChange={(margin) =>
-          updateCameraOverlay({ margin: Math.max(0, Math.min(100, Math.round(margin))) })
-        }
-        onAudioSystemVolumeChange={(volume) =>
-          updateAudioMix({ systemVolume: Math.max(0, Math.min(2, volume)) })
-        }
-        onAudioMicrophoneVolumeChange={(volume) =>
-          updateAudioMix({ microphoneVolume: Math.max(0, Math.min(2, volume)) })
-        }
-        onMicrophoneNoiseGateChange={(enabled) =>
-          updateAudioMix({ microphoneNoiseGate: enabled })
-        }
-        onColorBrightnessChange={(value) =>
-          updateColorCorrection({ brightness: Math.max(-1, Math.min(1, value)) })
-        }
-        onColorContrastChange={(value) =>
-          updateColorCorrection({ contrast: Math.max(0.5, Math.min(2, value)) })
-        }
-        onColorSaturationChange={(value) =>
-          updateColorCorrection({ saturation: Math.max(0, Math.min(2, value)) })
-        }
-        onResetColorCorrection={() =>
-          updateColorCorrection({
-            brightness: 0,
-            contrast: 1,
-            saturation: 1,
-          })
-        }
+        onCameraOverlayPositionChange={handleCameraOverlayPositionChange}
+        onCameraOverlayScaleChange={handleCameraOverlayScaleChange}
+        onCameraOverlayMarginChange={handleCameraOverlayMarginChange}
+        onAudioSystemVolumeChange={handleAudioSystemVolumeChange}
+        onAudioMicrophoneVolumeChange={handleAudioMicrophoneVolumeChange}
+        onMicrophoneNoiseGateChange={handleMicrophoneNoiseGateChange}
+        onColorBrightnessChange={handleColorBrightnessChange}
+        onColorContrastChange={handleColorContrastChange}
+        onColorSaturationChange={handleColorSaturationChange}
+        onResetColorCorrection={handleResetColorCorrection}
         onBack={handleBack}
         onExport={handleExport}
         onOpenVideos={handleOpenVideos}
@@ -349,12 +345,7 @@ export function EditorPage() {
             annotations={project.edits.annotations}
             previewFilter={previewFilter}
             selectedAnnotationId={selectedAnnotationId}
-            onAnnotationPositionChange={(annotationId, x, y) =>
-              updateAnnotation(annotationId, {
-                x: Math.max(0, Math.min(1, x)),
-                y: Math.max(0, Math.min(1, y)),
-              })
-            }
+            onAnnotationPositionChange={handleAnnotationPositionChange}
             resolution={project.resolution}
             cameraSrc={cameraSrc}
             cameraOverlayPosition={project.edits.cameraOverlay.position}
@@ -362,13 +353,7 @@ export function EditorPage() {
             cameraOverlayMargin={project.edits.cameraOverlay.margin}
             cameraOverlayCustomX={project.edits.cameraOverlay.customX}
             cameraOverlayCustomY={project.edits.cameraOverlay.customY}
-            onCameraOverlayCustomPositionChange={(x, y) =>
-              updateCameraOverlay({
-                position: "custom",
-                customX: Math.min(1, Math.max(0, x)),
-                customY: Math.min(1, Math.max(0, y)),
-              })
-            }
+            onCameraOverlayCustomPositionChange={handleCameraOverlayCustomPositionChange}
             cameraOffsetMs={project.cameraOffsetMs}
           />
           
