@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useRecordingStore } from "../../../stores";
+import { useRecordingStore, useRuntimeDiagnosticsStore } from "../../../stores";
 import {
   DiskSpaceStatus,
   CaptureSource,
@@ -198,6 +198,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   const pendingTrayQuickRecordRef = useRef(false);
   const loadSourcesInFlightRef = useRef(false);
   const { countdown, startCountdown } = useRecordingCountdown();
+  const appendDiagnostic = useRuntimeDiagnosticsStore((state) => state.appendEntry);
 
   const {
     state: recordingState,
@@ -231,6 +232,17 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setRecordingStartTimeMs,
     setRecordingState,
   } = useRecordingStore();
+
+  function recordDiagnostic(
+    level: "info" | "warning" | "error",
+    message: string
+  ) {
+    appendDiagnostic({
+      source: "recorder",
+      level,
+      message,
+    });
+  }
 
   const isRecording = ["starting", "recording", "paused", "stopping"].includes(
     recordingState
@@ -566,17 +578,18 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         clearStoredCurrentProjectId();
         clearPendingRecordingSourceFallbackNotice();
         setFinalizingStatus(null);
-        setErrorMessage(
+        const message =
           event.payload.message?.trim() ||
-            "Recording stopped, but finalization failed. Check the recordings list and retry."
-        );
+          "Recording stopped, but finalization failed. Check the recordings list and retry.";
+        setErrorMessage(message);
+        recordDiagnostic("error", message);
       }
     );
 
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [projectId, setProjectId, setRecordingState, setRecordingStartTimeMs]);
+  }, [appendDiagnostic, projectId, setProjectId, setRecordingState, setRecordingStartTimeMs]);
 
   const finalizingMessage =
     recordingState === "stopping"
@@ -631,7 +644,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       } else {
         setPreferredWindowSourceId(event.payload.sourceId);
       }
-      setErrorMessage(
+      const message =
         event.payload.sourceType === "display"
           ? `Selected display became unavailable. Recorder switched to ${describeDisplaySource(
               event.payload.sourceId,
@@ -639,8 +652,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
             )}.`
           : `Selected window became unavailable. Recorder switched to ${describeWindowSource(
               event.payload.sourceId
-            )}.`
-      );
+            )}.`;
+      setErrorMessage(message);
+      recordDiagnostic("warning", message);
       const matchingSource = sources.find(
         (source) =>
           source.type === event.payload.sourceType &&
@@ -655,7 +669,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [projectId, setSelectedSource, sources]);
+  }, [appendDiagnostic, projectId, setSelectedSource, sources]);
 
   useEffect(() => {
     if (consumeTrayQuickRecordRequest()) {
@@ -792,7 +806,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       };
     } catch (error) {
       console.error("Failed to refresh capture sources before recording:", error);
-      setErrorMessage("Unable to refresh available capture sources before recording.");
+      const message = "Unable to refresh available capture sources before recording.";
+      setErrorMessage(message);
+      recordDiagnostic("error", message);
       return null;
     }
   }
@@ -833,9 +849,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setRecordingState("idle");
       clearStoredCurrentProjectId();
       clearPendingRecordingSourceFallbackNotice();
-      setErrorMessage(
-        toErrorMessage(error, "Failed to start recording. Please try again.")
-      );
+      const message = toErrorMessage(error, "Failed to start recording. Please try again.");
+      setErrorMessage(message);
+      recordDiagnostic("error", message);
       return;
     }
 
@@ -866,7 +882,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         sourceId: result.fallbackSource.sourceId,
         sourceOrdinal: result.fallbackSource.sourceOrdinal ?? null,
       });
-      setErrorMessage(
+      const message =
         resolvedSource.source.type === "display"
           ? `Selected display became unavailable. Recorder switched to ${describeDisplaySource(
               result.fallbackSource.sourceId,
@@ -874,8 +890,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
             )}.`
           : `Selected window became unavailable. Recorder switched to ${describeWindowSource(
               result.fallbackSource.sourceId
-            )}.`
-      );
+            )}.`;
+      setErrorMessage(message);
+      recordDiagnostic("warning", message);
     } else {
       clearPendingRecordingSourceFallbackNotice();
       setErrorMessage((current) => clearSourceFallbackWarning(current));
@@ -896,12 +913,12 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setErrorMessage((current) => clearWidgetHandoffWarning(current));
     } catch (error) {
       console.error("Recording started but widget handoff failed:", error);
-      setErrorMessage(
-        toErrorMessage(
-          error,
-          "Recording started, but floating controls failed to open. Use global shortcuts to pause or stop."
-        )
+      const message = toErrorMessage(
+        error,
+        "Recording started, but floating controls failed to open. Use global shortcuts to pause or stop."
       );
+      setErrorMessage(message);
+      recordDiagnostic("warning", message);
     }
   }
 
@@ -918,7 +935,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       }
     } catch (error) {
       console.error("Failed to check disk space before recording:", error);
-      setErrorMessage("Unable to verify available disk space before recording.");
+      const message = "Unable to verify available disk space before recording.";
+      setErrorMessage(message);
+      recordDiagnostic("error", message);
       return;
     }
 
@@ -940,12 +959,12 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setErrorMessage((current) => clearWidgetHandoffWarning(current));
     } catch (error) {
       console.error("Failed to open recording widget:", error);
-      setErrorMessage(
-        toErrorMessage(
-          error,
-          "Unable to open floating controls. Use global shortcuts to pause or stop."
-        )
+      const message = toErrorMessage(
+        error,
+        "Unable to open floating controls. Use global shortcuts to pause or stop."
       );
+      setErrorMessage(message);
+      recordDiagnostic("warning", message);
     }
   }
 

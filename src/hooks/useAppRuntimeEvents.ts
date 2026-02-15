@@ -9,7 +9,7 @@ import {
 } from "@tauri-apps/plugin-notification";
 import type { NavigateFunction } from "react-router-dom";
 import { requestTrayQuickRecord } from "../lib/trayQuickRecord";
-import { useExportStore } from "../stores";
+import { useExportStore, useRuntimeDiagnosticsStore } from "../stores";
 
 const EXPORT_JOB_SYNC_INTERVAL_MS = 30_000;
 
@@ -42,6 +42,7 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
   const isMainWindow = getCurrentWindow().label === "main";
   const { registerExportJob, unregisterExportJob, replaceActiveExportJobs } =
     useExportStore();
+  const appendDiagnostic = useRuntimeDiagnosticsStore((state) => state.appendEntry);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +90,11 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     }, EXPORT_JOB_SYNC_INTERVAL_MS);
     const unlistenCompletePromise = listen<ExportCompleteEvent>("export-complete", (event) => {
       unregisterExportJob(event.payload.jobId);
+      appendDiagnostic({
+        source: "export",
+        level: "info",
+        message: `Export completed (${event.payload.jobId}).`,
+      });
       if (!isMainWindow) return;
       notifyUser(
         "Export complete",
@@ -97,6 +103,11 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     });
     const unlistenErrorPromise = listen<ExportErrorEvent>("export-error", (event) => {
       unregisterExportJob(event.payload.jobId);
+      appendDiagnostic({
+        source: "export",
+        level: "error",
+        message: `Export failed (${event.payload.jobId}): ${event.payload.message}`,
+      });
       if (!isMainWindow) return;
       notifyUser("Export failed", event.payload.message);
     });
@@ -109,6 +120,13 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     const unlistenStopFailedPromise = listen<RecordingStopFailedEvent>(
       "recording-stop-failed",
       (event) => {
+        appendDiagnostic({
+          source: "system",
+          level: "error",
+          message:
+            event.payload.message ||
+            "Recording stopped, but post-processing failed. Check your recordings list.",
+        });
         if (!isMainWindow) return;
         notifyUser(
           "Recording finalization failed",
@@ -147,6 +165,7 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
   }, [
     isMainWindow,
     navigate,
+    appendDiagnostic,
     registerExportJob,
     replaceActiveExportJobs,
     unregisterExportJob,

@@ -10,6 +10,7 @@ import { CountdownOverlay } from "./CountdownOverlay";
 import { RecorderInputSources } from "./RecorderInputSources";
 import { RecorderQualityControls } from "./RecorderQualityControls";
 import { RecorderActionButtons } from "./RecorderActionButtons";
+import { RecorderDiagnosticsPanel } from "./RecorderDiagnosticsPanel";
 import { RecorderMainPanelProps } from "./recorderMainPanel.types";
 export function RecorderMainPanel({
   selectedSource,
@@ -73,6 +74,7 @@ export function RecorderMainPanel({
             {diskWarning}
           </div>
         )}
+        <RecorderDiagnosticsPanel />
         <div className="studio-panel animate-fade-up-delay-1 rounded-xl p-1">
           <div className="flex gap-1">
             <SourceTypeButton active={sourceType === "display"} onClick={() => onSetSourceType("display")} icon={<Monitor className="size-4" />} label="Screen" disabled={sourceControlsLocked} />

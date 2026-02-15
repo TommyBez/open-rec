@@ -25,6 +25,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Export preflight validation for required media file existence/readability
 - Export speed-audio regression coverage (`atempo` chain)
 - Help menu links for manual update/install docs via opener plugin
+- Inline recovery diagnostics panel for recorder/export/runtime warning visibility
 
 ## Remaining required manual gates (macOS)
 

@@ -5,3 +5,4 @@ export { useEditorStore } from "./editorStore";
 export type { EditorTool } from "./editorStore";
 
 export { useExportStore } from "./exportStore";
+export { useRuntimeDiagnosticsStore } from "./runtimeDiagnosticsStore";
