@@ -1256,6 +1256,15 @@ async fn retry_recording_finalization(
     let project_id = normalize_project_id_input(project_id, "retry recording finalization")?;
     let Some(stop_result) = get_pending_finalization(pending_finalizations.inner(), &project_id)?
     else {
+        emit_with_log(
+            &app,
+            "recording-finalization-retry-status",
+            serde_json::json!({
+                "projectId": &project_id,
+                "status": "failed",
+                "message": "No failed finalization context is available for retry."
+            }),
+        );
         return Err(AppError::Message(
             "No failed finalization context is available for retry.".to_string(),
         ));

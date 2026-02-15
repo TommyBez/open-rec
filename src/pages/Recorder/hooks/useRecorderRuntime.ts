@@ -1207,6 +1207,24 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     }
 
     try {
+      const hasPendingFinalization = await invoke<boolean>(
+        "has_pending_recording_finalization",
+        { projectId: retryProjectId }
+      );
+      if (!hasPendingFinalization) {
+        setRetryFinalizationProjectId(null);
+        clearPendingFinalizationRetryProjectId();
+        const message =
+          "No pending finalization context is available for retry. Start a new recording session if needed.";
+        setErrorMessage(message);
+        recordLifecycleEvent("recording-finalization-retry-skipped", message, {
+          level: "warning",
+          state: "idle",
+          projectId: retryProjectId,
+        });
+        return;
+      }
+
       setRecordingState("stopping");
       setFinalizingStatus("concatenating-segments");
       setErrorMessage(null);

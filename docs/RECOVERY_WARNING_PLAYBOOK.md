@@ -92,6 +92,12 @@ and export/finalization recovery flows.
 - **Note:** Pending retry context is persisted locally so the retry action remains available after route changes.
 - **Note:** Recorder now validates pending retry context against backend state and auto-clears stale retry prompts if finalization artifacts are no longer available.
 
+### `No pending finalization context is available for retry...`
+- **Surface:** Recorder error banner after pressing **Retry Finalization**
+- **Meaning:** Backend no longer has pending finalization artifacts for that project.
+- **What OpenRec already did:** Cleared stale retry context and prevented a no-op retry call.
+- **Recommended user action:** Open recordings list to verify the project state, then continue with a new recording if needed.
+
 ### `Recording finalization timed out in the widget...`
 - **Surface:** Recording widget warning text
 - **Meaning:** Finalization exceeded recovery timeout budget.
