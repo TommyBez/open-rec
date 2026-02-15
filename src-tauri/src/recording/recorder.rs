@@ -354,18 +354,6 @@ fn find_display_or_fallback_with_ordinal(
     Ok((display, used_fallback, requested_ordinal))
 }
 
-#[cfg(target_os = "macos")]
-fn find_window<'a>(
-    content: &'a SCShareableContent,
-    window_id: u32,
-) -> Result<&'a SCWindow, AppError> {
-    content
-        .windows()
-        .iter()
-        .find(|window| window.window_id() == window_id)
-        .ok_or_else(|| AppError::Message(format!("Window not found: {}", window_id)))
-}
-
 #[cfg(any(target_os = "macos", test))]
 fn resolve_window_fallback_id(
     requested_window_id: u32,
@@ -383,19 +371,19 @@ fn resolve_window_fallback_id(
 }
 
 #[cfg(target_os = "macos")]
-fn find_window_or_fallback<'a>(
-    content: &'a SCShareableContent,
+fn find_window_or_fallback(
+    content: &SCShareableContent,
     requested_window_id: u32,
-) -> Result<(&'a SCWindow, bool), AppError> {
-    let mut on_screen_windows = content
+) -> Result<(SCWindow, bool), AppError> {
+    let on_screen_windows = content
         .windows()
-        .iter()
+        .into_iter()
         .filter(|window| window.is_on_screen())
-        .collect::<Vec<_>>();
+        .collect::<Vec<SCWindow>>();
     let available_window_ids = on_screen_windows
         .iter()
         .map(|window| window.window_id())
-        .collect::<Vec<_>>();
+        .collect::<Vec<u32>>();
     let Some((resolved_window_id, used_fallback)) =
         resolve_window_fallback_id(requested_window_id, &available_window_ids)
     else {
@@ -404,8 +392,7 @@ fn find_window_or_fallback<'a>(
         ));
     };
     let resolved_window = on_screen_windows
-        .iter()
-        .copied()
+        .into_iter()
         .find(|window| window.window_id() == resolved_window_id)
         .ok_or_else(|| {
             AppError::Message(format!(
@@ -620,7 +607,7 @@ pub fn start_recording(
             }
             let frame = window.frame();
             (
-                SCContentFilter::create().with_window(window).build(),
+                SCContentFilter::create().with_window(&window).build(),
                 frame.width.round() as u32,
                 frame.height.round() as u32,
                 window.window_id().to_string(),
@@ -918,7 +905,7 @@ pub fn resume_recording(
                     },
                 });
             }
-            SCContentFilter::create().with_window(window).build()
+            SCContentFilter::create().with_window(&window).build()
         }
     };
 
@@ -1038,15 +1025,12 @@ pub fn get_recording_source_status(
         }
         SourceType::Window => {
             let window_id = parse_window_id(&source_id)?;
-            let on_screen_windows = content
+            let available_window_ids = content
                 .windows()
-                .iter()
+                .into_iter()
                 .filter(|window| window.is_on_screen())
-                .collect::<Vec<_>>();
-            let available_window_ids = on_screen_windows
-                .iter()
                 .map(|window| window.window_id())
-                .collect::<Vec<_>>();
+                .collect::<Vec<u32>>();
             let Some((resolved_window_id, used_fallback)) =
                 resolve_window_fallback_id(window_id, &available_window_ids)
             else {
