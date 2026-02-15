@@ -128,6 +128,13 @@ export interface RecordingSourceFallback {
   sourceOrdinal?: number | null;
 }
 
+export interface RecordingSourceStatus {
+  sourceType: "display" | "window";
+  sourceId: string;
+  available: boolean;
+  fallbackSource?: RecordingSourceFallback | null;
+}
+
 export type BackendRecordingState = "recording" | "paused" | "stopped";
 
 export interface RecordingSessionSnapshot {

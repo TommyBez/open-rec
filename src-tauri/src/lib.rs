@@ -24,8 +24,8 @@ use recording::{
     request_screen_recording_permission, resume_recording as do_resume_recording,
     set_media_offsets as do_set_media_offsets, start_recording as do_start_recording,
     stop_recording as do_stop_recording, CaptureSource, RecorderState, RecordingOptions,
-    RecordingSessionSnapshot, RecordingState as RecorderRecordingState, SharedRecorderState,
-    SourceType, StartRecordingResult, StopRecordingResult,
+    RecordingSessionSnapshot, RecordingSourceStatus, RecordingState as RecorderRecordingState,
+    SharedRecorderState, SourceType, StartRecordingResult, StopRecordingResult,
 };
 use uuid::Uuid;
 
@@ -854,6 +854,15 @@ fn get_recording_snapshot(
 ) -> Result<Option<RecordingSessionSnapshot>, AppError> {
     let project_id = normalize_project_id_input(project_id, "get recording snapshot")?;
     do_get_recording_snapshot(&state, &project_id)
+}
+
+#[tauri::command]
+fn get_recording_source_status(
+    state: tauri::State<'_, SharedRecorderState>,
+    project_id: String,
+) -> Result<Option<RecordingSourceStatus>, AppError> {
+    let project_id = normalize_project_id_input(project_id, "get recording source status")?;
+    recording::get_recording_source_status(&state, &project_id)
 }
 
 /// Pause screen recording
@@ -2232,6 +2241,7 @@ pub fn run() {
             set_recording_media_offsets,
             get_recording_state,
             get_recording_snapshot,
+            get_recording_source_status,
             pause_recording,
             resume_recording,
             open_recording_widget,

@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useRecordingStore, RecordingState } from "../../../stores";
-import { DiskSpaceStatus, RecordingSessionSnapshot } from "../../../types/project";
+import {
+  DiskSpaceStatus,
+  RecordingSessionSnapshot,
+  RecordingSourceStatus,
+} from "../../../types/project";
 import {
   clearStoredCurrentProjectId,
   getStoredCurrentProjectId,
@@ -36,6 +40,7 @@ export function useRecordingWidgetRuntime() {
   const autoStopForDiskRef = useRef(false);
   const lastAutoSegmentAtRef = useRef(0);
   const autoSegmentInFlightRef = useRef(false);
+  const sourceUnavailableNoticeRef = useRef<string | null>(null);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const resolveActiveProjectId = () => projectId ?? getStoredCurrentProjectId();
 
@@ -297,8 +302,43 @@ export function useRecordingWidgetRuntime() {
       autoStopForDiskRef.current = false;
       lastAutoSegmentAtRef.current = 0;
       autoSegmentInFlightRef.current = false;
+      sourceUnavailableNoticeRef.current = null;
     }
   }, [state]);
+
+  useEffect(() => {
+    if (state !== "recording" && state !== "paused") return;
+    const intervalId = window.setInterval(async () => {
+      const activeProjectId = resolveActiveProjectId();
+      if (!activeProjectId) return;
+      try {
+        const sourceStatus = await invoke<RecordingSourceStatus | null>(
+          "get_recording_source_status",
+          { projectId: activeProjectId }
+        );
+        if (!sourceStatus || sourceStatus.available || sourceStatus.sourceType !== "display") {
+          sourceUnavailableNoticeRef.current = null;
+          return;
+        }
+        const fallbackLabel =
+          typeof sourceStatus.fallbackSource?.sourceOrdinal === "number" &&
+          Number.isFinite(sourceStatus.fallbackSource.sourceOrdinal)
+            ? `Display ${sourceStatus.fallbackSource.sourceOrdinal + 1}`
+            : sourceStatus.fallbackSource?.sourceId
+              ? `display source ${sourceStatus.fallbackSource.sourceId}`
+              : "an available display";
+        const warningMessage = `The selected display is disconnected. Recording will continue on ${fallbackLabel} when capture resumes.`;
+        if (sourceUnavailableNoticeRef.current === warningMessage) {
+          return;
+        }
+        sourceUnavailableNoticeRef.current = warningMessage;
+        setPermissionError((current) => current ?? warningMessage);
+      } catch (error) {
+        console.error("Failed to verify recording source availability:", error);
+      }
+    }, 5000);
+    return () => clearInterval(intervalId);
+  }, [projectId, state]);
 
   useEffect(() => {
     const activeProjectId = resolveActiveProjectId();

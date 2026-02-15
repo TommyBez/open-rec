@@ -159,6 +159,15 @@ pub struct RecordingSourceFallback {
     pub source_ordinal: Option<u32>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingSourceStatus {
+    pub source_type: SourceType,
+    pub source_id: String,
+    pub available: bool,
+    pub fallback_source: Option<RecordingSourceFallback>,
+}
+
 /// Result of stopping a recording
 #[derive(Debug, Clone)]
 pub struct StopRecordingResult {
@@ -780,6 +789,83 @@ pub fn set_media_offsets(
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+pub fn get_recording_source_status(
+    state: &SharedRecorderState,
+    project_id: &str,
+) -> Result<Option<RecordingSourceStatus>, AppError> {
+    let state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    let session = if let Some(session) = state_guard.sessions.get(project_id) {
+        session
+    } else {
+        return Ok(None);
+    };
+
+    let source_type = session.options.source_type;
+    let source_id = session.options.source_id.clone();
+    let preferred_display_ordinal = session.options.preferred_display_ordinal;
+    drop(state_guard);
+
+    let content = SCShareableContent::get()
+        .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
+
+    match source_type {
+        SourceType::Display => {
+            let display_id = parse_display_id(&source_id)?;
+            let (_, used_fallback, fallback_ordinal) = find_display_or_fallback_with_ordinal(
+                &content,
+                display_id,
+                preferred_display_ordinal,
+            )?;
+            if used_fallback {
+                let fallback_source = resolve_display_fallback_index(
+                    content.displays().len(),
+                    preferred_display_ordinal,
+                );
+                let mut displays: Vec<_> = content.displays().into_iter().collect();
+                displays.sort_by_key(|display| display.display_id());
+                let fallback_display = displays
+                    .get(fallback_source)
+                    .or_else(|| displays.first())
+                    .ok_or_else(|| {
+                    AppError::Message("No displays are currently available for capture".to_string())
+                })?;
+                return Ok(Some(RecordingSourceStatus {
+                    source_type,
+                    source_id,
+                    available: false,
+                    fallback_source: Some(RecordingSourceFallback {
+                        source_id: fallback_display.display_id().to_string(),
+                        source_ordinal: Some(fallback_ordinal),
+                    }),
+                }));
+            }
+
+            Ok(Some(RecordingSourceStatus {
+                source_type,
+                source_id,
+                available: true,
+                fallback_source: None,
+            }))
+        }
+        SourceType::Window => {
+            let window_id = parse_window_id(&source_id)?;
+            let is_available = content
+                .windows()
+                .iter()
+                .any(|window| window.window_id() == window_id && window.is_on_screen());
+            Ok(Some(RecordingSourceStatus {
+                source_type,
+                source_id,
+                available: is_available,
+                fallback_source: None,
+            }))
+        }
+    }
+}
+
 #[cfg(any(target_os = "macos", test))]
 fn calculate_elapsed_duration_ms(session: &RecordingSession) -> u64 {
     let mut elapsed_ms = session.active_duration_ms;
@@ -915,6 +1001,14 @@ pub fn set_media_offsets(
     Err(AppError::Message(
         "Screen capture is only supported on macOS".to_string(),
     ))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_recording_source_status(
+    _state: &SharedRecorderState,
+    _project_id: &str,
+) -> Result<Option<RecordingSourceStatus>, AppError> {
+    Ok(None)
 }
 
 #[cfg(not(target_os = "macos"))]
