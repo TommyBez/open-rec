@@ -468,38 +468,63 @@ fn ensure_recording_disk_headroom(recordings_dir: &PathBuf) -> Result<(), AppErr
     Ok(())
 }
 
+fn is_missing_process_error(stderr: &str) -> bool {
+    let normalized = stderr.trim().to_ascii_lowercase();
+    normalized.contains("no such process")
+        || normalized.contains("not found")
+        || normalized.contains("cannot find the process")
+}
+
 fn terminate_process_by_pid(pid: u32) -> Result<(), AppError> {
     #[cfg(unix)]
     {
-        let status = std::process::Command::new("kill")
+        let output = std::process::Command::new("kill")
             .arg("-TERM")
             .arg(pid.to_string())
-            .status()
+            .output()
             .map_err(|e| {
                 AppError::Message(format!("Failed to terminate process {}: {}", pid, e))
             })?;
-        if !status.success() {
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if is_missing_process_error(&stderr) {
+                return Ok(());
+            }
             return Err(AppError::Message(format!(
-                "Failed to terminate process {}",
-                pid
+                "Failed to terminate process {}: {}",
+                pid,
+                if stderr.is_empty() {
+                    "kill exited with non-zero status".to_string()
+                } else {
+                    stderr
+                }
             )));
         }
     }
 
     #[cfg(windows)]
     {
-        let status = std::process::Command::new("taskkill")
+        let output = std::process::Command::new("taskkill")
             .arg("/PID")
             .arg(pid.to_string())
             .arg("/F")
-            .status()
+            .output()
             .map_err(|e| {
                 AppError::Message(format!("Failed to terminate process {}: {}", pid, e))
             })?;
-        if !status.success() {
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if is_missing_process_error(&stderr) {
+                return Ok(());
+            }
             return Err(AppError::Message(format!(
-                "Failed to terminate process {}",
-                pid
+                "Failed to terminate process {}: {}",
+                pid,
+                if stderr.is_empty() {
+                    "taskkill exited with non-zero status".to_string()
+                } else {
+                    stderr
+                }
             )));
         }
     }
@@ -1729,8 +1754,9 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_editor_route, normalize_opened_project_id, normalize_project_id_input,
-        parse_ffmpeg_progress, project_id_from_opened_path, resolve_project_dir_from_payload,
+        build_editor_route, is_missing_process_error, normalize_opened_project_id,
+        normalize_project_id_input, parse_ffmpeg_progress, project_id_from_opened_path,
+        resolve_project_dir_from_payload,
     };
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use super::{parse_startup_opened_arg, strip_wrapping_quotes};
@@ -1773,6 +1799,18 @@ mod tests {
     fn ignores_invalid_progress_tokens() {
         assert_eq!(parse_ffmpeg_progress("out_time_ms=abc"), None);
         assert_eq!(parse_ffmpeg_progress("time=bad-value"), None);
+    }
+
+    #[test]
+    fn detects_missing_process_error_messages() {
+        assert!(is_missing_process_error("kill: (123) - No such process"));
+        assert!(is_missing_process_error(
+            "ERROR: The process \"123\" not found."
+        ));
+        assert!(is_missing_process_error(
+            "Cannot find the process with PID 123"
+        ));
+        assert!(!is_missing_process_error("permission denied"));
     }
 
     #[test]
