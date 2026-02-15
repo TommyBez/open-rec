@@ -211,7 +211,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setRecordingState,
   } = useRecordingStore();
 
-  const isRecording = ["starting", "recording", "paused"].includes(recordingState);
+  const isRecording = ["starting", "recording", "paused", "stopping"].includes(
+    recordingState
+  );
   const isActivelyRecording = recordingState === "recording";
   const preferredSourceId =
     sourceType === "display" ? preferredDisplaySourceId : preferredWindowSourceId;
