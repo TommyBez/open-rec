@@ -66,6 +66,7 @@ export function useRecordingWidgetRuntime() {
         }
 
         clearStoredCurrentProjectId();
+        clearPendingRecordingSourceFallbackNotice();
         setProjectId(null);
       } catch (error) {
         console.error("Failed to hydrate recording session state:", error);
@@ -82,6 +83,7 @@ export function useRecordingWidgetRuntime() {
   useEffect(() => {
     const hasPersistedSession = Boolean(resolveActiveProjectId());
     if (!hasPersistedSession && state !== "idle") {
+      clearPendingRecordingSourceFallbackNotice();
       resetRecording();
       setPermissionError(null);
     }
