@@ -24,6 +24,11 @@ interface ExportErrorEvent {
   message: string;
 }
 
+interface RecordingStopFailedEvent {
+  projectId: string;
+  message: string;
+}
+
 function App() {
   const navigate = useNavigate();
   const isMainWindow = getCurrentWindow().label === "main";
@@ -59,6 +64,17 @@ function App() {
     const unlistenCancelledPromise = listen("export-cancelled", () => {
       decrementActiveExports();
     });
+    const unlistenRecordingStopFailedPromise = listen<RecordingStopFailedEvent>(
+      "recording-stop-failed",
+      (event) => {
+        sendNotification({
+          title: "Recording finalization failed",
+          body:
+            event.payload.message ||
+            "Recording stopped, but post-processing failed. Check your recordings list.",
+        });
+      }
+    );
     const unlistenTrayRecorderPromise = isMainWindow
       ? listen("tray-open-recorder", () => {
           navigate("/recorder");
@@ -82,6 +98,7 @@ function App() {
       unlistenErrorPromise.then((unlisten) => unlisten());
       unlistenStartedPromise.then((unlisten) => unlisten());
       unlistenCancelledPromise.then((unlisten) => unlisten());
+      unlistenRecordingStopFailedPromise.then((unlisten) => unlisten());
       unlistenTrayRecorderPromise.then((unlisten) => unlisten());
       unlistenTrayProjectsPromise.then((unlisten) => unlisten());
       unlistenTrayQuickRecordPromise.then((unlisten) => unlisten());
