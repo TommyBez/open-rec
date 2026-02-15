@@ -2868,6 +2868,22 @@ mod tests {
         assert_eq!(windows_drive_like, PathBuf::from("C:/tmp/sample.openrec"));
     }
 
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn parses_percent_encoded_startup_file_urls() {
+        let encoded_spaces = parse_startup_opened_arg("file:///tmp/sample%20clip.openrec")
+            .expect("percent-encoded spaces should parse");
+        assert_eq!(encoded_spaces, PathBuf::from("/tmp/sample clip.openrec"));
+
+        let encoded_unicode = parse_startup_opened_arg("file:///tmp/%E2%9C%93-check.openrec")
+            .expect("percent-encoded unicode should parse");
+        assert_eq!(encoded_unicode, PathBuf::from("/tmp/✓-check.openrec"));
+
+        let uppercase_file_scheme = parse_startup_opened_arg("FILE:///tmp/Upper.openrec")
+            .expect("uppercase file scheme should parse");
+        assert_eq!(uppercase_file_scheme, PathBuf::from("/tmp/Upper.openrec"));
+    }
+
     #[test]
     fn resolves_project_id_from_project_directory() {
         let root = create_test_dir("path-directory");
