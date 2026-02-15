@@ -885,6 +885,34 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     startCountdown(startRecordingSession);
   }
 
+  async function handleOpenRecordingWidget() {
+    const activeProjectId = projectId ?? getStoredCurrentProjectId();
+    if (!activeProjectId || recordingState === "stopping") {
+      return;
+    }
+
+    try {
+      await withTimeout(
+        invoke("open_recording_widget"),
+        OPEN_WIDGET_TIMEOUT_MS,
+        "Opening recording widget timed out."
+      );
+    } catch (error) {
+      console.error("Failed to open recording widget:", error);
+      setErrorMessage(
+        toErrorMessage(
+          error,
+          "Unable to open floating controls. Use global shortcuts to pause or stop."
+        )
+      );
+    }
+  }
+
+  const showOpenRecordingWidgetButton =
+    recordingState !== "idle" &&
+    recordingState !== "starting" &&
+    recordingState !== "stopping";
+
   return {
     countdown,
     errorMessage,
@@ -915,6 +943,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setCodec,
     setCameraReady,
     requestPermission,
+    showOpenRecordingWidgetButton,
+    handleOpenRecordingWidget,
     handleStartRecording,
   };
 }

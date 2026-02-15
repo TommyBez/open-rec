@@ -5,13 +5,12 @@ import { SourceSelector } from "../../../components/SourceSelector";
 import { MicrophoneRecorder } from "../../../components/MicrophoneRecorder";
 import { CameraPreview } from "../../../components/CameraPreview";
 import { SourceTypeButton } from "../../../components/SourceTypeButton";
-import { RecordButton } from "../../../components/RecordButton";
 import { RecorderHeader } from "./RecorderHeader";
 import { CountdownOverlay } from "./CountdownOverlay";
 import { RecorderInputSources } from "./RecorderInputSources";
 import { RecorderQualityControls } from "./RecorderQualityControls";
+import { RecorderActionButtons } from "./RecorderActionButtons";
 import { RecorderMainPanelProps } from "./recorderMainPanel.types";
-
 export function RecorderMainPanel({
   selectedSource,
   countdown,
@@ -40,6 +39,8 @@ export function RecorderMainPanel({
   onToggleSystemAudio,
   onQualityPresetChange,
   onCodecChange,
+  showOpenRecordingWidgetButton,
+  onOpenRecordingWidget,
   onStartRecording,
 }: RecorderMainPanelProps) {
   return (
@@ -135,9 +136,13 @@ export function RecorderMainPanel({
           onCodecChange={onCodecChange}
         />
         <div className="flex-1" />
-        <div className="animate-fade-up-delay-4">
-          <RecordButton onClick={onStartRecording} disabled={!selectedSource || isRecording} />
-        </div>
+        <RecorderActionButtons
+          canStartRecording={Boolean(selectedSource)}
+          isRecording={isRecording}
+          showOpenRecordingWidgetButton={showOpenRecordingWidgetButton}
+          onOpenRecordingWidget={onOpenRecordingWidget}
+          onStartRecording={onStartRecording}
+        />
       </main>
     </div>
   );
