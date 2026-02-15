@@ -43,6 +43,8 @@ interface ResolvedRecordingSource {
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
 const STOP_FINALIZATION_TIMEOUT_MS = 180_000;
+const OPEN_WIDGET_TIMEOUT_MS = 8_000;
+const HIDE_WINDOW_TIMEOUT_MS = 5_000;
 type RecordingFinalizingStatus = "merging" | "verifying" | "saving";
 const SOURCE_FALLBACK_WARNING_PREFIXES = [
   "Display \"",
@@ -841,9 +843,17 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setErrorMessage(null);
 
     try {
-      await invoke("open_recording_widget");
+      await withTimeout(
+        invoke("open_recording_widget"),
+        OPEN_WIDGET_TIMEOUT_MS,
+        "Opening recording widget timed out."
+      );
       const mainWindow = getCurrentWindow();
-      await mainWindow.hide();
+      await withTimeout(
+        mainWindow.hide(),
+        HIDE_WINDOW_TIMEOUT_MS,
+        "Hiding recorder window timed out."
+      );
     } catch (error) {
       console.error("Recording started but widget handoff failed:", error);
       setErrorMessage(
