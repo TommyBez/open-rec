@@ -1847,6 +1847,18 @@ fn cancel_export(
     Ok(())
 }
 
+#[tauri::command]
+fn list_active_export_jobs(
+    export_jobs: tauri::State<'_, SharedExportJobs>,
+) -> Result<Vec<String>, AppError> {
+    let jobs = export_jobs
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Failed to lock export jobs state: {}", e)))?;
+    let mut job_ids = jobs.keys().cloned().collect::<Vec<_>>();
+    job_ids.sort();
+    Ok(job_ids)
+}
+
 /// Parse ffmpeg progress from stderr line
 fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
     fn parse_hhmmss(value: &str) -> Option<f64> {
@@ -2596,6 +2608,7 @@ pub fn run() {
             delete_project,
             export_project,
             cancel_export,
+            list_active_export_jobs,
         ])
         .build(tauri::generate_context!());
 

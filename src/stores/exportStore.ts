@@ -4,6 +4,7 @@ interface ExportStore {
   activeExportCount: number;
   registerExportJob: (jobId: string) => void;
   unregisterExportJob: (jobId: string) => void;
+  replaceActiveExportJobs: (jobIds: string[]) => void;
   resetActiveExports: () => void;
   activeExportJobIds: string[];
 }
@@ -33,5 +34,12 @@ export const useExportStore = create<ExportStore>((set) => ({
         activeExportCount: activeExportJobIds.length,
       };
     }),
+  replaceActiveExportJobs: (jobIds) => {
+    const uniqueJobIds = [...new Set(jobIds)];
+    set({
+      activeExportJobIds: uniqueJobIds,
+      activeExportCount: uniqueJobIds.length,
+    });
+  },
   resetActiveExports: () => set({ activeExportCount: 0, activeExportJobIds: [] }),
 }));
