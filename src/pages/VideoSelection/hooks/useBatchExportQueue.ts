@@ -88,24 +88,34 @@ export function useBatchExportQueue({ selectedProjectIds, projects }: UseBatchEx
   const [batchOptions, setBatchOptions] = useState<ExportOptions>(defaultBatchOptions);
 
   async function startBatchExport() {
-    if (selectedProjectIds.length === 0 || isBatchExporting) return;
+    const queueProjectIds = Array.from(
+      new Set(selectedProjectIds.map((id) => id.trim()).filter((id) => id.length > 0))
+    );
+    if (queueProjectIds.length === 0 || isBatchExporting) return;
+    const projectLookup = new Map(projects.map((project) => [project.id, project]));
 
     setIsBatchExporting(true);
     setStopBatchRequested(false);
     stopBatchRequestedRef.current = false;
     setBatchHistory([]);
-    setBatchStatus(`Preparing batch export (0/${selectedProjectIds.length})...`);
+    setBatchStatus(`Preparing batch export (0/${queueProjectIds.length})...`);
 
     let completed = 0;
     let failed = 0;
 
-    for (let i = 0; i < selectedProjectIds.length; i++) {
+    for (let i = 0; i < queueProjectIds.length; i++) {
       if (stopBatchRequestedRef.current) break;
 
-      const projectId = selectedProjectIds[i];
-      const projectName =
-        projects.find((project) => project.id === projectId)?.name ?? `Project ${i + 1}`;
-      setBatchStatus(`Exporting ${i + 1}/${selectedProjectIds.length}: ${projectName}`);
+      const projectId = queueProjectIds[i];
+      const project = projectLookup.get(projectId);
+      const projectName = project?.name ?? `Project ${i + 1}`;
+      if (!project) {
+        failed += 1;
+        setBatchHistory((history) => [...history, `✗ ${projectName} (project missing locally)`]);
+        continue;
+      }
+
+      setBatchStatus(`Exporting ${i + 1}/${queueProjectIds.length}: ${projectName}`);
       try {
         const started = await invoke<{ jobId: string }>("export_project", {
           projectId,
