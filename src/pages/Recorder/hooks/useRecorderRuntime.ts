@@ -432,6 +432,32 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }, []);
 
   useEffect(() => {
+    const unlisten = listen<{
+      sourceType: "display" | "window";
+      sourceId: string;
+      sourceOrdinal?: number | null;
+    }>("recording-source-fallback", (event) => {
+      if (event.payload.sourceType !== "display") {
+        return;
+      }
+      setPreferredDisplaySourceId(event.payload.sourceId);
+      if (typeof event.payload.sourceOrdinal === "number") {
+        setPreferredDisplaySourceOrdinal(event.payload.sourceOrdinal);
+      }
+      const matchingSource = sources.find(
+        (source) =>
+          source.type === "display" && source.id === event.payload.sourceId
+      );
+      if (matchingSource) {
+        setSelectedSource(matchingSource);
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [setSelectedSource, sources]);
+
+  useEffect(() => {
     if (consumeTrayQuickRecordRequest()) {
       pendingTrayQuickRecordRef.current = true;
       setErrorMessage(null);
