@@ -213,29 +213,6 @@ fn to_output_codec(codec: RecordingCodec) -> SCRecordingOutputCodec {
 }
 
 #[cfg(target_os = "macos")]
-fn resolve_capture_dimensions(
-    content: &SCShareableContent,
-    source_type: SourceType,
-    source_id: &str,
-) -> Result<(u32, u32), AppError> {
-    let (width, height) = match source_type {
-        SourceType::Display => {
-            let display_id = parse_display_id(source_id)?;
-            let display = find_display(content, display_id)?;
-            (display.width(), display.height())
-        }
-        SourceType::Window => {
-            let window_id = parse_window_id(source_id)?;
-            let window = find_window(content, window_id)?;
-            let frame = window.frame();
-            (frame.width.round() as u32, frame.height.round() as u32)
-        }
-    };
-
-    Ok((make_even_dimension(width), make_even_dimension(height)))
-}
-
-#[cfg(target_os = "macos")]
 fn parse_display_id(source_id: &str) -> Result<u32, AppError> {
     source_id
         .parse()
@@ -250,12 +227,27 @@ fn parse_window_id(source_id: &str) -> Result<u32, AppError> {
 }
 
 #[cfg(target_os = "macos")]
-fn find_display(content: &SCShareableContent, display_id: u32) -> Result<SCDisplay, AppError> {
-    content
-        .displays()
-        .into_iter()
-        .find(|display| display.display_id() == display_id)
-        .ok_or_else(|| AppError::Message(format!("Display not found: {}", display_id)))
+fn find_display_or_fallback(
+    content: &SCShareableContent,
+    requested_display_id: u32,
+) -> Result<(SCDisplay, bool), AppError> {
+    let mut displays: Vec<SCDisplay> = content.displays().into_iter().collect();
+    if displays.is_empty() {
+        return Err(AppError::Message(
+            "No displays are currently available for capture".to_string(),
+        ));
+    }
+
+    if let Some(index) = displays
+        .iter()
+        .position(|display| display.display_id() == requested_display_id)
+    {
+        return Ok((displays.swap_remove(index), false));
+    }
+
+    displays.sort_by_key(|display| display.display_id());
+    let fallback_display = displays.remove(0);
+    Ok((fallback_display, true))
 }
 
 #[cfg(target_os = "macos")]
@@ -345,25 +337,41 @@ pub fn start_recording(
     let content = SCShareableContent::get()
         .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
-    // Create content filter based on source type
-    let filter = match options.source_type {
+    // Create content filter based on source type and resolve dimensions
+    let (filter, source_width, source_height, resolved_source_id) = match options.source_type {
         SourceType::Display => {
             let display_id = parse_display_id(&options.source_id)?;
-            let display = find_display(&content, display_id)?;
-            SCContentFilter::create()
-                .with_display(&display)
-                .with_excluding_windows(&[])
-                .build()
+            let (display, used_fallback) = find_display_or_fallback(&content, display_id)?;
+            if used_fallback {
+                eprintln!(
+                    "Requested display {} was unavailable. Falling back to display {}.",
+                    display_id,
+                    display.display_id()
+                );
+            }
+            (
+                SCContentFilter::create()
+                    .with_display(&display)
+                    .with_excluding_windows(&[])
+                    .build(),
+                display.width(),
+                display.height(),
+                display.display_id().to_string(),
+            )
         }
         SourceType::Window => {
             let window_id = parse_window_id(&options.source_id)?;
             let window = find_window(&content, window_id)?;
-            SCContentFilter::create().with_window(window).build()
+            let frame = window.frame();
+            (
+                SCContentFilter::create().with_window(window).build(),
+                frame.width.round() as u32,
+                frame.height.round() as u32,
+                window_id.to_string(),
+            )
         }
     };
 
-    let (source_width, source_height) =
-        resolve_capture_dimensions(&content, options.source_type, &options.source_id)?;
     let (capture_width, capture_height) =
         resolve_output_dimensions(source_width, source_height, options.quality_preset);
     let capture_fps = options.quality_preset.fps();
@@ -399,9 +407,12 @@ pub fn start_recording(
     let recording_start_time_ms = chrono::Utc::now().timestamp_millis();
 
     // Store session
+    let mut session_options = options.clone();
+    session_options.source_id = resolved_source_id;
+
     let session = RecordingSession {
         project_id: project_id.clone(),
-        options: options.clone(),
+        options: session_options,
         state: RecordingState::Recording,
         screen_video_path: screen_video_path.clone(),
         camera_video_path: camera_video_path.clone(),
@@ -582,7 +593,16 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
     let filter = match session.options.source_type {
         SourceType::Display => {
             let display_id = parse_display_id(&session.options.source_id)?;
-            let display = find_display(&content, display_id)?;
+            let (display, used_fallback) = find_display_or_fallback(&content, display_id)?;
+            if used_fallback {
+                eprintln!(
+                    "Requested display {} for project {} is unavailable. Resuming on display {}.",
+                    display_id,
+                    project_id,
+                    display.display_id()
+                );
+                session.options.source_id = display.display_id().to_string();
+            }
             SCContentFilter::create()
                 .with_display(&display)
                 .with_excluding_windows(&[])
