@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
 };
@@ -57,7 +57,7 @@ struct DiskSpaceStatus {
     sufficient: bool,
 }
 
-fn emit_with_log<S: serde::Serialize>(app: &AppHandle, event: &str, payload: S) {
+fn emit_with_log<S: serde::Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
     if let Err(error) = app.emit(event, payload) {
         eprintln!("Failed to emit event '{}': {}", event, error);
     }
@@ -280,7 +280,10 @@ fn build_recent_projects_submenu<R: tauri::Runtime, M: Manager<R>>(
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))?;
-    let recent_item_refs = recent_items.iter().collect::<Vec<_>>();
+    let recent_item_refs = recent_items
+        .iter()
+        .map(|item| item as &dyn IsMenuItem<R>)
+        .collect::<Vec<_>>();
     Submenu::with_items(manager, "Recent Projects", true, &recent_item_refs)
         .map_err(|error| AppError::Message(format!("Failed to build tray menu: {}", error)))
 }
@@ -665,7 +668,7 @@ fn request_permission() -> bool {
 
 #[tauri::command]
 fn check_recording_disk_space(
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
 ) -> Result<DiskSpaceStatus, AppError> {
     let recordings_dir = recordings_dir_from_managed_state(&state)?;
 
@@ -682,7 +685,7 @@ fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, A
 #[tauri::command]
 fn start_screen_recording(
     app: AppHandle,
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
     options: RecordingOptions,
 ) -> Result<StartRecordingResult, AppError> {
     if !check_screen_recording_permission() {
@@ -713,7 +716,7 @@ fn start_screen_recording(
 #[tauri::command]
 async fn stop_screen_recording(
     app: AppHandle,
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
     let project_id = normalize_project_id_input(project_id, "stop recording")?;
@@ -814,7 +817,7 @@ async fn stop_screen_recording(
 /// Set media offsets gathered by frontend camera/mic recorders
 #[tauri::command]
 fn set_recording_media_offsets(
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
     camera_offset_ms: Option<i64>,
     microphone_offset_ms: Option<i64>,
@@ -825,7 +828,7 @@ fn set_recording_media_offsets(
 
 #[tauri::command]
 fn get_recording_state(
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
 ) -> Result<Option<RecorderRecordingState>, AppError> {
     let project_id = normalize_project_id_input(project_id, "get recording state")?;
@@ -834,7 +837,7 @@ fn get_recording_state(
 
 #[tauri::command]
 fn get_recording_snapshot(
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
 ) -> Result<Option<RecordingSessionSnapshot>, AppError> {
     let project_id = normalize_project_id_input(project_id, "get recording snapshot")?;
@@ -845,7 +848,7 @@ fn get_recording_snapshot(
 #[tauri::command]
 fn pause_recording(
     app: AppHandle,
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
     let project_id = normalize_project_id_input(project_id, "pause recording")?;
@@ -873,7 +876,7 @@ fn pause_recording(
 #[tauri::command]
 fn resume_recording(
     app: AppHandle,
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
     let project_id = normalize_project_id_input(project_id, "resume recording")?;
@@ -1304,7 +1307,7 @@ fn open_project_window(app: AppHandle, project_id: String) -> Result<(), AppErro
 /// Load a project by ID
 #[tauri::command]
 async fn load_project(
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
 ) -> Result<Project, AppError> {
     let project_id = normalize_project_id_input(project_id, "load project")?;
@@ -1316,7 +1319,7 @@ async fn load_project(
 #[tauri::command]
 async fn save_project(
     app: AppHandle,
-    state: tauri::State<SharedRecorderState>,
+    state: tauri::State<'_, SharedRecorderState>,
     project: Project,
 ) -> Result<(), AppError> {
     let recordings_dir = recordings_dir_from_managed_state(&state)?;
@@ -1327,7 +1330,9 @@ async fn save_project(
 
 /// List all projects
 #[tauri::command]
-async fn list_projects(state: tauri::State<SharedRecorderState>) -> Result<Vec<Project>, AppError> {
+async fn list_projects(
+    state: tauri::State<'_, SharedRecorderState>,
+) -> Result<Vec<Project>, AppError> {
     let recordings_dir = recordings_dir_from_managed_state(&state)?;
     project::list_projects(&recordings_dir).await
 }
@@ -2068,7 +2073,7 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
-            let recorder_state = Arc::new(Mutex::new(RecorderState::new(app_data_dir)));
+            let recorder_state = Arc::new(Mutex::new(RecorderState::new(app_data_dir.clone())));
             app.manage(recorder_state);
             let export_jobs: SharedExportJobs = Arc::new(Mutex::new(HashMap::new()));
             app.manage(export_jobs);

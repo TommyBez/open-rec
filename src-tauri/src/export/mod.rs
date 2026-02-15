@@ -97,12 +97,12 @@ impl ResolutionPreset {
 }
 
 fn target_video_bitrate_kbps(options: &ExportOptions) -> u32 {
-    let base = match options.resolution {
+    let base: f64 = match options.resolution {
         ResolutionPreset::P720 => 5_000.0,
         ResolutionPreset::P1080 => 8_000.0,
         ResolutionPreset::P4K => 24_000.0,
     };
-    let multiplier = match options.compression {
+    let multiplier: f64 = match options.compression {
         CompressionPreset::Minimal => 1.6,
         CompressionPreset::Social => 1.0,
         CompressionPreset::Web => 0.72,
