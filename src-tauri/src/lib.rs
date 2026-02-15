@@ -2669,12 +2669,17 @@ mod tests {
 
     #[test]
     fn pending_finalization_context_is_cleared_when_artifacts_are_missing() {
+        let root = create_test_dir("stale-pending-finalization");
+        let missing_project_dir = root.join("missing-project");
+        let missing_screen_path = missing_project_dir.join("screen.mp4");
+        let _ = std::fs::remove_dir_all(&root);
+
         let pending_finalizations: SharedPendingFinalizations =
             Arc::new(Mutex::new(HashMap::new()));
         let stop_result = StopRecordingResult {
             project_id: "stale-retry-project".to_string(),
-            screen_video_path: PathBuf::from("/tmp/missing-screen.mp4"),
-            screen_segment_paths: vec![PathBuf::from("/tmp/missing-screen.mp4")],
+            screen_video_path: missing_screen_path.clone(),
+            screen_segment_paths: vec![missing_screen_path],
             camera_video_path: None,
             microphone_audio_path: None,
             duration_seconds: 1.0,
