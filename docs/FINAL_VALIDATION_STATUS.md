@@ -26,6 +26,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Pending retry context persisted in local storage so retry action survives recorder route reloads
 - Retry context validation command (`has_pending_recording_finalization`) clears stale retry affordances when backend state no longer has pending artifacts
 - Retry telemetry eventing (`recording-finalization-retry-status`) provides started/succeeded/failed visibility in recorder diagnostics
+- Backend auto-prunes stale pending-finalization contexts when required screen artifacts are missing
 - Advanced runtime timeout presets for recorder/widget flows (localStorage-backed overrides with guarded defaults)
 - Async file I/O migration for runtime filesystem paths in backend
 - Export preflight validation for required media file existence/readability

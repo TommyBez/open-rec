@@ -1023,14 +1023,56 @@ fn store_pending_finalization(
     Ok(())
 }
 
+fn check_path_exists(path: &Path) -> Result<bool, AppError> {
+    let exists_result = block_on_io(tokio::fs::try_exists(path))?;
+    exists_result.map_err(|error| {
+        AppError::Io(format!(
+            "Failed to verify pending finalization artifact {}: {}",
+            path.display(),
+            error
+        ))
+    })
+}
+
+fn has_required_finalization_artifacts(
+    stop_result: &StopRecordingResult,
+) -> Result<bool, AppError> {
+    if !check_path_exists(&stop_result.screen_video_path)? {
+        return Ok(false);
+    }
+    for segment_path in &stop_result.screen_segment_paths {
+        if !check_path_exists(segment_path)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 fn get_pending_finalization(
     pending_finalizations: &SharedPendingFinalizations,
     project_id: &str,
 ) -> Result<Option<StopRecordingResult>, AppError> {
-    let guard = pending_finalizations
-        .lock()
-        .map_err(|error| AppError::Lock(format!("Lock error: {}", error)))?;
-    Ok(guard.get(project_id).cloned())
+    let stop_result = {
+        let guard = pending_finalizations
+            .lock()
+            .map_err(|error| AppError::Lock(format!("Lock error: {}", error)))?;
+        guard.get(project_id).cloned()
+    };
+
+    let Some(stop_result) = stop_result else {
+        return Ok(None);
+    };
+
+    if has_required_finalization_artifacts(&stop_result)? {
+        return Ok(Some(stop_result));
+    }
+
+    eprintln!(
+        "Pending finalization context for {} is stale and will be cleared.",
+        project_id
+    );
+    clear_pending_finalization(pending_finalizations, project_id)?;
+    Ok(None)
 }
 
 fn clear_pending_finalization(
@@ -1048,10 +1090,7 @@ fn has_pending_finalization(
     pending_finalizations: &SharedPendingFinalizations,
     project_id: &str,
 ) -> Result<bool, AppError> {
-    let guard = pending_finalizations
-        .lock()
-        .map_err(|error| AppError::Lock(format!("Lock error: {}", error)))?;
-    Ok(guard.contains_key(project_id))
+    Ok(get_pending_finalization(pending_finalizations, project_id)?.is_some())
 }
 
 async fn finalize_stopped_recording(
@@ -2571,17 +2610,28 @@ mod tests {
 
     #[test]
     fn pending_finalization_state_round_trip() {
+        let root = create_test_dir("pending-finalization-state");
+        let project_dir = root.join("retry-project");
+        std::fs::create_dir_all(&project_dir)
+            .expect("failed to create pending finalization fixture directory");
+        let screen_path = project_dir.join("screen.mp4");
+        let segment_path = project_dir.join("screen_part1.mp4");
+        let camera_path = project_dir.join("camera.webm");
+        let microphone_path = project_dir.join("microphone.webm");
+        std::fs::write(&screen_path, b"screen").expect("failed to write screen fixture");
+        std::fs::write(&segment_path, b"segment").expect("failed to write segment fixture");
+        std::fs::write(&camera_path, b"camera").expect("failed to write camera fixture");
+        std::fs::write(&microphone_path, b"microphone")
+            .expect("failed to write microphone fixture");
+
         let pending_finalizations: SharedPendingFinalizations =
             Arc::new(Mutex::new(HashMap::new()));
         let stop_result = StopRecordingResult {
             project_id: "retry-project".to_string(),
-            screen_video_path: PathBuf::from("/tmp/retry-project/screen.mp4"),
-            screen_segment_paths: vec![
-                PathBuf::from("/tmp/retry-project/screen.mp4"),
-                PathBuf::from("/tmp/retry-project/screen_part1.mp4"),
-            ],
-            camera_video_path: Some(PathBuf::from("/tmp/retry-project/camera.webm")),
-            microphone_audio_path: Some(PathBuf::from("/tmp/retry-project/microphone.webm")),
+            screen_video_path: screen_path.clone(),
+            screen_segment_paths: vec![screen_path, segment_path],
+            camera_video_path: Some(camera_path),
+            microphone_audio_path: Some(microphone_path),
             duration_seconds: 12.3,
             source_width: 1920,
             source_height: 1080,
@@ -2613,6 +2663,40 @@ mod tests {
         let cleared = get_pending_finalization(&pending_finalizations, &stop_result.project_id)
             .expect("pending finalization query should succeed");
         assert!(cleared.is_none(), "pending finalization should be cleared");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pending_finalization_context_is_cleared_when_artifacts_are_missing() {
+        let pending_finalizations: SharedPendingFinalizations =
+            Arc::new(Mutex::new(HashMap::new()));
+        let stop_result = StopRecordingResult {
+            project_id: "stale-retry-project".to_string(),
+            screen_video_path: PathBuf::from("/tmp/missing-screen.mp4"),
+            screen_segment_paths: vec![PathBuf::from("/tmp/missing-screen.mp4")],
+            camera_video_path: None,
+            microphone_audio_path: None,
+            duration_seconds: 1.0,
+            source_width: 1280,
+            source_height: 720,
+            camera_offset_ms: None,
+            microphone_offset_ms: None,
+        };
+
+        store_pending_finalization(&pending_finalizations, &stop_result)
+            .expect("pending finalization should store");
+        let resolved = get_pending_finalization(&pending_finalizations, &stop_result.project_id)
+            .expect("pending finalization query should succeed");
+        assert!(
+            resolved.is_none(),
+            "stale pending finalization should be cleared automatically"
+        );
+        assert!(
+            !has_pending_finalization(&pending_finalizations, &stop_result.project_id)
+                .expect("pending finalization presence query should succeed"),
+            "presence helper should report false after stale context cleanup"
+        );
     }
 
     #[test]
