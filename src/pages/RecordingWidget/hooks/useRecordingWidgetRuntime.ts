@@ -51,6 +51,17 @@ export function useRecordingWidgetRuntime() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const resolveActiveProjectId = () => projectId ?? getStoredCurrentProjectId();
 
+  function applySourceUnavailableWarning(message: string) {
+    const previousNotice = sourceUnavailableNoticeRef.current;
+    sourceUnavailableNoticeRef.current = message;
+    setPermissionError((current) => {
+      if (!current || current === previousNotice) {
+        return message;
+      }
+      return current;
+    });
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -169,8 +180,7 @@ export function useRecordingWidgetRuntime() {
         event.payload.sourceId,
         event.payload.sourceOrdinal
       )}.`;
-      sourceUnavailableNoticeRef.current = warningMessage;
-      setPermissionError(warningMessage);
+      applySourceUnavailableWarning(warningMessage);
       clearPendingRecordingSourceFallbackNotice();
     });
 
@@ -195,8 +205,7 @@ export function useRecordingWidgetRuntime() {
       pendingNotice.sourceId,
       pendingNotice.sourceOrdinal
     )}.`;
-    sourceUnavailableNoticeRef.current = warningMessage;
-    setPermissionError(warningMessage);
+    applySourceUnavailableWarning(warningMessage);
     clearPendingRecordingSourceFallbackNotice();
   }, [projectId, state]);
 
@@ -339,14 +348,7 @@ export function useRecordingWidgetRuntime() {
         if (sourceUnavailableNoticeRef.current === warningMessage) {
           return;
         }
-        const previousNotice = sourceUnavailableNoticeRef.current;
-        sourceUnavailableNoticeRef.current = warningMessage;
-        setPermissionError((current) => {
-          if (!current || current === previousNotice) {
-            return warningMessage;
-          }
-          return current;
-        });
+        applySourceUnavailableWarning(warningMessage);
       } catch (error) {
         console.error("Failed to verify recording source availability:", error);
       }
