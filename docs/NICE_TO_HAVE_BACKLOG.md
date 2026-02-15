@@ -6,5 +6,13 @@ They are quality-of-life and polish opportunities that can be addressed in futur
 ## Current status
 
 - No open non-blocking backlog items are currently tracked.
-- Future items can be appended here as additional polish opportunities are identified.
+
+## When adding future items
+
+Use this format to keep backlog entries actionable:
+
+- **Title**
+  - context:
+  - expected user/operator value:
+  - implementation notes (optional):
 

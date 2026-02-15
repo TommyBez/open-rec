@@ -1,114 +1,63 @@
 # OpenRec Recovery Warning Playbook
 
-This playbook maps runtime warning messages to expected causes and recommended recovery steps.
-It is intended for operators validating reliability behavior during recording, widget handoff,
-and export/finalization recovery flows.
+Use this playbook during manual validation and support triage.
 
-## Recording source fallback warnings
+Format per entry:
+- **Message / signal**
+- **Likely cause**
+- **What OpenRec already did**
+- **Operator action**
 
-### `Selected display became unavailable. Recorder switched to Display N.`
-- **Surface:** Recorder page error banner
-- **Meaning:** The chosen display disconnected or changed identity while recording.
-- **What OpenRec already did:** Automatically switched to an available display fallback.
-- **Recommended user action:** Continue recording if output looks correct; otherwise stop and restart after reconnecting displays.
+## 1) Recording source fallback warnings
 
-### `Selected window became unavailable. Recorder switched to window source ...`
-- **Surface:** Recorder page error banner
-- **Meaning:** The target window closed/minimized/recreated and its capture ID became invalid.
-- **What OpenRec already did:** Switched to a detected fallback window source.
-- **Recommended user action:** Verify the intended app window is still visible and continue or restart.
+### Display/window target changed mid-session
 
-### `Display "..." is unavailable. Switched to "...".`
-- **Surface:** Recorder page error banner before/around start
-- **Meaning:** Persisted display preference no longer matches currently available display set.
-- **What OpenRec already did:** Selected a safe fallback display before capture.
-- **Recommended user action:** Confirm the fallback source in the recorder selector.
+| Message / signal | Likely cause | What OpenRec already did | Operator action |
+|---|---|---|---|
+| `Selected display became unavailable. Recorder switched to Display N.` | Selected monitor disconnected or changed identity | Switched to available display fallback | Continue if capture is acceptable; otherwise stop and restart after hardware stabilizes |
+| `Selected window became unavailable. Recorder switched to window source ...` | Target window closed/recreated/minimized | Switched to fallback window source | Verify intended window is visible; continue or restart |
+| `Display "..." is unavailable. Switched to "...".` | Saved display preference no longer valid at start time | Applied safe fallback source | Confirm selected source before recording |
+| `Saved display is unavailable. Recording will use "...".` | Previous display ID not present in current session | Applied nearest valid display fallback | Continue or manually reselect source |
 
-### `Saved display is unavailable. Recording will use "...".`
-- **Surface:** Recorder page error banner before start
-- **Meaning:** Last-saved display could not be restored for the current hardware state.
-- **What OpenRec already did:** Selected the nearest valid display fallback.
-- **Recommended user action:** Proceed or manually reselect the preferred display.
+### Source missing while session remains active
 
-### `The selected display is disconnected. Recording will continue on Display N when capture resumes.`
-- **Surface:** Recording widget warning text
-- **Meaning:** Current recording source is disconnected while session is active.
-- **What OpenRec already did:** Polling for source recovery and fallback continuity.
-- **Recommended user action:** Reconnect display if possible; avoid repeated pause/resume until source stabilizes.
+| Message / signal | Likely cause | What OpenRec already did | Operator action |
+|---|---|---|---|
+| `The selected display is disconnected. Recording will continue on Display N when capture resumes.` | Display disconnected while recording/paused | Continued session; fallback monitoring remains active | Reconnect display if possible; avoid repeated pause/resume until stable |
+| `The selected window is unavailable. Recording may fail when resuming.` | Window source disappeared | Session remains active with warning | Restore target window, then resume or stop safely |
 
-### `The selected window is unavailable. Recording may fail when resuming.`
-- **Surface:** Recording widget warning text
-- **Meaning:** Current window capture target disappeared during session.
-- **What OpenRec already did:** Continues session with warning; resume may fail if no window fallback is viable.
-- **Recommended user action:** Bring the target app/window back, then resume or stop safely.
+## 2) Floating controls / widget handoff warnings
 
-## Floating controls / handoff warnings
+| Message / signal | Likely cause | What OpenRec already did | Operator action |
+|---|---|---|---|
+| `Recording started, but floating controls failed to open. Use global shortcuts to pause or stop.` | Widget creation/show/focus timed out or failed | Recording kept running; shortcut controls remain available | Use shortcuts or reopen controls from recorder |
+| `Unable to open floating controls. Use global shortcuts to pause or stop.` | Manual widget-open action failed (session/window issue) | Preserved recording state | Continue via shortcuts, then inspect logs if repeatable |
 
-### `Recording started, but floating controls failed to open. Use global shortcuts to pause or stop.`
-- **Surface:** Recorder page error banner
-- **Meaning:** Screen capture started, but widget creation/show/focus path failed or timed out.
-- **What OpenRec already did:** Recording continues and global shortcuts remain active.
-- **Recommended user action:** Use shortcuts to continue control flow, or press **Open Floating Controls** in recorder.
+## 3) Permission and disk-pressure warnings
 
-### `Unable to open floating controls. Use global shortcuts to pause or stop.`
-- **Surface:** Recorder page error banner
-- **Meaning:** Manual widget open action failed (no active session or runtime window error).
-- **What OpenRec already did:** Preserved recording state.
-- **Recommended user action:** Use global shortcuts and finish recording, then inspect logs if this repeats.
+| Message / signal | Likely cause | What OpenRec already did | Operator action |
+|---|---|---|---|
+| `Screen recording permission was revoked...` | Permission revoked during session | Preserved session state and surfaced warning | Stop recording, re-enable permission, relaunch if needed |
+| `Unable to verify screen recording permission...` | Permission poll/check errored | Preserved state and emitted conservative warning | Verify permissions manually before continuing long run |
+| `Recording stopped automatically because free disk space dropped below ...` | Disk guardrail threshold crossed | Triggered auto-stop to reduce corruption risk | Free space and verify generated project before next run |
 
-## Permission and disk-pressure warnings
+## 4) Stop/finalization warnings
 
-### `Screen recording permission was revoked...`
-- **Surface:** Recording widget warning text
-- **Meaning:** Permission check failed mid-session.
-- **What OpenRec already did:** Keeps session state visible and surfaces warning.
-- **Recommended user action:** Stop recording, re-enable permission in System Settings, relaunch if needed.
+### Normal finalization timeline (reference)
+`stopping-capture` → `concatenating-segments` → `verifying-duration` → `verifying-dimensions` → `saving-project` → `refreshing-ui`
 
-### `Unable to verify screen recording permission...`
-- **Surface:** Recording widget warning text
-- **Meaning:** Permission polling errored unexpectedly.
-- **What OpenRec already did:** Preserved state and showed conservative warning.
-- **Recommended user action:** Validate permissions manually in System Settings before continuing long sessions.
+### Failure/retry warnings
 
-### `Recording stopped automatically because free disk space dropped below ...`
-- **Surface:** Recording widget warning text
-- **Meaning:** Disk guardrail detected low free space while recording.
-- **What OpenRec already did:** Triggered auto-stop to reduce corruption risk.
-- **Recommended user action:** Free disk space, then validate the saved project before recording again.
+| Message / signal | Likely cause | What OpenRec already did | Operator action |
+|---|---|---|---|
+| `Recording stopped, but finalization failed...` | Merge/probe/save finalization step failed | Emitted failure event; recovered UI/session state | Use **Retry Finalization** first, then inspect recordings list if failure persists |
+| `No pending finalization context is available for retry...` | Backend no longer has retry artifacts/context | Cleared stale retry context and blocked no-op retry | Verify project state in recordings list; continue with new recording if needed |
+| `Recording finalization timed out in the widget...` | Finalization exceeded widget recovery budget | Reset widget state to avoid stuck controls | Verify output integrity before starting another session |
 
-## Stop/finalization warnings
+## 5) Quick triage when warnings repeat
 
-### Finalization status timeline (normal path)
-- `stopping-capture` → `concatenating-segments` → `verifying-duration` → `verifying-dimensions` → `saving-project` → `refreshing-ui`
-- **Surface:** Recorder finalization banner + widget status text
-- **Meaning:** Progressive backend stop/finalization milestones are being emitted.
-- **Operator tip:** If status stalls for an unusual duration, check disk space and ffmpeg availability before retry.
-
-### `Recording stopped, but finalization failed...`
-- **Surface:** Recorder page and/or recording widget warning text
-- **Meaning:** Capture stopped, but one or more finalization steps failed (merge, probe, save).
-- **What OpenRec already did:** Forced UI/session recovery and emitted failure event.
-- **Recommended user action:** Click **Retry Finalization** in the recorder first; if retry still fails, open recordings list and verify artifacts manually.
-- **Note:** Pending retry context is persisted locally so the retry action remains available after route changes.
-- **Note:** Recorder now validates pending retry context against backend state and auto-clears stale retry prompts if finalization artifacts are no longer available.
-
-### `No pending finalization context is available for retry...`
-- **Surface:** Recorder error banner after pressing **Retry Finalization**
-- **Meaning:** Backend no longer has pending finalization artifacts for that project.
-- **What OpenRec already did:** Cleared stale retry context and prevented a no-op retry call.
-- **Recommended user action:** Open recordings list to verify the project state, then continue with a new recording if needed.
-
-### `Recording finalization timed out in the widget...`
-- **Surface:** Recording widget warning text
-- **Meaning:** Finalization exceeded recovery timeout budget.
-- **What OpenRec already did:** Reset widget state so controls do not remain stuck.
-- **Recommended user action:** Verify project integrity in recordings list before starting a new session.
-
-## General triage checklist (when warnings repeat)
-
-1. Confirm current capture source still exists (display/window still present).
-2. Confirm permissions are granted (Screen Recording, Camera, Microphone as used).
-3. Confirm free disk space is above guardrail.
-4. Tune advanced timeout overrides (if needed) via `openrec.runtime-timeout-settings-v1`.
-5. Retry on a short recording session to validate recovery path quickly.
-6. Collect console/backend logs if the same warning persists across multiple runs.
+1. Confirm active source still exists (display/window is present).
+2. Confirm required permissions are granted (Screen Recording, Camera, Microphone).
+3. Confirm free disk space is above guardrail threshold.
+4. Retry with a short capture to validate recovery path quickly.
+5. If still reproducible, collect logs + exact warning sequence and attach to issue report.

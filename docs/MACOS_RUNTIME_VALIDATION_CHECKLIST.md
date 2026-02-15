@@ -1,8 +1,9 @@
 # macOS Runtime Validation Checklist
 
-Use this checklist to complete final acceptance outside the Linux execution environment.
+Use this runbook for final acceptance on real macOS hardware.
+This checklist is the source of truth for out-of-scope runtime validation.
 
-## Test metadata (fill before running)
+## Session metadata (fill before running)
 
 - Date:
 - Tester:
@@ -14,7 +15,7 @@ Use this checklist to complete final acceptance outside the Linux execution envi
 
 ---
 
-## 1) Source disconnect / reconnect behavior
+## 1) Capture source disconnect/reconnect behavior
 
 ### 1.1 Display recording fallback
 **Steps**
@@ -23,10 +24,10 @@ Use this checklist to complete final acceptance outside the Linux execution envi
 3. Continue for 20+ seconds, then stop.
 
 **Pass criteria**
-- Recording does not crash/hang.
+- No crash/hang during source loss.
 - Fallback warning is shown.
 - Stop/finalize succeeds.
-- Output plays and project opens.
+- Output is playable and project reopens.
 
 Result: [ ] PASS [ ] FAIL  
 Evidence:  
@@ -39,8 +40,9 @@ Notes:
 3. Continue briefly, then stop.
 
 **Pass criteria**
-- Fallback handling message appears.
-- Recording remains stable and finalizes cleanly.
+- Fallback handling warning appears.
+- Recording remains stable.
+- Finalization completes and output is valid.
 
 Result: [ ] PASS [ ] FAIL  
 Evidence:  
@@ -53,8 +55,8 @@ Notes:
 3. Resume, record briefly, stop.
 
 **Pass criteria**
-- Resume works without crash.
-- Fallback source is used if needed.
+- Resume path does not crash.
+- Fallback source is applied if needed.
 - Final output is playable and complete.
 
 Result: [ ] PASS [ ] FAIL  
@@ -72,8 +74,8 @@ Notes:
 3. Attempt pause/resume/stop.
 
 **Pass criteria**
-- App shows actionable error.
-- UI recovers to non-stuck state.
+- Actionable warning shown.
+- UI recovers from transient state (no stuck starting/stopping/paused).
 - No crash.
 
 Result: [ ] PASS [ ] FAIL  
@@ -89,7 +91,7 @@ Notes:
 **Pass criteria**
 - App remains responsive.
 - Errors are surfaced clearly.
-- Stop/finalization path remains recoverable.
+- Stop/finalization remains recoverable.
 
 Result: [ ] PASS [ ] FAIL  
 Evidence:  
@@ -106,7 +108,7 @@ Notes:
 3. Stop and finalize.
 
 **Pass criteria**
-- No stuck states (`starting`/`stopping`/`paused`) after completion.
+- No terminal stuck states (`starting` / `stopping` / `paused`) after completion.
 - No obvious performance collapse.
 - Final project/media are valid.
 
@@ -137,9 +139,9 @@ Run representative exports across:
 - speed edits + zoom + camera overlay
 
 **Pass criteria**
-- Output generated correctly.
+- Outputs generate successfully for representative matrix cases.
 - Speed-edit audio remains synchronized.
-- Missing-file conditions fail early with clear errors.
+- Missing-input cases fail early with clear error surface.
 
 Result: [ ] PASS [ ] FAIL  
 Evidence:  
@@ -153,7 +155,7 @@ Notes:
 **Pass criteria**
 - Cancel succeeds.
 - UI returns to healthy state.
-- No stuck export count.
+- No stuck active-export count.
 
 Result: [ ] PASS [ ] FAIL  
 Evidence:  
@@ -227,7 +229,7 @@ Notes:
 
 ## Final sign-off
 
-All sections above must be PASS for final acceptance.
+All sections above must be PASS for runtime acceptance.
 
 - Final result: [ ] PASS [ ] FAIL
 - Remaining blockers:
