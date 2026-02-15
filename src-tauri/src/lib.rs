@@ -1112,9 +1112,13 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
                             return Some(normalized);
                         }
                     }
-                    if let Some(project_dir) =
-                        json.get("projectDir").and_then(|value| value.as_str())
-                    {
+                    let project_dir = json
+                        .get("projectDir")
+                        .or_else(|| json.get("project_dir"))
+                        .or_else(|| json.get("projectPath"))
+                        .or_else(|| json.get("project_path"))
+                        .and_then(|value| value.as_str());
+                    if let Some(project_dir) = project_dir {
                         let project_dir_path = resolve_project_dir_from_payload(project_dir, path);
                         if project_dir_path
                             .file_name()
@@ -1642,6 +1646,24 @@ mod tests {
     }
 
     #[test]
+    fn resolves_project_id_from_openrec_project_dir_snake_case_field() {
+        let root = create_test_dir("openrec-project-dir-snake-case");
+        let project_dir = root.join("snake-case-fallback-project");
+        std::fs::create_dir_all(&project_dir).expect("failed to create fallback project directory");
+        let association_path = root.join("snake-case-fallback-association.openrec");
+        let payload = serde_json::json!({
+            "project_dir": project_dir.to_string_lossy().to_string()
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("snake-case-fallback-project"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn resolves_project_id_from_file_url_project_dir() {
         let root = create_test_dir("openrec-file-url-project-dir");
         let project_dir = root.join("file-url-project");
@@ -1658,6 +1680,24 @@ mod tests {
 
         let resolved = project_id_from_opened_path(&association_path);
         assert_eq!(resolved.as_deref(), Some("file-url-project"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_project_id_from_openrec_project_path_field() {
+        let root = create_test_dir("openrec-project-path-field");
+        let project_dir = root.join("project-path-fallback");
+        std::fs::create_dir_all(&project_dir).expect("failed to create fallback project directory");
+        let association_path = root.join("project-path-association.openrec");
+        let payload = serde_json::json!({
+            "projectPath": project_dir.to_string_lossy().to_string()
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("project-path-fallback"));
 
         let _ = std::fs::remove_dir_all(root);
     }
