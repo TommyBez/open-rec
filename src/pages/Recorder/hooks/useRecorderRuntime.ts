@@ -455,10 +455,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
 
   useEffect(() => {
     const unlisten = listen<{
+      projectId: string;
       sourceType: "display" | "window";
       sourceId: string;
       sourceOrdinal?: number | null;
     }>("recording-source-fallback", (event) => {
+      if (projectId && event.payload.projectId !== projectId) {
+        return;
+      }
       if (event.payload.sourceType !== "display") {
         return;
       }
@@ -485,7 +489,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [setSelectedSource, sources]);
+  }, [projectId, setSelectedSource, sources]);
 
   useEffect(() => {
     if (consumeTrayQuickRecordRequest()) {
