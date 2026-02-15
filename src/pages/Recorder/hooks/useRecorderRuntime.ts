@@ -34,6 +34,7 @@ import {
 } from "../../../lib/pendingFinalizationRetryStore";
 import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpace";
 import { toErrorMessage } from "../../../lib/errorMessage";
+import { isMissingFinalizationRetryContextMessage } from "../../../lib/finalizationRetry";
 import {
   normalizeScopedProjectId,
   resolveScopedActiveProjectId,
@@ -779,6 +780,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       const message =
         event.payload.message?.trim() ||
         "Recording finalization retry failed. Verify output artifacts before retrying again.";
+      if (isMissingFinalizationRetryContextMessage(message)) {
+        setRetryFinalizationProjectId(null);
+        clearPendingFinalizationRetryProjectId();
+      }
       recordLifecycleEvent("recording-finalization-retry-status", message, {
         level: "error",
         state: "idle",
@@ -1246,6 +1251,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         "Unable to retry recording finalization. Check recordings list and retry export."
       );
       setErrorMessage(message);
+      if (isMissingFinalizationRetryContextMessage(message)) {
+        setRetryFinalizationProjectId(null);
+        clearPendingFinalizationRetryProjectId();
+      }
       recordLifecycleEvent("recording-finalization-retry-failed", message, {
         level: "error",
         state: "idle",
