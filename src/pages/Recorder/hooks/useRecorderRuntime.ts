@@ -41,17 +41,8 @@ function parseNumericSourceId(sourceId: string): number | null {
   return null;
 }
 
-function selectFallbackSource(
-  availableSources: CaptureSource[],
-  sourceType: "display" | "window"
-): CaptureSource | null {
-  if (availableSources.length === 0) {
-    return null;
-  }
-  if (sourceType !== "display") {
-    return availableSources[0];
-  }
-  const byNumericId = [...availableSources].sort((left, right) => {
+function sortDisplaySources(sources: CaptureSource[]): CaptureSource[] {
+  return [...sources].sort((left, right) => {
     const leftNumericId = parseNumericSourceId(left.id);
     const rightNumericId = parseNumericSourceId(right.id);
     if (leftNumericId === null && rightNumericId === null) {
@@ -65,6 +56,39 @@ function selectFallbackSource(
     }
     return leftNumericId - rightNumericId;
   });
+}
+
+function resolveSelectedSourceOrdinal(
+  sourceType: "display" | "window",
+  selectedSource: CaptureSource | null,
+  availableSources: CaptureSource[]
+): number | null {
+  if (sourceType !== "display" || !selectedSource) {
+    return null;
+  }
+  const orderedDisplays = sortDisplaySources(
+    availableSources.filter((source) => source.type === "display")
+  );
+  const sourceIndex = orderedDisplays.findIndex(
+    (source) => source.id === selectedSource.id
+  );
+  if (sourceIndex < 0) {
+    return null;
+  }
+  return sourceIndex;
+}
+
+function selectFallbackSource(
+  availableSources: CaptureSource[],
+  sourceType: "display" | "window"
+): CaptureSource | null {
+  if (availableSources.length === 0) {
+    return null;
+  }
+  if (sourceType !== "display") {
+    return availableSources[0];
+  }
+  const byNumericId = sortDisplaySources(availableSources);
   return byNumericId[0] ?? availableSources[0];
 }
 
@@ -72,7 +96,8 @@ function resolvePreferredSource(
   availableSources: CaptureSource[],
   sourceType: "display" | "window",
   currentSourceId: string | null,
-  preferredSourceId: string | null
+  preferredSourceId: string | null,
+  preferredSourceOrdinal: number | null
 ): CaptureSource | null {
   if (availableSources.length === 0) {
     return null;
@@ -89,6 +114,19 @@ function resolvePreferredSource(
       return preferredSource;
     }
   }
+  if (
+    sourceType === "display" &&
+    preferredSourceOrdinal !== null &&
+    preferredSourceOrdinal >= 0
+  ) {
+    const orderedDisplays = sortDisplaySources(
+      availableSources.filter((source) => source.type === "display")
+    );
+    const preferredByOrdinal = orderedDisplays[preferredSourceOrdinal];
+    if (preferredByOrdinal) {
+      return preferredByOrdinal;
+    }
+  }
   return selectFallbackSource(availableSources, sourceType);
 }
 
@@ -97,6 +135,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [diskWarning, setDiskWarning] = useState<string | null>(null);
   const [preferredSourceId, setPreferredSourceId] = useState<string | null>(null);
+  const [preferredSourceOrdinal, setPreferredSourceOrdinal] = useState<number | null>(null);
   const pendingTrayQuickRecordRef = useRef(false);
   const { countdown, startCountdown } = useRecordingCountdown();
 
@@ -173,6 +212,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
 
       setSourceType(persisted.sourceType);
       setPreferredSourceId(persisted.selectedSourceId ?? null);
+      setPreferredSourceOrdinal(persisted.selectedSourceOrdinal ?? null);
       setCaptureCamera(persisted.captureCamera);
       setCaptureMicrophone(persisted.captureMicrophone);
       setCaptureSystemAudio(persisted.captureSystemAudio);
@@ -195,10 +235,20 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   ]);
 
   useEffect(() => {
+    if (!selectedSource || selectedSource.type !== "display" || sourceType !== "display") {
+      setPreferredSourceOrdinal(null);
+      return;
+    }
+    const nextOrdinal = resolveSelectedSourceOrdinal(sourceType, selectedSource, sources);
+    setPreferredSourceOrdinal(nextOrdinal);
+  }, [selectedSource, sourceType, sources]);
+
+  useEffect(() => {
     if (!preferencesLoaded) return;
     void saveRecordingPreferences({
       sourceType,
       selectedSourceId: selectedSource?.id ?? null,
+      selectedSourceOrdinal: preferredSourceOrdinal,
       captureCamera,
       captureMicrophone,
       captureSystemAudio,
@@ -214,13 +264,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     captureSystemAudio,
     qualityPreset,
     codec,
+    preferredSourceOrdinal,
   ]);
 
   useEffect(() => {
     if (hasPermission) {
       void loadSources();
     }
-  }, [sourceType, hasPermission, preferredSourceId]);
+  }, [sourceType, hasPermission, preferredSourceId, preferredSourceOrdinal]);
 
   async function checkPermission() {
     try {
@@ -341,7 +392,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         result,
         sourceType,
         currentSourceId,
-        preferredSourceId
+        preferredSourceId,
+        preferredSourceOrdinal
       );
       setSelectedSource(resolvedSource);
       if (
@@ -372,7 +424,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         mockSources,
         sourceType,
         currentSourceId,
-        preferredSourceId
+        preferredSourceId,
+        preferredSourceOrdinal
       );
       setSelectedSource(preferredMock);
     } finally {
@@ -392,7 +445,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         availableSources,
         sourceType,
         currentSourceId,
-        preferredSourceId
+        preferredSourceId,
+        preferredSourceOrdinal
       );
       setSelectedSource(resolvedSource);
       if (!resolvedSource) {
