@@ -127,12 +127,22 @@ pub struct RecorderState {
 impl RecorderState {
     pub fn new(app_data_dir: PathBuf) -> Self {
         let recordings_dir = app_data_dir.join("recordings");
-        if let Err(error) = block_on_io(tokio::fs::create_dir_all(&recordings_dir)) {
-            eprintln!(
-                "Failed to ensure recordings directory exists ({}): {}",
-                recordings_dir.to_string_lossy(),
-                error
-            );
+        match block_on_io(tokio::fs::create_dir_all(&recordings_dir)) {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                eprintln!(
+                    "Failed to ensure recordings directory exists ({}): {}",
+                    recordings_dir.to_string_lossy(),
+                    error
+                );
+            }
+            Err(error) => {
+                eprintln!(
+                    "Failed to initialize async runtime while ensuring recordings directory exists ({}): {}",
+                    recordings_dir.to_string_lossy(),
+                    error
+                );
+            }
         }
         Self {
             sessions: HashMap::new(),
@@ -143,16 +153,21 @@ impl RecorderState {
 
 pub type SharedRecorderState = Arc<Mutex<RecorderState>>;
 
-fn block_on_io<T>(future: impl Future<Output = T>) -> T {
+fn block_on_io<T>(future: impl Future<Output = T>) -> Result<T, AppError> {
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        return tokio::task::block_in_place(|| handle.block_on(future));
+        return Ok(tokio::task::block_in_place(|| handle.block_on(future)));
     }
 
-    tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .expect("Failed to initialize temporary Tokio runtime for recorder file I/O")
-        .block_on(future)
+        .map_err(|error| {
+            AppError::Io(format!(
+                "Failed to initialize temporary Tokio runtime for recorder file I/O: {}",
+                error
+            ))
+        })?;
+    Ok(runtime.block_on(future))
 }
 
 /// Result of starting a recording
@@ -412,7 +427,7 @@ fn create_recording_output(
 
 #[cfg(target_os = "macos")]
 fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), AppError> {
-    block_on_io(wait_for_file_ready_async(path, timeout))
+    block_on_io(wait_for_file_ready_async(path, timeout))?
 }
 
 #[cfg(target_os = "macos")]
@@ -463,7 +478,8 @@ pub fn start_recording(
 
     // Create project directory
     let project_dir = state_guard.recordings_dir.join(&project_id);
-    block_on_io(tokio::fs::create_dir_all(&project_dir))
+    let project_dir_create_result = block_on_io(tokio::fs::create_dir_all(&project_dir))?;
+    project_dir_create_result
         .map_err(|e| AppError::Io(format!("Failed to create project dir: {}", e)))?;
 
     let screen_video_path = project_dir.join("screen.mp4");

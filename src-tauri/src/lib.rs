@@ -71,16 +71,21 @@ fn log_if_err<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) {
     }
 }
 
-fn block_on_io<T>(future: impl Future<Output = T>) -> T {
+fn block_on_io<T>(future: impl Future<Output = T>) -> Result<T, AppError> {
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        return tokio::task::block_in_place(|| handle.block_on(future));
+        return Ok(tokio::task::block_in_place(|| handle.block_on(future)));
     }
 
-    tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .expect("Failed to initialize temporary Tokio runtime for file I/O")
-        .block_on(future)
+        .map_err(|error| {
+            AppError::Io(format!(
+                "Failed to initialize temporary Tokio runtime for file I/O: {}",
+                error
+            ))
+        })?;
+    Ok(runtime.block_on(future))
 }
 
 fn normalize_project_id_input(project_id: String, context: &str) -> Result<String, AppError> {
@@ -283,10 +288,19 @@ async fn load_recent_projects_for_tray_async(
 }
 
 fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> Vec<Project> {
-    block_on_io(load_recent_projects_for_tray_async(
+    match block_on_io(load_recent_projects_for_tray_async(
         recordings_dir,
         max_items,
-    ))
+    )) {
+        Ok(projects) => projects,
+        Err(error) => {
+            eprintln!(
+                "Failed to load recent projects for tray menu via async I/O: {}",
+                error
+            );
+            Vec::new()
+        }
+    }
 }
 
 fn build_recent_projects_submenu<R: tauri::Runtime, M: Manager<R>>(
@@ -1088,7 +1102,7 @@ async fn resolve_project_json_path_async(project_dir: &Path) -> Result<PathBuf, 
 }
 
 fn resolve_project_json_path(project_dir: &Path) -> Result<PathBuf, AppError> {
-    block_on_io(resolve_project_json_path_async(project_dir))
+    block_on_io(resolve_project_json_path_async(project_dir))?
 }
 
 fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), AppError> {
@@ -1104,7 +1118,7 @@ fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), A
     let title = {
         let mut resolved_title = None;
         match block_on_io(tokio::fs::read_to_string(&project_file_path)) {
-            Ok(content) => match serde_json::from_str::<Project>(&content) {
+            Ok(Ok(content)) => match serde_json::from_str::<Project>(&content) {
                 Ok(project) => {
                     resolved_title = Some(project.name);
                 }
@@ -1116,9 +1130,16 @@ fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), A
                     );
                 }
             },
-            Err(error) => {
+            Ok(Err(error)) => {
                 eprintln!(
                     "Failed to read project metadata while resolving window title ({}): {}",
+                    project_file_path.display(),
+                    error
+                );
+            }
+            Err(error) => {
+                eprintln!(
+                    "Failed to run async project metadata read while resolving window title ({}): {}",
                     project_file_path.display(),
                     error
                 );
@@ -1317,7 +1338,17 @@ async fn project_id_from_opened_path_async(path: &Path) -> Option<String> {
 }
 
 fn project_id_from_opened_path(path: &Path) -> Option<String> {
-    block_on_io(project_id_from_opened_path_async(path))
+    match block_on_io(project_id_from_opened_path_async(path)) {
+        Ok(project_id) => project_id,
+        Err(error) => {
+            eprintln!(
+                "Failed to resolve project id from opened path via async I/O ({}): {}",
+                path.display(),
+                error
+            );
+            None
+        }
+    }
 }
 
 fn handle_opened_project_paths(app: &AppHandle, paths: Vec<PathBuf>) {
