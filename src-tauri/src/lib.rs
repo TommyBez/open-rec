@@ -2882,6 +2882,15 @@ mod tests {
         let uppercase_file_scheme = parse_startup_opened_arg("FILE:///tmp/Upper.openrec")
             .expect("uppercase file scheme should parse");
         assert_eq!(uppercase_file_scheme, PathBuf::from("/tmp/Upper.openrec"));
+
+        let localhost_file_url = parse_startup_opened_arg("file://localhost/tmp/local.openrec")
+            .expect("localhost file URL should parse");
+        assert_eq!(localhost_file_url, PathBuf::from("/tmp/local.openrec"));
+
+        assert_eq!(
+            parse_startup_opened_arg("file://example.com/tmp/remote.openrec"),
+            None
+        );
     }
 
     #[test]
