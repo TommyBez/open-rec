@@ -137,7 +137,7 @@ export function useRecordingWidgetRuntime() {
     return () => {
       unlistenState.then((fn) => fn());
     };
-  }, [setElapsedTime, setProjectId, setRecordingState]);
+  }, [projectId, setElapsedTime, setProjectId, setRecordingState]);
 
   useEffect(() => {
     const unlistenFinalizing = listen<{ projectId: string }>(
