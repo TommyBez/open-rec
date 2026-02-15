@@ -46,6 +46,24 @@ describe("exportStore", () => {
     ]);
   });
 
+  it("ignores replace calls when synced job ids are unchanged", () => {
+    useExportStore.getState().registerExportJob("job-a", 1111);
+    useExportStore.getState().registerExportJob("job-b", 2222);
+    const before = useExportStore.getState();
+
+    vi.spyOn(Date, "now").mockReturnValue(9999);
+    useExportStore.getState().replaceActiveExportJobs(["job-a", "job-b"]);
+
+    const after = useExportStore.getState();
+    expect(after.activeExportJobIds).toEqual(["job-a", "job-b"]);
+    expect(after.activeExportJobs).toEqual([
+      { jobId: "job-a", startedAtMs: 1111 },
+      { jobId: "job-b", startedAtMs: 2222 },
+    ]);
+    expect(after.activeExportJobIds).toBe(before.activeExportJobIds);
+    expect(after.activeExportJobs).toBe(before.activeExportJobs);
+  });
+
   it("unregisters jobs and resets state", () => {
     useExportStore.getState().registerExportJob("job-a", 1111);
     useExportStore.getState().registerExportJob("job-b", 2222);
