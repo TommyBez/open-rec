@@ -30,6 +30,7 @@ This checklist tracks implementation closure status for this execution environme
 - [x] Runtime `std::fs` paths migrated to Tokio fs for async-safe operations
 - [x] App shutdown cleanup for active recordings and active export jobs
 - [x] Backend checks automated in CI (`cargo fmt`, `cargo check`, `cargo test`)
+- [x] macOS-host backend compile guard added in CI (`backend-macos-checks.yml`)
 
 ### Phase 2 / 3 — Recording + editor capability upgrades
 

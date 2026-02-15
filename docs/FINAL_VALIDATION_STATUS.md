@@ -27,6 +27,8 @@ The following checks are run repeatedly and are expected green:
 - `cargo fmt --all --manifest-path src-tauri/Cargo.toml`
 - `cargo test --manifest-path src-tauri/Cargo.toml`
   - backend coverage around recording/export/project/opened-path reliability helpers
+- CI includes macOS-host backend compile validation (`backend-macos-checks.yml`)
+  - catches `#[cfg(target_os = "macos")]` compile regressions not visible in Linux-only checks
 
 ## 2) Validated implementation areas
 
