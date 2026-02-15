@@ -275,6 +275,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     });
   }
 
+  function resolveActiveProjectId() {
+    return projectId ?? getStoredCurrentProjectId() ?? retryFinalizationProjectId;
+  }
+
   useEffect(() => {
     if (!hasCustomRuntimeTimeoutSettings(runtimeTimeoutSettings)) {
       return;
@@ -495,7 +499,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     const unlisten = listen<{ state: typeof recordingState; projectId: string }>(
       "recording-state-changed",
       (event) => {
-        const activeProjectId = projectId ?? getStoredCurrentProjectId();
+        const activeProjectId = resolveActiveProjectId();
         if (!activeProjectId) {
           return;
         }
@@ -552,7 +556,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       projectId: string;
       status?: RecordingFinalizingStatus;
     }>("recording-finalizing", (event) => {
-      const activeProjectId = projectId ?? getStoredCurrentProjectId();
+      const activeProjectId = resolveActiveProjectId();
       if (!activeProjectId || event.payload.projectId !== activeProjectId) {
         return;
       }
@@ -606,7 +610,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   useEffect(() => {
     const unlisten = listen<string>("recording-stopped", (event) => {
       const stoppedProjectId = event.payload.trim();
-      const activeProjectId = projectId ?? getStoredCurrentProjectId();
+      const activeProjectId = resolveActiveProjectId();
       if (!activeProjectId) {
         return;
       }
@@ -644,7 +648,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     const unlisten = listen<{ projectId: string; message?: string }>(
       "recording-stop-failed",
       (event) => {
-        const activeProjectId = projectId ?? getStoredCurrentProjectId();
+        const activeProjectId = resolveActiveProjectId();
         if (!activeProjectId) {
           return;
         }
@@ -719,7 +723,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       sourceId: string;
       sourceOrdinal?: number | null;
     }>("recording-source-fallback", (event) => {
-      const activeProjectId = projectId ?? getStoredCurrentProjectId();
+      const activeProjectId = resolveActiveProjectId();
       if (!activeProjectId || event.payload.projectId !== activeProjectId) {
         return;
       }
@@ -1058,7 +1062,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }
 
   async function handleOpenRecordingWidget() {
-    const activeProjectId = projectId ?? getStoredCurrentProjectId();
+    const activeProjectId = resolveActiveProjectId();
     if (!activeProjectId || recordingState === "stopping") {
       return;
     }
@@ -1109,7 +1113,6 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         runtimeTimeoutSettings.recorderStopFinalizationTimeoutMs,
         "Retrying recording finalization timed out."
       );
-      setRetryFinalizationProjectId(null);
     } catch (error) {
       console.error("Failed to retry recording finalization:", error);
       setRecordingState("idle");
@@ -1128,7 +1131,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     }
   }
 
-  const hasActiveRecordingSession = Boolean(projectId ?? getStoredCurrentProjectId());
+  const hasActiveRecordingSession = Boolean(resolveActiveProjectId());
   const showOpenRecordingWidgetButton =
     hasActiveRecordingSession &&
     recordingState !== "idle" &&
