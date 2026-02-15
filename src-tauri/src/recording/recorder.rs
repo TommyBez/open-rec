@@ -26,6 +26,8 @@ use super::SourceType;
 pub struct RecordingOptions {
     pub source_id: String,
     pub source_type: SourceType,
+    #[serde(default)]
+    pub preferred_display_ordinal: Option<u32>,
     pub capture_camera: bool,
     pub capture_microphone: bool,
     pub capture_system_audio: bool,
@@ -231,7 +233,7 @@ fn parse_window_id(source_id: &str) -> Result<u32, AppError> {
 fn find_display_or_fallback(
     content: &SCShareableContent,
     requested_display_id: u32,
-) -> Result<(SCDisplay, bool), AppError> {
+) -> Result<(SCDisplay, bool, u32), AppError> {
     let mut displays: Vec<SCDisplay> = content.displays().into_iter().collect();
     if displays.is_empty() {
         return Err(AppError::Message(
@@ -239,16 +241,40 @@ fn find_display_or_fallback(
         ));
     }
 
+    displays.sort_by_key(|display| display.display_id());
     if let Some(index) = displays
         .iter()
         .position(|display| display.display_id() == requested_display_id)
     {
-        return Ok((displays.swap_remove(index), false));
+        return Ok((displays.remove(index), false, index as u32));
     }
 
-    displays.sort_by_key(|display| display.display_id());
     let fallback_display = displays.remove(0);
-    Ok((fallback_display, true))
+    Ok((fallback_display, true, 0))
+}
+
+#[cfg(target_os = "macos")]
+fn find_display_or_fallback_with_ordinal(
+    content: &SCShareableContent,
+    requested_display_id: u32,
+    preferred_display_ordinal: Option<u32>,
+) -> Result<(SCDisplay, bool, u32), AppError> {
+    let (display, used_fallback, requested_ordinal) =
+        find_display_or_fallback(content, requested_display_id)?;
+    if !used_fallback {
+        return Ok((display, used_fallback, requested_ordinal));
+    }
+
+    let preferred_index = preferred_display_ordinal.map(|ordinal| ordinal as usize);
+    let mut displays: Vec<SCDisplay> = content.displays().into_iter().collect();
+    displays.sort_by_key(|candidate| candidate.display_id());
+    if let Some(index) = preferred_index {
+        if index < displays.len() {
+            let preferred_display = displays.remove(index);
+            return Ok((preferred_display, true, index as u32));
+        }
+    }
+    Ok((display, used_fallback, requested_ordinal))
 }
 
 #[cfg(target_os = "macos")]
@@ -339,39 +365,47 @@ pub fn start_recording(
         .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
     // Create content filter based on source type and resolve dimensions
-    let (filter, source_width, source_height, resolved_source_id) = match options.source_type {
-        SourceType::Display => {
-            let display_id = parse_display_id(&options.source_id)?;
-            let (display, used_fallback) = find_display_or_fallback(&content, display_id)?;
-            if used_fallback {
-                eprintln!(
-                    "Requested display {} was unavailable. Falling back to display {}.",
-                    display_id,
-                    display.display_id()
-                );
+    let (filter, source_width, source_height, resolved_source_id, resolved_display_ordinal) =
+        match options.source_type {
+            SourceType::Display => {
+                let display_id = parse_display_id(&options.source_id)?;
+                let (display, used_fallback, resolved_display_ordinal) =
+                    find_display_or_fallback_with_ordinal(
+                        &content,
+                        display_id,
+                        options.preferred_display_ordinal,
+                    )?;
+                if used_fallback {
+                    eprintln!(
+                        "Requested display {} was unavailable. Falling back to display {}.",
+                        display_id,
+                        display.display_id()
+                    );
+                }
+                (
+                    SCContentFilter::create()
+                        .with_display(&display)
+                        .with_excluding_windows(&[])
+                        .build(),
+                    display.width(),
+                    display.height(),
+                    display.display_id().to_string(),
+                    Some(resolved_display_ordinal),
+                )
             }
-            (
-                SCContentFilter::create()
-                    .with_display(&display)
-                    .with_excluding_windows(&[])
-                    .build(),
-                display.width(),
-                display.height(),
-                display.display_id().to_string(),
-            )
-        }
-        SourceType::Window => {
-            let window_id = parse_window_id(&options.source_id)?;
-            let window = find_window(&content, window_id)?;
-            let frame = window.frame();
-            (
-                SCContentFilter::create().with_window(window).build(),
-                frame.width.round() as u32,
-                frame.height.round() as u32,
-                window_id.to_string(),
-            )
-        }
-    };
+            SourceType::Window => {
+                let window_id = parse_window_id(&options.source_id)?;
+                let window = find_window(&content, window_id)?;
+                let frame = window.frame();
+                (
+                    SCContentFilter::create().with_window(window).build(),
+                    frame.width.round() as u32,
+                    frame.height.round() as u32,
+                    window_id.to_string(),
+                    None,
+                )
+            }
+        };
 
     let (capture_width, capture_height) =
         resolve_output_dimensions(source_width, source_height, options.quality_preset);
@@ -410,6 +444,7 @@ pub fn start_recording(
     // Store session
     let mut session_options = options.clone();
     session_options.source_id = resolved_source_id;
+    session_options.preferred_display_ordinal = resolved_display_ordinal;
 
     let session = RecordingSession {
         project_id: project_id.clone(),
@@ -594,7 +629,13 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
     let filter = match session.options.source_type {
         SourceType::Display => {
             let display_id = parse_display_id(&session.options.source_id)?;
-            let (display, used_fallback) = find_display_or_fallback(&content, display_id)?;
+            let (display, used_fallback, resolved_display_ordinal) =
+                find_display_or_fallback_with_ordinal(
+                    &content,
+                    display_id,
+                    session.options.preferred_display_ordinal,
+                )?;
+            session.options.preferred_display_ordinal = Some(resolved_display_ordinal);
             if used_fallback {
                 eprintln!(
                     "Requested display {} for project {} is unavailable. Resuming on display {}.",
@@ -848,6 +889,7 @@ mod tests {
             options: RecordingOptions {
                 source_id: "source-1".to_string(),
                 source_type: SourceType::Display,
+                preferred_display_ordinal: Some(0),
                 capture_camera: false,
                 capture_microphone: false,
                 capture_system_audio: false,

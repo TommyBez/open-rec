@@ -31,6 +31,11 @@ interface UseRecorderRuntimeOptions {
   onRecordingStoppedNavigate: (projectId: string) => void;
 }
 
+interface ResolvedRecordingSource {
+  source: CaptureSource;
+  preferredDisplayOrdinal: number | null;
+}
+
 const START_RECORDING_TIMEOUT_MS = 15_000;
 
 function parseNumericSourceId(sourceId: string): number | null {
@@ -247,8 +252,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     if (!preferencesLoaded) return;
     void saveRecordingPreferences({
       sourceType,
-      selectedSourceId: selectedSource?.id ?? null,
-      selectedSourceOrdinal: preferredSourceOrdinal,
+      selectedSourceId: selectedSource?.id ?? preferredSourceId ?? null,
+      selectedSourceOrdinal:
+        sourceType === "display" ? preferredSourceOrdinal : null,
       captureCamera,
       captureMicrophone,
       captureSystemAudio,
@@ -259,6 +265,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     preferencesLoaded,
     sourceType,
     selectedSource,
+    preferredSourceId,
     captureCamera,
     captureMicrophone,
     captureSystemAudio,
@@ -433,7 +440,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     }
   }
 
-  async function resolveAvailableSourceForRecording(): Promise<CaptureSource | null> {
+  async function resolveAvailableSourceForRecording(): Promise<ResolvedRecordingSource | null> {
     try {
       const availableSources = await invoke<CaptureSource[]>("list_capture_sources", {
         sourceType,
@@ -468,7 +475,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       } else {
         setErrorMessage(null);
       }
-      return resolvedSource;
+      return {
+        source: resolvedSource,
+        preferredDisplayOrdinal: resolveSelectedSourceOrdinal(
+          sourceType,
+          resolvedSource,
+          availableSources
+        ),
+      };
     } catch (error) {
       console.error("Failed to refresh capture sources before recording:", error);
       setErrorMessage("Unable to refresh available capture sources before recording.");
@@ -477,14 +491,18 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }
 
   async function startRecordingSession() {
-    const sourceForRecording = await resolveAvailableSourceForRecording();
-    if (!sourceForRecording) return;
+    const resolvedSource = await resolveAvailableSourceForRecording();
+    if (!resolvedSource) return;
 
     beginRecordingStart();
     try {
       const options: RecordingOptionsType = {
-        sourceId: sourceForRecording.id,
-        sourceType: sourceForRecording.type,
+        sourceId: resolvedSource.source.id,
+        sourceType: resolvedSource.source.type,
+        preferredDisplayOrdinal:
+          resolvedSource.source.type === "display"
+            ? resolvedSource.preferredDisplayOrdinal
+            : null,
         captureCamera,
         captureMicrophone,
         captureSystemAudio,

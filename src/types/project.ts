@@ -106,6 +106,7 @@ export interface CaptureSource {
 export interface RecordingOptions {
   sourceId: string;
   sourceType: "display" | "window";
+  preferredDisplayOrdinal?: number | null;
   captureCamera: boolean;
   captureMicrophone: boolean;
   captureSystemAudio: boolean;
