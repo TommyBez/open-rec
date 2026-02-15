@@ -42,6 +42,7 @@ interface ResolvedRecordingSource {
 }
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
+const STOP_FINALIZATION_TIMEOUT_MS = 60_000;
 const SOURCE_FALLBACK_WARNING_PREFIXES = [
   "Display \"",
   "Saved display is unavailable.",
@@ -449,6 +450,26 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       unlisten.then((fn) => fn());
     };
   }, [projectId, setProjectId, setRecordingState, setRecordingStartTimeMs]);
+
+  useEffect(() => {
+    if (recordingState !== "stopping") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setRecordingState("idle");
+      setProjectId(null);
+      setRecordingStartTimeMs(null);
+      clearStoredCurrentProjectId();
+      clearPendingRecordingSourceFallbackNotice();
+      setErrorMessage((current) =>
+        current ??
+        "Recording finalization is taking longer than expected. Check the recordings list for the saved project."
+      );
+    }, STOP_FINALIZATION_TIMEOUT_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [recordingState, setProjectId, setRecordingState, setRecordingStartTimeMs]);
 
   useEffect(() => {
     const unlisten = listen<string>("recording-stopped", (event) => {
