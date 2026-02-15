@@ -22,6 +22,7 @@ A macOS screen and camera recording app with editing capabilities. Built with Ta
 - **My Recordings**
   - Browse and manage recorded projects
   - Open recordings in the editor
+  - Open `.openrec` project files directly from Finder/Explorer
 
 ## Tech Stack
 
@@ -45,6 +46,13 @@ A macOS screen and camera recording app with editing capabilities. Built with Ta
 # Install dependencies
 pnpm install
 
+# Verify backend checks
+cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
+cargo test --manifest-path src-tauri/Cargo.toml
+
+# Verify frontend constraints
+pnpm run verify:frontend
+
 # Run in development mode
 pnpm tauri dev
 ```
@@ -54,6 +62,22 @@ pnpm tauri dev
 ```bash
 pnpm tauri build
 ```
+
+### Unsigned macOS build
+
+OpenRec is configured to build as an unsigned macOS app (`signingIdentity: null`).
+This is useful for internal testing or distribution without an Apple Developer ID.
+
+See the installation and Gatekeeper instructions in
+[`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md).
+Unsigned release workflows also publish `.sha256` checksum files for each DMG.
+
+### File associations
+
+OpenRec registers the `.openrec` extension as a project document type.
+
+- Double-clicking a `.openrec` file opens the project in an editor window.
+- Tray and app menu recent-project entries also open project windows directly.
 
 ## Project Structure
 
@@ -69,7 +93,7 @@ pnpm tauri build
 │   │   ├── recording/      # Screen capture, ScreenCaptureKit
 │   │   ├── project/        # Project management
 │   │   └── export/         # FFmpeg export
-│   └── binaries/           # Bundled FFmpeg
+│   └── binaries/           # Bundled FFmpeg (plus Linux wrappers to system ffmpeg)
 └── components.json         # shadcn/ui config
 ```
 

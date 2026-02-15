@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  echo "ffmpeg is required but not installed on PATH." >&2
+  exit 127
+fi
+
+exec ffmpeg "$@"
