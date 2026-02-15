@@ -425,6 +425,68 @@ fn create_recording_output(
     })
 }
 
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn parse_ffprobe_duration_seconds(raw: &str) -> Option<f64> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("n/a") {
+        return None;
+    }
+    match trimmed.parse::<f64>() {
+        Ok(value) if value.is_finite() && value >= 0.0 => Some(value),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+enum VideoProbeReadiness {
+    Ready,
+    Pending,
+    Skipped,
+}
+
+#[cfg(target_os = "macos")]
+fn probe_recording_file_readiness(path: &Path) -> VideoProbeReadiness {
+    let output = std::process::Command::new("ffprobe")
+        .arg("-v")
+        .arg("error")
+        .arg("-show_entries")
+        .arg("format=duration")
+        .arg("-of")
+        .arg("default=noprint_wrappers=1:nokey=1")
+        .arg(path)
+        .output();
+
+    match output {
+        Ok(command_output) => {
+            if !command_output.status.success() {
+                return VideoProbeReadiness::Pending;
+            }
+            let raw_duration = String::from_utf8_lossy(&command_output.stdout);
+            if parse_ffprobe_duration_seconds(&raw_duration).is_some() {
+                VideoProbeReadiness::Ready
+            } else {
+                VideoProbeReadiness::Pending
+            }
+        }
+        Err(error) => {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "ffprobe is unavailable; skipping probe readiness check for {}",
+                    path.display()
+                );
+                VideoProbeReadiness::Skipped
+            } else {
+                eprintln!(
+                    "ffprobe probe failed for {} ({}); continuing with size-based readiness check",
+                    path.display(),
+                    error
+                );
+                VideoProbeReadiness::Skipped
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), AppError> {
     block_on_io(wait_for_file_ready_async(path, timeout))?
@@ -443,7 +505,12 @@ async fn wait_for_file_ready_async(path: &Path, timeout: Duration) -> Result<(),
                 if size > 1024 && size == last_size {
                     stable_checks += 1;
                     if stable_checks >= 3 {
-                        return Ok(());
+                        match probe_recording_file_readiness(path) {
+                            VideoProbeReadiness::Ready | VideoProbeReadiness::Skipped => {
+                                return Ok(());
+                            }
+                            VideoProbeReadiness::Pending => {}
+                        }
                     }
                 } else {
                     stable_checks = 0;
@@ -1254,5 +1321,14 @@ mod tests {
         );
         let elapsed = calculate_elapsed_duration_ms(&session);
         assert!(elapsed >= 2_500);
+    }
+
+    #[test]
+    fn parses_ffprobe_duration_output() {
+        assert_eq!(parse_ffprobe_duration_seconds("12.34"), Some(12.34));
+        assert_eq!(parse_ffprobe_duration_seconds(" 0.0 "), Some(0.0));
+        assert_eq!(parse_ffprobe_duration_seconds("N/A"), None);
+        assert_eq!(parse_ffprobe_duration_seconds(""), None);
+        assert_eq!(parse_ffprobe_duration_seconds("not-a-number"), None);
     }
 }
