@@ -5,6 +5,8 @@ mod recording;
 use error::AppError;
 
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{
@@ -67,6 +69,18 @@ fn log_if_err<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) {
     if let Err(error) = result {
         eprintln!("{}: {}", context, error);
     }
+}
+
+fn block_on_io<T>(future: impl Future<Output = T>) -> T {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return tokio::task::block_in_place(|| handle.block_on(future));
+    }
+
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to initialize temporary Tokio runtime for file I/O")
+        .block_on(future)
 }
 
 fn normalize_project_id_input(project_id: String, context: &str) -> Result<String, AppError> {
@@ -188,13 +202,19 @@ fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(
         .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))
 }
 
-fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> Vec<Project> {
-    if max_items == 0 || std::fs::metadata(recordings_dir).is_err() {
+async fn load_recent_projects_for_tray_async(
+    recordings_dir: &Path,
+    max_items: usize,
+) -> Vec<Project> {
+    if max_items == 0 {
+        return Vec::new();
+    }
+    if tokio::fs::metadata(recordings_dir).await.is_err() {
         return Vec::new();
     }
 
     let mut projects = Vec::new();
-    let entries = match std::fs::read_dir(recordings_dir) {
+    let mut entries = match tokio::fs::read_dir(recordings_dir).await {
         Ok(entries) => entries,
         Err(error) => {
             eprintln!(
@@ -205,9 +225,10 @@ fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> 
         }
     };
 
-    for entry in entries {
-        let entry = match entry {
-            Ok(entry) => entry,
+    loop {
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
             Err(error) => {
                 eprintln!(
                     "Failed to read an entry from recordings directory for tray menu: {}",
@@ -216,12 +237,25 @@ fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> 
                 continue;
             }
         };
-        let path = entry.path();
-        if !path.is_dir() {
+
+        let file_type = match entry.file_type().await {
+            Ok(file_type) => file_type,
+            Err(error) => {
+                eprintln!(
+                    "Failed to inspect recordings directory entry type for tray menu ({}): {}",
+                    entry.path().display(),
+                    error
+                );
+                continue;
+            }
+        };
+        if !file_type.is_dir() {
             continue;
         }
+
+        let path = entry.path();
         let project_file = path.join("project.json");
-        let content = match std::fs::read_to_string(project_file) {
+        let content = match tokio::fs::read_to_string(&project_file).await {
             Ok(content) => content,
             Err(error) => {
                 eprintln!(
@@ -246,6 +280,13 @@ fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> 
 
     projects.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     projects.into_iter().take(max_items).collect()
+}
+
+fn load_recent_projects_for_tray(recordings_dir: &PathBuf, max_items: usize) -> Vec<Project> {
+    block_on_io(load_recent_projects_for_tray_async(
+        recordings_dir,
+        max_items,
+    ))
 }
 
 fn build_recent_projects_submenu<R: tauri::Runtime, M: Manager<R>>(
@@ -987,22 +1028,24 @@ fn recordings_dir_from_managed_state(
     Ok(state_guard.recordings_dir.clone())
 }
 
-fn resolve_project_json_path(project_dir: &Path) -> Result<PathBuf, AppError> {
+async fn resolve_project_json_path_async(project_dir: &Path) -> Result<PathBuf, AppError> {
     let primary_path = project_dir.join("project.json");
-    if primary_path.exists() {
-        let metadata = std::fs::metadata(&primary_path).map_err(|error| {
-            AppError::Io(format!(
+    match tokio::fs::metadata(&primary_path).await {
+        Ok(metadata) if metadata.is_file() => {
+            return Ok(primary_path);
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(AppError::Io(format!(
                 "Failed to inspect project metadata path ({}): {}",
                 primary_path.display(),
                 error
-            ))
-        })?;
-        if metadata.is_file() {
-            return Ok(primary_path);
+            )));
         }
     }
 
-    let entries = std::fs::read_dir(project_dir).map_err(|error| {
+    let mut entries = tokio::fs::read_dir(project_dir).await.map_err(|error| {
         AppError::Io(format!(
             "Failed to scan project directory for project.json ({}): {}",
             project_dir.display(),
@@ -1010,15 +1053,18 @@ fn resolve_project_json_path(project_dir: &Path) -> Result<PathBuf, AppError> {
         ))
     })?;
 
-    for entry in entries {
-        let entry = entry.map_err(|error| {
+    loop {
+        let entry = entries.next_entry().await.map_err(|error| {
             AppError::Io(format!(
                 "Failed to inspect project directory entry ({}): {}",
                 project_dir.display(),
                 error
             ))
         })?;
-        let file_type = entry.file_type().map_err(|error| {
+        let Some(entry) = entry else {
+            break;
+        };
+        let file_type = entry.file_type().await.map_err(|error| {
             AppError::Io(format!(
                 "Failed to inspect project directory entry type ({}): {}",
                 project_dir.display(),
@@ -1041,6 +1087,10 @@ fn resolve_project_json_path(project_dir: &Path) -> Result<PathBuf, AppError> {
     )))
 }
 
+fn resolve_project_json_path(project_dir: &Path) -> Result<PathBuf, AppError> {
+    block_on_io(resolve_project_json_path_async(project_dir))
+}
+
 fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), AppError> {
     let recordings_dir = recordings_dir_from_state(app)?;
     let project_dir = recordings_dir.join(project_id);
@@ -1053,7 +1103,7 @@ fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), A
 
     let title = {
         let mut resolved_title = None;
-        match std::fs::read_to_string(&project_file_path) {
+        match block_on_io(tokio::fs::read_to_string(&project_file_path)) {
             Ok(content) => match serde_json::from_str::<Project>(&content) {
                 Ok(project) => {
                     resolved_title = Some(project.name);
@@ -1153,9 +1203,11 @@ fn resolve_project_dir_from_payload(project_dir: &str, association_path: &Path) 
     Some(resolved_path)
 }
 
-fn project_id_from_opened_path(path: &Path) -> Option<String> {
-    if path.is_dir() {
-        if let Err(error) = resolve_project_json_path(path) {
+async fn project_id_from_opened_path_async(path: &Path) -> Option<String> {
+    let metadata = tokio::fs::metadata(path).await.ok();
+
+    if metadata.as_ref().is_some_and(|value| value.is_dir()) {
+        if let Err(error) = resolve_project_json_path_async(path).await {
             eprintln!(
                 "Ignoring opened directory because project metadata could not be resolved ({}): {}",
                 path.display(),
@@ -1172,7 +1224,7 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
         .to_string_lossy()
         .eq_ignore_ascii_case("project.json")
     {
-        if !path.is_file() {
+        if !metadata.as_ref().is_some_and(|value| value.is_file()) {
             eprintln!(
                 "Ignoring opened project.json path because it is not a file: {}",
                 path.display()
@@ -1188,7 +1240,7 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("openrec"))
     {
-        match std::fs::read_to_string(path) {
+        match tokio::fs::read_to_string(path).await {
             Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
                 Ok(json) => {
                     if let Some(project_id) = json.get("projectId").and_then(|value| value.as_str())
@@ -1262,6 +1314,10 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
     }
 
     None
+}
+
+fn project_id_from_opened_path(path: &Path) -> Option<String> {
+    block_on_io(project_id_from_opened_path_async(path))
 }
 
 fn handle_opened_project_paths(app: &AppHandle, paths: Vec<PathBuf>) {

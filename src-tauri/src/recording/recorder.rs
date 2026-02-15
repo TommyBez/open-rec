@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
+#[cfg(target_os = "macos")]
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 #[cfg(target_os = "macos")]
@@ -124,7 +127,7 @@ pub struct RecorderState {
 impl RecorderState {
     pub fn new(app_data_dir: PathBuf) -> Self {
         let recordings_dir = app_data_dir.join("recordings");
-        if let Err(error) = std::fs::create_dir_all(&recordings_dir) {
+        if let Err(error) = block_on_io(tokio::fs::create_dir_all(&recordings_dir)) {
             eprintln!(
                 "Failed to ensure recordings directory exists ({}): {}",
                 recordings_dir.to_string_lossy(),
@@ -139,6 +142,18 @@ impl RecorderState {
 }
 
 pub type SharedRecorderState = Arc<Mutex<RecorderState>>;
+
+fn block_on_io<T>(future: impl Future<Output = T>) -> T {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return tokio::task::block_in_place(|| handle.block_on(future));
+    }
+
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to initialize temporary Tokio runtime for recorder file I/O")
+        .block_on(future)
+}
 
 /// Result of starting a recording
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -397,12 +412,17 @@ fn create_recording_output(
 
 #[cfg(target_os = "macos")]
 fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), AppError> {
+    block_on_io(wait_for_file_ready_async(path, timeout))
+}
+
+#[cfg(target_os = "macos")]
+async fn wait_for_file_ready_async(path: &Path, timeout: Duration) -> Result<(), AppError> {
     let started = Instant::now();
     let mut last_size = 0;
     let mut stable_checks = 0;
 
     while started.elapsed() < timeout {
-        match std::fs::metadata(path) {
+        match tokio::fs::metadata(path).await {
             Ok(metadata) => {
                 let size = metadata.len();
                 if size > 1024 && size == last_size {
@@ -420,7 +440,7 @@ fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), AppError
             }
         }
 
-        std::thread::sleep(Duration::from_millis(200));
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
 
     Err(AppError::Message(format!(
@@ -443,7 +463,7 @@ pub fn start_recording(
 
     // Create project directory
     let project_dir = state_guard.recordings_dir.join(&project_id);
-    std::fs::create_dir_all(&project_dir)
+    block_on_io(tokio::fs::create_dir_all(&project_dir))
         .map_err(|e| AppError::Io(format!("Failed to create project dir: {}", e)))?;
 
     let screen_video_path = project_dir.join("screen.mp4");
