@@ -36,6 +36,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Frontend scoped-event isolation coverage via `recordingEventScope` tests (project-id filtering and active-project resolution)
 - Frontend local-storage resilience coverage for runtime timeout overrides and pending finalization retry context stores
 - Frontend runtime diagnostics store coverage (dedupe window, sequence ordering, lifecycle metadata, capped history)
+- Frontend export store coverage for active-job registration, drift resync metadata preservation, and reset/unregister behavior
 - Help menu links for manual update/install docs via opener plugin
 - Inline recovery diagnostics panel for recorder/export/runtime warning visibility
 - Structured telemetry sequencing for recorder/export/system lifecycle events in diagnostics
