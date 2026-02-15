@@ -64,6 +64,7 @@ Per approved scope, macOS runtime validation is out of scope for this Linux host
 Completion for this workspace is gated by:
 
 - [x] Automated baseline green (`pnpm run verify:frontend`, `cargo fmt`, `cargo test`)
+- [x] Documentation link baseline green (`pnpm run verify:docs`)
 - [x] Frontend regression baseline green (`pnpm run test:frontend`)
 - [x] No known open P0/P1 blockers in implemented cross-platform/runtime logic
 - [x] Final sign-off documentation updated with explicit out-of-scope macOS runtime checklist

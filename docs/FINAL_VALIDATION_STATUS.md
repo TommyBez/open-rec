@@ -17,6 +17,8 @@ and what still requires manual macOS runtime verification.
 
 The following checks are run repeatedly and are expected green:
 
+- `pnpm run verify:docs`
+  - markdown link integrity for `README.md` + `docs/*.md`
 - `pnpm run verify:frontend`
   - component-size guard
   - TypeScript compile (`tsc --noEmit`)
