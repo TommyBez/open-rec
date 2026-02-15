@@ -54,40 +54,55 @@ function buildEntryId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function isDuplicateDiagnostic(
+  latestEntry: RuntimeDiagnosticEntry | undefined,
+  nextEntry: RuntimeDiagnosticInput,
+  nowMs: number
+): boolean {
+  return Boolean(
+    latestEntry &&
+      latestEntry.source === nextEntry.source &&
+      latestEntry.level === nextEntry.level &&
+      latestEntry.message === nextEntry.message &&
+      latestEntry.metadata?.event === nextEntry.metadata?.event &&
+      latestEntry.metadata?.state === nextEntry.metadata?.state &&
+      latestEntry.metadata?.status === nextEntry.metadata?.status &&
+      latestEntry.metadata?.projectId === nextEntry.metadata?.projectId &&
+      latestEntry.metadata?.jobId === nextEntry.metadata?.jobId &&
+      nowMs - latestEntry.createdAtMs < DIAGNOSTIC_DEDUPE_WINDOW_MS
+  );
+}
+
+function appendDiagnosticEntry(
+  state: RuntimeDiagnosticsStore,
+  nextEntry: RuntimeDiagnosticInput,
+  nowMs: number
+) {
+  if (isDuplicateDiagnostic(state.entries[0], nextEntry, nowMs)) {
+    return state;
+  }
+  const entries = [
+    {
+      ...nextEntry,
+      id: buildEntryId(),
+      createdAtMs: nowMs,
+      sequence: state.nextSequence,
+    },
+    ...state.entries,
+  ].slice(0, MAX_DIAGNOSTIC_ENTRIES);
+  return {
+    entries,
+    nextSequence: state.nextSequence + 1,
+  };
+}
+
 export const useRuntimeDiagnosticsStore = create<RuntimeDiagnosticsStore>((set) => ({
   entries: [],
   nextSequence: 1,
   appendEntry: (entry) =>
     set((state) => {
       const nowMs = Date.now();
-      const latestEntry = state.entries[0];
-      const isDuplicate =
-        latestEntry &&
-        latestEntry.source === entry.source &&
-        latestEntry.level === entry.level &&
-        latestEntry.message === entry.message &&
-        latestEntry.metadata?.event === entry.metadata?.event &&
-        latestEntry.metadata?.state === entry.metadata?.state &&
-        latestEntry.metadata?.status === entry.metadata?.status &&
-        latestEntry.metadata?.projectId === entry.metadata?.projectId &&
-        latestEntry.metadata?.jobId === entry.metadata?.jobId &&
-        nowMs - latestEntry.createdAtMs < DIAGNOSTIC_DEDUPE_WINDOW_MS;
-      if (isDuplicate) {
-        return state;
-      }
-      const nextEntries = [
-        {
-          ...entry,
-          id: buildEntryId(),
-          createdAtMs: nowMs,
-          sequence: state.nextSequence,
-        },
-        ...state.entries,
-      ].slice(0, MAX_DIAGNOSTIC_ENTRIES);
-      return {
-        entries: nextEntries,
-        nextSequence: state.nextSequence + 1,
-      };
+      return appendDiagnosticEntry(state, entry, nowMs);
     }),
   appendLifecycleEvent: (entry) =>
     set((state) => {
@@ -104,34 +119,7 @@ export const useRuntimeDiagnosticsStore = create<RuntimeDiagnosticsStore>((set) 
           jobId: entry.jobId,
         },
       };
-      const latestEntry = state.entries[0];
-      const isDuplicate =
-        latestEntry &&
-        latestEntry.source === nextEntry.source &&
-        latestEntry.level === nextEntry.level &&
-        latestEntry.message === nextEntry.message &&
-        latestEntry.metadata?.event === nextEntry.metadata?.event &&
-        latestEntry.metadata?.state === nextEntry.metadata?.state &&
-        latestEntry.metadata?.status === nextEntry.metadata?.status &&
-        latestEntry.metadata?.projectId === nextEntry.metadata?.projectId &&
-        latestEntry.metadata?.jobId === nextEntry.metadata?.jobId &&
-        nowMs - latestEntry.createdAtMs < DIAGNOSTIC_DEDUPE_WINDOW_MS;
-      if (isDuplicate) {
-        return state;
-      }
-      const entries = [
-        {
-          ...nextEntry,
-          id: buildEntryId(),
-          createdAtMs: nowMs,
-          sequence: state.nextSequence,
-        },
-        ...state.entries,
-      ].slice(0, MAX_DIAGNOSTIC_ENTRIES);
-      return {
-        entries,
-        nextSequence: state.nextSequence + 1,
-      };
+      return appendDiagnosticEntry(state, nextEntry, nowMs);
     }),
   clearEntries: () => set({ entries: [], nextSequence: 1 }),
 }));
