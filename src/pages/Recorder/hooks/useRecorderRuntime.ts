@@ -14,7 +14,10 @@ import {
   loadRecordingPreferences,
   saveRecordingPreferences,
 } from "../../../lib/recordingPreferencesStore";
-import { setPendingRecordingSourceFallbackNotice } from "../../../lib/recordingSourceFallbackNotice";
+import {
+  clearPendingRecordingSourceFallbackNotice,
+  setPendingRecordingSourceFallbackNotice,
+} from "../../../lib/recordingSourceFallbackNotice";
 import {
   consumeTrayQuickRecordRequest,
   requestTrayQuickRecord,
@@ -610,6 +613,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           sourceId: result.fallbackSource.sourceId,
           sourceOrdinal: result.fallbackSource.sourceOrdinal ?? null,
         });
+      } else {
+        clearPendingRecordingSourceFallbackNotice();
       }
       setErrorMessage(null);
 
