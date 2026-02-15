@@ -218,6 +218,9 @@ export function useRecordingWidgetRuntime() {
         }
       } catch (error) {
         console.error("Failed to check recording disk space:", error);
+        setPermissionError((current) =>
+          current ?? "Unable to verify available disk space during recording."
+        );
       }
     }, 5000);
     return () => clearInterval(intervalId);
