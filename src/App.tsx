@@ -37,6 +37,9 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     async function ensureNotificationPermission() {
+      if (!isMainWindow) {
+        return;
+      }
       const granted = await isPermissionGranted();
       if (!granted && !cancelled) {
         await requestPermission();
