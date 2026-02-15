@@ -51,6 +51,7 @@ export function useRecordingWidgetRuntime() {
   const autoStopForDiskRef = useRef(false);
   const lastAutoSegmentAtRef = useRef(0);
   const autoSegmentInFlightRef = useRef(false);
+  const sourceStatusPollInFlightRef = useRef(false);
   const sourceUnavailableNoticeRef = useRef<string | null>(null);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const resolveActiveProjectId = () => projectId ?? getStoredCurrentProjectId();
@@ -323,6 +324,7 @@ export function useRecordingWidgetRuntime() {
       autoStopForDiskRef.current = false;
       lastAutoSegmentAtRef.current = 0;
       autoSegmentInFlightRef.current = false;
+      sourceStatusPollInFlightRef.current = false;
       sourceUnavailableNoticeRef.current = null;
     }
   }, [state]);
@@ -332,6 +334,8 @@ export function useRecordingWidgetRuntime() {
     const intervalId = window.setInterval(async () => {
       const activeProjectId = resolveActiveProjectId();
       if (!activeProjectId) return;
+      if (sourceStatusPollInFlightRef.current) return;
+      sourceStatusPollInFlightRef.current = true;
       try {
         const sourceStatus = await invoke<RecordingSourceStatus | null>(
           "get_recording_source_status",
@@ -360,6 +364,8 @@ export function useRecordingWidgetRuntime() {
         applySourceUnavailableWarning(warningMessage);
       } catch (error) {
         console.error("Failed to verify recording source availability:", error);
+      } finally {
+        sourceStatusPollInFlightRef.current = false;
       }
     }, 5000);
     return () => clearInterval(intervalId);
