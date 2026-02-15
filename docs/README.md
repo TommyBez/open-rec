@@ -11,6 +11,7 @@ Use this index to quickly find the right document.
 | [`MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](./MACOS_RUNTIME_VALIDATION_CHECKLIST.md) | Manual acceptance checklist to run on macOS hardware |
 | [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md) | Warning triage playbook (cause, automatic recovery, operator action) |
 | [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md) | Unsigned DMG install + Gatekeeper bypass instructions |
+| [`RUNTIME_TIMEOUT_OVERRIDES.md`](./RUNTIME_TIMEOUT_OVERRIDES.md) | Runtime timeout tuning reference (localStorage overrides) |
 | [`NICE_TO_HAVE_BACKLOG.md`](./NICE_TO_HAVE_BACKLOG.md) | Non-blocking backlog items |
 
 ## Fast routing by goal
@@ -22,6 +23,7 @@ Use this index to quickly find the right document.
 | Run manual macOS acceptance | [`MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](./MACOS_RUNTIME_VALIDATION_CHECKLIST.md) |
 | Triage runtime warnings during validation | [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md) |
 | Install unsigned builds on macOS | [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md) |
+| Tune timeout budgets for debugging/recovery tests | [`RUNTIME_TIMEOUT_OVERRIDES.md`](./RUNTIME_TIMEOUT_OVERRIDES.md) |
 | Review optional non-blocking follow-ups | [`NICE_TO_HAVE_BACKLOG.md`](./NICE_TO_HAVE_BACKLOG.md) |
 
 ## Suggested reading order

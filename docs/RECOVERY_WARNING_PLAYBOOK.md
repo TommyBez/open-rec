@@ -69,5 +69,7 @@ Format per entry:
 1. Confirm active source still exists (display/window is present).
 2. Confirm required permissions are granted (Screen Recording, Camera, Microphone).
 3. Confirm free disk space is above guardrail threshold.
-4. Retry with a short capture to validate recovery path quickly.
-5. If still reproducible, collect logs + exact warning sequence and attach to issue report.
+4. If timeout-related warnings recur, review/tune runtime timeout settings:
+   [`RUNTIME_TIMEOUT_OVERRIDES.md`](./RUNTIME_TIMEOUT_OVERRIDES.md)
+5. Retry with a short capture to validate recovery path quickly.
+6. If still reproducible, collect logs + exact warning sequence and attach to issue report.

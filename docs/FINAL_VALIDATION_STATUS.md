@@ -90,6 +90,7 @@ Completion in this workspace is defined by:
 
 - Execution checklist: [`PLAN_EXECUTION_CHECKLIST.md`](./PLAN_EXECUTION_CHECKLIST.md)
 - Recovery triage playbook: [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md)
+- Runtime timeout tuning reference: [`RUNTIME_TIMEOUT_OVERRIDES.md`](./RUNTIME_TIMEOUT_OVERRIDES.md)
 - Unsigned install guide: [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md)
 - Non-blocking backlog: [`NICE_TO_HAVE_BACKLOG.md`](./NICE_TO_HAVE_BACKLOG.md)
 

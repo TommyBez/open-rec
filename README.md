@@ -73,16 +73,9 @@ Quick links:
 
 ## Advanced runtime timeout overrides
 
-Recorder/widget timeout budgets can be overridden through:
+Recorder/widget timeout budgets can be overridden through
+`localStorage["openrec.runtime-timeout-settings-v1"]`.
 
-`localStorage["openrec.runtime-timeout-settings-v1"]`
-
-Supported keys:
-
-- `recorderStartRecordingTimeoutMs`
-- `recorderStopFinalizationTimeoutMs`
-- `recorderOpenWidgetTimeoutMs`
-- `recorderHideWindowTimeoutMs`
-- `widgetStopRecordingTimeoutMs`
-- `widgetPauseResumeTimeoutMs`
-- `widgetStoppingRecoveryTimeoutMs`
+See:
+[`docs/RUNTIME_TIMEOUT_OVERRIDES.md`](docs/RUNTIME_TIMEOUT_OVERRIDES.md)
+for supported fields, example payloads, and reset instructions.
