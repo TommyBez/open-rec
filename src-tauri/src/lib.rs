@@ -498,38 +498,12 @@ fn ensure_recording_disk_headroom(recordings_dir: &PathBuf) -> Result<(), AppErr
 }
 
 fn open_external_url(url: &str) -> Result<(), AppError> {
-    #[cfg(target_os = "windows")]
-    let output = std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .output()
-        .map_err(|error| AppError::Message(format!("Failed to open URL {}: {}", url, error)))?;
-
-    #[cfg(target_os = "macos")]
-    let output = std::process::Command::new("open")
-        .arg(url)
-        .output()
-        .map_err(|error| AppError::Message(format!("Failed to open URL {}: {}", url, error)))?;
-
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let output = std::process::Command::new("xdg-open")
-        .arg(url)
-        .output()
-        .map_err(|error| AppError::Message(format!("Failed to open URL {}: {}", url, error)))?;
-
-    if output.status.success() {
-        return Ok(());
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    Err(AppError::Message(format!(
-        "Opening URL {} failed: {}",
-        url,
-        if stderr.is_empty() {
-            "launcher exited with a non-zero status".to_string()
-        } else {
-            stderr
-        }
-    )))
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|error| {
+        AppError::Message(format!(
+            "Opening URL {} failed via opener plugin: {}",
+            url, error
+        ))
+    })
 }
 
 fn is_missing_process_error(stderr: &str) -> bool {
