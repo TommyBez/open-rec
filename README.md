@@ -73,6 +73,8 @@ Quick links:
   [`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md)
 - CI workflow reference:
   [`docs/CI_WORKFLOWS.md`](docs/CI_WORKFLOWS.md)
+- Local build troubleshooting:
+  [`docs/LOCAL_BUILD_TROUBLESHOOTING.md`](docs/LOCAL_BUILD_TROUBLESHOOTING.md)
 
 ## Advanced runtime timeout overrides
 

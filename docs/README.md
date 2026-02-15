@@ -12,6 +12,7 @@ Use this index to quickly find the right document.
 | [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md) | Warning triage playbook (cause, automatic recovery, operator action) |
 | [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md) | Unsigned DMG install + Gatekeeper bypass instructions |
 | [`CI_WORKFLOWS.md`](./CI_WORKFLOWS.md) | CI workflow matrix and cancelled-run interpretation guide |
+| [`LOCAL_BUILD_TROUBLESHOOTING.md`](./LOCAL_BUILD_TROUBLESHOOTING.md) | Common local compile/check failure patterns and fixes |
 | [`RUNTIME_TIMEOUT_OVERRIDES.md`](./RUNTIME_TIMEOUT_OVERRIDES.md) | Runtime timeout tuning reference (localStorage overrides) |
 | [`NICE_TO_HAVE_BACKLOG.md`](./NICE_TO_HAVE_BACKLOG.md) | Non-blocking backlog items |
 
@@ -25,6 +26,7 @@ Use this index to quickly find the right document.
 | Triage runtime warnings during validation | [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md) |
 | Install unsigned builds on macOS | [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md) |
 | Understand CI checks / cancelled runs | [`CI_WORKFLOWS.md`](./CI_WORKFLOWS.md) |
+| Diagnose common local build/check failures | [`LOCAL_BUILD_TROUBLESHOOTING.md`](./LOCAL_BUILD_TROUBLESHOOTING.md) |
 | Tune timeout budgets for debugging/recovery tests | [`RUNTIME_TIMEOUT_OVERRIDES.md`](./RUNTIME_TIMEOUT_OVERRIDES.md) |
 | Review optional non-blocking follow-ups | [`NICE_TO_HAVE_BACKLOG.md`](./NICE_TO_HAVE_BACKLOG.md) |
 
