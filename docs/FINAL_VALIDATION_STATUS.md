@@ -21,6 +21,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Frontend recovery when stop/finalization fails (recorder + widget)
 - Main-window restoration and widget closure on stop failure paths
 - Expanded finalization phase status progression (`stopping-capture` → `concatenating-segments` → `verifying-duration` → `verifying-dimensions` → `saving-project` → `refreshing-ui`) in backend and UI
+- Frontend regression coverage for finalization status-to-message/status-label mapping
 - Manual retry command for failed finalization (`retry_recording_finalization`) exposed through recorder UI recovery action
 - Pending retry context persisted in local storage so retry action survives recorder route reloads
 - Retry context validation command (`has_pending_recording_finalization`) clears stale retry affordances when backend state no longer has pending artifacts
