@@ -87,6 +87,17 @@ export function useRecordingWidgetRuntime() {
     const unlistenState = listen<{ state: RecordingState; projectId: string }>(
       "recording-state-changed",
       (event) => {
+        const activeProjectId = resolveActiveProjectId();
+        const eventProjectId = event.payload.projectId?.trim() ?? "";
+        const hasEventProjectId = eventProjectId.length > 0;
+        const hasActiveProject = Boolean(activeProjectId);
+        if (
+          hasActiveProject &&
+          hasEventProjectId &&
+          eventProjectId !== activeProjectId
+        ) {
+          return;
+        }
         setRecordingState(event.payload.state);
         if (event.payload.state === "idle") {
           clearStoredCurrentProjectId();
@@ -94,7 +105,7 @@ export function useRecordingWidgetRuntime() {
           setElapsedTime(0);
           return;
         }
-        const nextProjectId = event.payload.projectId?.trim();
+        const nextProjectId = eventProjectId;
         if (nextProjectId) {
           if (resolveActiveProjectId() !== nextProjectId) {
             setElapsedTime(0);
