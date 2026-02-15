@@ -27,6 +27,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Export preflight validation for required media file existence/readability
 - Export speed-audio regression coverage (`atempo` chain)
 - Deterministic backend coverage for ffmpeg timeout handling path (termination callback + timeout error mapping)
+- Automated export drift recovery coverage for stale-process pruning while preserving running jobs
 - Help menu links for manual update/install docs via opener plugin
 - Inline recovery diagnostics panel for recorder/export/runtime warning visibility
 - Structured telemetry sequencing for recorder/export/system lifecycle events in diagnostics

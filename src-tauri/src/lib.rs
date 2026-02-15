@@ -2427,6 +2427,40 @@ mod tests {
         assert_eq!(remaining_jobs, 0, "stale job entry should be removed");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn active_export_job_ids_keeps_running_jobs_while_pruning_stale_jobs() {
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("exit 0")
+            .spawn()
+            .expect("failed to spawn short-lived process for mixed-state job test");
+        let stale_pid = child.id();
+        child
+            .wait()
+            .expect("failed to wait for short-lived process exit");
+
+        let running_pid = std::process::id();
+        let export_jobs = Arc::new(Mutex::new(HashMap::from([
+            ("running-job".to_string(), running_pid),
+            ("stale-job".to_string(), stale_pid),
+        ])));
+
+        let active_job_ids =
+            active_export_job_ids(&export_jobs).expect("active export jobs should resolve");
+        assert_eq!(
+            active_job_ids,
+            vec!["running-job".to_string()],
+            "only running jobs should remain active"
+        );
+
+        let jobs = export_jobs
+            .lock()
+            .expect("failed to lock jobs after mixed-state pruning");
+        assert_eq!(jobs.len(), 1, "stale jobs should be pruned");
+        assert_eq!(jobs.get("running-job"), Some(&running_pid));
+    }
+
     #[test]
     fn has_active_recording_session_detects_recording_or_paused_sessions() {
         let recordings_dir = create_test_dir("active-session-detection");

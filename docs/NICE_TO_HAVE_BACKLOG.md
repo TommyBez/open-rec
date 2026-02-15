@@ -8,6 +8,3 @@ They are quality-of-life and polish opportunities that can be addressed in futur
 1. **Frontend integration tests for multi-window event isolation**
    - Validate recorder/widget/main window event filtering behavior under simulated concurrent sessions
 
-2. **Automated smoke test for export-job drift recovery**
-   - Validate periodic/focus-based export job resync behavior against stale-state scenarios
-
