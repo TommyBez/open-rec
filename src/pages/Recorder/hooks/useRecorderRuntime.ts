@@ -780,6 +780,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     if (!resolvedSource) return;
 
     beginRecordingStart();
+    let result: StartRecordingResult;
     try {
       const options: RecordingOptionsType = {
         sourceId: resolvedSource.source.id,
@@ -795,40 +796,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         codec,
       };
 
-      const result = await withTimeout(
+      result = await withTimeout(
         invoke<StartRecordingResult>("start_screen_recording", { options }),
         START_RECORDING_TIMEOUT_MS,
         "Recording start timed out"
       );
-
-      const resolvedCaptureSource = sources.find(
-        (source) =>
-          source.id === result.resolvedSourceId &&
-          source.type === resolvedSource.source.type
-      );
-      if (resolvedCaptureSource) {
-        setSelectedSource(resolvedCaptureSource);
-      }
-
-      setProjectId(result.projectId);
-      setRecordingStartTimeMs(result.recordingStartTimeMs);
-      startRecording(result.projectId);
-      setStoredCurrentProjectId(result.projectId);
-      if (result.fallbackSource?.sourceId) {
-        setPendingRecordingSourceFallbackNotice({
-          projectId: result.projectId,
-          sourceType: resolvedSource.source.type,
-          sourceId: result.fallbackSource.sourceId,
-          sourceOrdinal: result.fallbackSource.sourceOrdinal ?? null,
-        });
-      } else {
-        clearPendingRecordingSourceFallbackNotice();
-      }
-      setErrorMessage(null);
-
-      await invoke("open_recording_widget");
-      const mainWindow = getCurrentWindow();
-      await mainWindow.hide();
     } catch (error) {
       console.error("Failed to start recording:", error);
       setProjectId(null);
@@ -838,6 +810,46 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       clearPendingRecordingSourceFallbackNotice();
       setErrorMessage(
         toErrorMessage(error, "Failed to start recording. Please try again.")
+      );
+      return;
+    }
+
+    const resolvedCaptureSource = sources.find(
+      (source) =>
+        source.id === result.resolvedSourceId &&
+        source.type === resolvedSource.source.type
+    );
+    if (resolvedCaptureSource) {
+      setSelectedSource(resolvedCaptureSource);
+    }
+
+    setProjectId(result.projectId);
+    setRecordingStartTimeMs(result.recordingStartTimeMs);
+    startRecording(result.projectId);
+    setStoredCurrentProjectId(result.projectId);
+    if (result.fallbackSource?.sourceId) {
+      setPendingRecordingSourceFallbackNotice({
+        projectId: result.projectId,
+        sourceType: resolvedSource.source.type,
+        sourceId: result.fallbackSource.sourceId,
+        sourceOrdinal: result.fallbackSource.sourceOrdinal ?? null,
+      });
+    } else {
+      clearPendingRecordingSourceFallbackNotice();
+    }
+    setErrorMessage(null);
+
+    try {
+      await invoke("open_recording_widget");
+      const mainWindow = getCurrentWindow();
+      await mainWindow.hide();
+    } catch (error) {
+      console.error("Recording started but widget handoff failed:", error);
+      setErrorMessage(
+        toErrorMessage(
+          error,
+          "Recording started, but floating controls failed to open. Use global shortcuts to pause or stop."
+        )
       );
     }
   }
