@@ -44,3 +44,9 @@ cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
 cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
+
+Or run the single aggregate command:
+
+```bash
+pnpm run verify:ci-local
+```

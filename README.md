@@ -50,6 +50,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 pnpm tauri dev
 ```
 
+Single-command local baseline:
+
+```bash
+pnpm run verify:ci-local
+```
+
 ## Build
 
 ```bash
