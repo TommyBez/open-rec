@@ -32,6 +32,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Backend auto-prunes stale pending-finalization contexts when required screen artifacts are missing
 - Backend stale-context cleanup coverage includes missing-segment artifact scenario in addition to missing-screen artifact scenario
 - Startup/opened-path parsing coverage now includes percent-encoded `file://` URIs (spaces/unicode) and uppercase `FILE://` schemes
+- Project persistence coverage now validates `.openrec` association sidecar creation on save and cleanup on delete
 - Retry UI now auto-clears persisted retry affordance when backend reports missing finalization context errors
 - Advanced runtime timeout presets for recorder/widget flows (localStorage-backed overrides with guarded defaults)
 - Async file I/O migration for runtime filesystem paths in backend

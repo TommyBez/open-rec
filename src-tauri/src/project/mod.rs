@@ -388,3 +388,96 @@ pub async fn delete_project(recordings_dir: &PathBuf, project_id: &str) -> Resul
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{delete_project, save_project, Project, PROJECT_ASSOCIATION_EXTENSION};
+    use serde_json::Value;
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    fn create_test_recordings_dir(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("openrec-project-{name}-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&path).expect("failed to create project test directory");
+        path
+    }
+
+    fn build_test_project(recordings_dir: &PathBuf, project_id: &str) -> Project {
+        let screen_video_path = recordings_dir.join(project_id).join("screen.mp4");
+        Project::new(
+            project_id.to_string(),
+            screen_video_path,
+            None,
+            None,
+            12.5,
+            1280,
+            720,
+            None,
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn save_project_writes_openrec_association_sidecar() {
+        let recordings_dir = create_test_recordings_dir("save-association");
+        let project_id = format!("project-{}", Uuid::new_v4());
+        let project = build_test_project(&recordings_dir, &project_id);
+
+        save_project(&recordings_dir, &project)
+            .await
+            .expect("project should save");
+
+        let association_path =
+            recordings_dir.join(format!("{}.{}", project_id, PROJECT_ASSOCIATION_EXTENSION));
+        assert!(
+            tokio::fs::metadata(&association_path).await.is_ok(),
+            "association sidecar should exist"
+        );
+
+        let association_content = tokio::fs::read_to_string(&association_path)
+            .await
+            .expect("association sidecar should be readable");
+        let association_payload: Value = serde_json::from_str(&association_content)
+            .expect("association sidecar should contain valid JSON");
+        assert_eq!(association_payload["projectId"], project_id);
+        assert_eq!(
+            association_payload["projectDir"],
+            recordings_dir
+                .join(&project_id)
+                .to_string_lossy()
+                .to_string()
+        );
+
+        let _ = tokio::fs::remove_dir_all(&recordings_dir).await;
+    }
+
+    #[tokio::test]
+    async fn delete_project_removes_association_sidecar() {
+        let recordings_dir = create_test_recordings_dir("delete-association");
+        let project_id = format!("project-{}", Uuid::new_v4());
+        let project = build_test_project(&recordings_dir, &project_id);
+
+        save_project(&recordings_dir, &project)
+            .await
+            .expect("project should save before delete");
+
+        delete_project(&recordings_dir, &project_id)
+            .await
+            .expect("project delete should succeed");
+
+        let project_dir = recordings_dir.join(&project_id);
+        assert!(
+            tokio::fs::metadata(&project_dir).await.is_err(),
+            "project directory should be removed"
+        );
+
+        let association_path =
+            recordings_dir.join(format!("{}.{}", project_id, PROJECT_ASSOCIATION_EXTENSION));
+        assert!(
+            tokio::fs::metadata(&association_path).await.is_err(),
+            "association sidecar should be removed"
+        );
+
+        let _ = tokio::fs::remove_dir_all(&recordings_dir).await;
+    }
+}
