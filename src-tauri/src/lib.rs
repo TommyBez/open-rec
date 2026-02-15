@@ -927,7 +927,16 @@ fn recordings_dir_from_managed_state(
 fn resolve_project_json_path(project_dir: &Path) -> Result<PathBuf, AppError> {
     let primary_path = project_dir.join("project.json");
     if primary_path.exists() {
-        return Ok(primary_path);
+        let metadata = std::fs::metadata(&primary_path).map_err(|error| {
+            AppError::Io(format!(
+                "Failed to inspect project metadata path ({}): {}",
+                primary_path.display(),
+                error
+            ))
+        })?;
+        if metadata.is_file() {
+            return Ok(primary_path);
+        }
     }
 
     let entries = std::fs::read_dir(project_dir).map_err(|error| {
@@ -1798,6 +1807,19 @@ mod tests {
         let project_dir = root.join("project-json-directory-name");
         std::fs::create_dir_all(project_dir.join("PROJECT.JSON"))
             .expect("failed to create directory named project.json");
+
+        let resolved = project_id_from_opened_path(&project_dir);
+        assert_eq!(resolved, None);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ignores_project_directory_when_lowercase_project_json_is_directory() {
+        let root = create_test_dir("openrec-project-json-directory-name-lower");
+        let project_dir = root.join("project-json-directory-name-lower");
+        std::fs::create_dir_all(project_dir.join("project.json"))
+            .expect("failed to create lowercase directory named project.json");
 
         let resolved = project_id_from_opened_path(&project_dir);
         assert_eq!(resolved, None);
