@@ -59,6 +59,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 # Verify frontend constraints
 pnpm run verify:frontend
 
+# Run frontend runtime isolation tests
+pnpm run test:frontend -- src/lib/recordingEventScope.test.ts
+
 # Run in development mode
 pnpm tauri dev
 ```

@@ -35,6 +35,11 @@ import {
 import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpace";
 import { toErrorMessage } from "../../../lib/errorMessage";
 import {
+  normalizeScopedProjectId,
+  resolveScopedActiveProjectId,
+  shouldHandleProjectScopedEvent,
+} from "../../../lib/recordingEventScope";
+import {
   getRecordingFinalizingMessage,
   RecordingFinalizingStatus,
 } from "../../../lib/recordingFinalizingStatus";
@@ -281,7 +286,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }
 
   function resolveActiveProjectId() {
-    return projectId ?? getStoredCurrentProjectId() ?? retryFinalizationProjectId;
+    return resolveScopedActiveProjectId(
+      projectId,
+      getStoredCurrentProjectId(),
+      retryFinalizationProjectId
+    );
   }
 
   useEffect(() => {
@@ -505,14 +514,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       "recording-state-changed",
       (event) => {
         const activeProjectId = resolveActiveProjectId();
-        if (!activeProjectId) {
-          return;
-        }
-        const eventProjectId = event.payload.projectId?.trim() ?? "";
-        if (
-          eventProjectId.length > 0 &&
-          eventProjectId !== activeProjectId
-        ) {
+        const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+        if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) {
           return;
         }
 
@@ -521,7 +524,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           `Recorder state updated to ${event.payload.state}.`,
           {
             state: event.payload.state,
-            projectId: eventProjectId || activeProjectId,
+            projectId: eventProjectId ?? activeProjectId ?? undefined,
           }
         );
         setRecordingState(event.payload.state);
@@ -537,7 +540,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           return;
         }
 
-        if (eventProjectId.length > 0) {
+        if (eventProjectId) {
           setProjectId(eventProjectId);
           setStoredCurrentProjectId(eventProjectId);
         }
@@ -561,7 +564,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       status?: RecordingFinalizingStatus;
     }>("recording-finalizing", (event) => {
       const activeProjectId = resolveActiveProjectId();
-      if (!activeProjectId || event.payload.projectId !== activeProjectId) {
+      const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+      if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) {
         return;
       }
       const status = event.payload.status ?? "stopping-capture";
@@ -571,7 +575,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         {
           state: "stopping",
           status,
-          projectId: event.payload.projectId,
+          projectId: eventProjectId ?? activeProjectId ?? undefined,
         }
       );
       setFinalizingStatus(status);
@@ -617,17 +621,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
 
   useEffect(() => {
     const unlisten = listen<string>("recording-stopped", (event) => {
-      const stoppedProjectId = event.payload.trim();
+      const stoppedProjectId = normalizeScopedProjectId(event.payload);
       const activeProjectId = resolveActiveProjectId();
-      if (!activeProjectId) {
-        return;
-      }
-      if (stoppedProjectId.length > 0 && stoppedProjectId !== activeProjectId) {
+      if (!shouldHandleProjectScopedEvent(activeProjectId, stoppedProjectId)) {
         return;
       }
       recordLifecycleEvent("recording-stopped", "Recording finalized and stopped.", {
         state: "idle",
-        projectId: stoppedProjectId || activeProjectId,
+        projectId: stoppedProjectId ?? activeProjectId ?? undefined,
       });
       setRecordingState("idle");
       setProjectId(null);
@@ -637,7 +638,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       clearPendingFinalizationRetryProjectId();
       clearStoredCurrentProjectId();
       clearPendingRecordingSourceFallbackNotice();
-      if (stoppedProjectId.length > 0) {
+      if (stoppedProjectId) {
         onRecordingStoppedNavigate(stoppedProjectId);
       }
     });
@@ -659,11 +660,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       "recording-stop-failed",
       (event) => {
         const activeProjectId = resolveActiveProjectId();
-        if (!activeProjectId) {
-          return;
-        }
-        const eventProjectId = event.payload.projectId?.trim() ?? "";
-        if (eventProjectId.length > 0 && eventProjectId !== activeProjectId) {
+        const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+        if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) {
           return;
         }
         setRecordingState("idle");
@@ -672,7 +670,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         clearStoredCurrentProjectId();
         clearPendingRecordingSourceFallbackNotice();
         setFinalizingStatus(null);
-        const pendingRetryProjectId = eventProjectId || activeProjectId;
+        const pendingRetryProjectId = eventProjectId ?? activeProjectId;
+        if (!pendingRetryProjectId) {
+          return;
+        }
         setRetryFinalizationProjectId(pendingRetryProjectId);
         setPendingFinalizationRetryProjectId(pendingRetryProjectId);
         const message =
@@ -682,7 +683,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         recordLifecycleEvent("recording-stop-failed", message, {
           level: "error",
           state: "idle",
-          projectId: eventProjectId || activeProjectId,
+          projectId: eventProjectId ?? activeProjectId ?? undefined,
         });
         recordDiagnostic("error", message);
       }

@@ -19,6 +19,10 @@ import {
 import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpace";
 import { toErrorMessage } from "../../../lib/errorMessage";
 import {
+  normalizeScopedProjectId,
+  shouldHandleProjectScopedEvent,
+} from "../../../lib/recordingEventScope";
+import {
   getRecordingWidgetStatusLabel,
   RecordingFinalizingStatus,
 } from "../../../lib/recordingFinalizingStatus";
@@ -127,15 +131,8 @@ export function useRecordingWidgetRuntime() {
       "recording-state-changed",
       (event) => {
         const activeProjectId = resolveActiveProjectId();
-        if (!activeProjectId) {
-          return;
-        }
-        const eventProjectId = event.payload.projectId?.trim() ?? "";
-        const hasEventProjectId = eventProjectId.length > 0;
-        if (
-          hasEventProjectId &&
-          eventProjectId !== activeProjectId
-        ) {
+        const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+        if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) {
           return;
         }
         setRecordingState(event.payload.state);
@@ -172,14 +169,16 @@ export function useRecordingWidgetRuntime() {
       "recording-finalizing",
       (event) => {
         const activeProjectId = resolveActiveProjectId();
-        if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
+        const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+        if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) return;
         setFinalizingStatus(event.payload.status ?? "stopping-capture");
         setRecordingState("stopping");
       }
     );
     const unlistenStopped = listen<string>("recording-stopped", (stoppedProjectId) => {
       const activeProjectId = resolveActiveProjectId();
-      if (!activeProjectId || stoppedProjectId.payload !== activeProjectId) return;
+      const eventProjectId = normalizeScopedProjectId(stoppedProjectId.payload);
+      if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) return;
       clearStoredCurrentProjectId();
       clearPendingRecordingSourceFallbackNotice();
       resetRecording();
@@ -190,7 +189,8 @@ export function useRecordingWidgetRuntime() {
       "recording-stop-failed",
       (event) => {
         const activeProjectId = resolveActiveProjectId();
-        if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
+        const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+        if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) return;
         clearStoredCurrentProjectId();
         clearPendingRecordingSourceFallbackNotice();
         resetRecording();
@@ -208,7 +208,8 @@ export function useRecordingWidgetRuntime() {
       sourceOrdinal?: number | null;
     }>("recording-source-fallback", (event) => {
       const activeProjectId = resolveActiveProjectId();
-      if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
+      const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+      if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) return;
       const warningMessage =
         event.payload.sourceType === "display"
           ? `The selected display became unavailable. Recording continued on ${fallbackDisplayLabel(
