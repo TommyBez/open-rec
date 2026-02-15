@@ -25,6 +25,7 @@ interface ExportErrorEvent {
 
 interface ExportLifecycleEvent {
   jobId: string;
+  startedAtMs?: number;
 }
 
 interface RecordingStopFailedEvent {
@@ -100,7 +101,7 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
       notifyUser("Export failed", event.payload.message);
     });
     const unlistenStartedPromise = listen<ExportLifecycleEvent>("export-started", (event) => {
-      registerExportJob(event.payload.jobId);
+      registerExportJob(event.payload.jobId, event.payload.startedAtMs);
     });
     const unlistenCancelledPromise = listen<ExportLifecycleEvent>("export-cancelled", (event) => {
       unregisterExportJob(event.payload.jobId);

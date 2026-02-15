@@ -2,21 +2,26 @@ import { Loader2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useExportStore } from "../stores";
 
-const MAX_VISIBLE_EXPORT_JOB_IDS = 5;
+const MAX_VISIBLE_EXPORT_JOBS = 5;
 
 interface ActiveExportBadgeProps {
   activeExportCount: number;
 }
 
+function formatStartedAt(startedAtMs: number): string {
+  const date = new Date(startedAtMs);
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 export function ActiveExportBadge({ activeExportCount }: ActiveExportBadgeProps) {
-  const activeExportJobIds = useExportStore((state) => state.activeExportJobIds);
+  const activeExportJobs = useExportStore((state) => state.activeExportJobs);
 
   if (activeExportCount <= 0) {
     return null;
   }
 
-  const visibleJobIds = activeExportJobIds.slice(0, MAX_VISIBLE_EXPORT_JOB_IDS);
-  const hiddenJobCount = Math.max(activeExportJobIds.length - visibleJobIds.length, 0);
+  const visibleJobs = activeExportJobs.slice(0, MAX_VISIBLE_EXPORT_JOBS);
+  const hiddenJobCount = Math.max(activeExportJobs.length - visibleJobs.length, 0);
 
   return (
     <Tooltip>
@@ -33,11 +38,12 @@ export function ActiveExportBadge({ activeExportCount }: ActiveExportBadgeProps)
       <TooltipContent align="end">
         <div className="space-y-1 text-xs">
           <p className="font-medium text-foreground">Active export queue</p>
-          {visibleJobIds.length > 0 ? (
+          {visibleJobs.length > 0 ? (
             <ul className="space-y-0.5 text-muted-foreground">
-              {visibleJobIds.map((jobId) => (
-                <li key={jobId} className="font-mono">
-                  {jobId}
+              {visibleJobs.map((job) => (
+                <li key={job.jobId}>
+                  <span className="font-mono">{job.jobId}</span>
+                  <span className="ml-1">· started {formatStartedAt(job.startedAtMs)}</span>
                 </li>
               ))}
             </ul>
