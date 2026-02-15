@@ -30,5 +30,8 @@ jobs:
       - name: Run component-size and type checks
         run: pnpm run verify:frontend
 
+      - name: Run frontend regression tests
+        run: pnpm run test:frontend
+
       - name: Build frontend bundle
         run: pnpm run build:frontend

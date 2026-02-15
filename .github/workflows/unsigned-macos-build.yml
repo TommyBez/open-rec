@@ -43,6 +43,9 @@ jobs:
       - name: Verify frontend constraints
         run: pnpm run verify:frontend
 
+      - name: Run frontend regression tests
+        run: pnpm run test:frontend
+
       - name: Build unsigned DMG
         run: pnpm tauri build --bundles dmg --target ${{ matrix.target }}
 
