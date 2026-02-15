@@ -14,6 +14,7 @@ import {
   loadRecordingPreferences,
   saveRecordingPreferences,
 } from "../../../lib/recordingPreferencesStore";
+import { setPendingRecordingSourceFallbackNotice } from "../../../lib/recordingSourceFallbackNotice";
 import {
   consumeTrayQuickRecordRequest,
   requestTrayQuickRecord,
@@ -602,6 +603,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setRecordingStartTimeMs(result.recordingStartTimeMs);
       startRecording(result.projectId);
       setStoredCurrentProjectId(result.projectId);
+      if (result.fallbackSource?.sourceId) {
+        setPendingRecordingSourceFallbackNotice({
+          projectId: result.projectId,
+          sourceType: "display",
+          sourceId: result.fallbackSource.sourceId,
+          sourceOrdinal: result.fallbackSource.sourceOrdinal ?? null,
+        });
+      }
       setErrorMessage(null);
 
       await invoke("open_recording_widget");

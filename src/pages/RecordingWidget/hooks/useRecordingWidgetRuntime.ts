@@ -8,6 +8,10 @@ import {
   getStoredCurrentProjectId,
   setStoredCurrentProjectId,
 } from "../../../lib/currentProjectStorage";
+import {
+  clearPendingRecordingSourceFallbackNotice,
+  getPendingRecordingSourceFallbackNotice,
+} from "../../../lib/recordingSourceFallbackNotice";
 import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpace";
 import { toErrorMessage } from "../../../lib/errorMessage";
 import { withTimeout } from "../../../lib/withTimeout";
@@ -134,6 +138,7 @@ export function useRecordingWidgetRuntime() {
       const activeProjectId = resolveActiveProjectId();
       if (!activeProjectId || stoppedProjectId.payload !== activeProjectId) return;
       clearStoredCurrentProjectId();
+      clearPendingRecordingSourceFallbackNotice();
       resetRecording();
       setPermissionError(null);
     });
@@ -154,6 +159,7 @@ export function useRecordingWidgetRuntime() {
       setPermissionError(
         `The selected display became unavailable. Recording continued on ${fallbackLabel}.`
       );
+      clearPendingRecordingSourceFallbackNotice();
     });
 
     return () => {
@@ -162,6 +168,27 @@ export function useRecordingWidgetRuntime() {
       unlistenSourceFallback.then((fn) => fn());
     };
   }, [projectId, resetRecording, setRecordingState]);
+
+  useEffect(() => {
+    if (state !== "recording" && state !== "paused") return;
+    const activeProjectId = resolveActiveProjectId();
+    if (!activeProjectId) return;
+    const pendingNotice = getPendingRecordingSourceFallbackNotice();
+    if (!pendingNotice || pendingNotice.projectId !== activeProjectId) return;
+    if (pendingNotice.sourceType !== "display") {
+      clearPendingRecordingSourceFallbackNotice();
+      return;
+    }
+    const fallbackLabel =
+      typeof pendingNotice.sourceOrdinal === "number" &&
+      Number.isFinite(pendingNotice.sourceOrdinal)
+        ? `Display ${pendingNotice.sourceOrdinal + 1}`
+        : `display source ${pendingNotice.sourceId}`;
+    setPermissionError(
+      `The selected display became unavailable. Recording continued on ${fallbackLabel}.`
+    );
+    clearPendingRecordingSourceFallbackNotice();
+  }, [projectId, state]);
 
   useEffect(() => {
     if (state === "recording") {
