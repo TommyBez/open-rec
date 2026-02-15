@@ -46,6 +46,10 @@ A macOS screen and camera recording app with editing capabilities. Built with Ta
 # Install dependencies
 pnpm install
 
+# Verify backend checks
+cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
+cargo test --manifest-path src-tauri/Cargo.toml
+
 # Verify frontend constraints
 pnpm run verify:frontend
 
@@ -89,7 +93,7 @@ OpenRec registers the `.openrec` extension as a project document type.
 │   │   ├── recording/      # Screen capture, ScreenCaptureKit
 │   │   ├── project/        # Project management
 │   │   └── export/         # FFmpeg export
-│   └── binaries/           # Bundled FFmpeg
+│   └── binaries/           # Bundled FFmpeg (plus Linux wrappers to system ffmpeg)
 └── components.json         # shadcn/ui config
 ```
 
