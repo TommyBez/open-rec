@@ -132,6 +132,7 @@ export function useBatchExportQueue({ selectedProjectIds, projects }: UseBatchEx
           setBatchHistory((history) => [...history, `✗ ${projectName} (${result.message})`]);
         }
       } catch (error) {
+        setCurrentBatchJobId(null);
         failed += 1;
         setBatchHistory((history) => [...history, `✗ ${projectName} (failed to start)`]);
         console.error("Batch export failed for project:", projectId, error);

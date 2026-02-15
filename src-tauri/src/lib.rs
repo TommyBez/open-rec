@@ -1046,7 +1046,7 @@ fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), A
     };
 
     let label = format!("editor-{}", Uuid::new_v4());
-    let route = format!("/editor/{}", project_id);
+    let route = build_editor_route(project_id);
 
     WebviewWindowBuilder::new(app, label, WebviewUrl::App(route.into()))
         .title(title)
@@ -1060,6 +1060,12 @@ fn open_project_editor_window(app: &AppHandle, project_id: &str) -> Result<(), A
         })?;
 
     Ok(())
+}
+
+fn build_editor_route(project_id: &str) -> String {
+    let encoded_project_id: String =
+        url::form_urlencoded::byte_serialize(project_id.as_bytes()).collect();
+    format!("/editor/{}", encoded_project_id)
 }
 
 fn normalize_opened_project_id(raw: &str) -> Option<String> {
@@ -1577,8 +1583,8 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
-        project_id_from_opened_path, resolve_project_dir_from_payload,
+        build_editor_route, normalize_opened_project_id, normalize_project_id_input,
+        parse_ffmpeg_progress, project_id_from_opened_path, resolve_project_dir_from_payload,
     };
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use super::{parse_startup_opened_arg, strip_wrapping_quotes};
@@ -1657,6 +1663,14 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "Missing project id for test context".to_string()
+        );
+    }
+
+    #[test]
+    fn builds_percent_encoded_editor_route() {
+        assert_eq!(
+            build_editor_route("project with spaces/and/slashes"),
+            "/editor/project+with+spaces%2Fand%2Fslashes"
         );
     }
 
