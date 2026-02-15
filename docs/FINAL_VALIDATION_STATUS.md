@@ -29,6 +29,7 @@ The following checks are run repeatedly and are expected green:
   - backend coverage around recording/export/project/opened-path reliability helpers
 - CI includes macOS-host backend compile validation (`backend-macos-checks.yml`)
   - catches `#[cfg(target_os = "macos")]` compile regressions not visible in Linux-only checks
+  - also enforces docs-link baseline in macOS-host CI path
 
 ## 2) Validated implementation areas
 
