@@ -146,9 +146,15 @@ fn has_audio_stream(path: &str) -> bool {
     }
 }
 
-pub fn validate_export_inputs(project: &Project, options: &ExportOptions) -> Result<(), AppError> {
-    let screen_path = std::path::Path::new(&project.screen_video_path);
-    if !screen_path.exists() {
+async fn path_exists(path: &str) -> bool {
+    tokio::fs::metadata(path).await.is_ok()
+}
+
+pub async fn validate_export_inputs(
+    project: &Project,
+    options: &ExportOptions,
+) -> Result<(), AppError> {
+    if !path_exists(&project.screen_video_path).await {
         return Err(AppError::Message(format!(
             "Screen recording file does not exist: {}",
             project.screen_video_path
@@ -156,7 +162,7 @@ pub fn validate_export_inputs(project: &Project, options: &ExportOptions) -> Res
     }
 
     if let Some(camera_path) = &project.camera_video_path {
-        if !std::path::Path::new(camera_path).exists() {
+        if !path_exists(camera_path).await {
             return Err(AppError::Message(format!(
                 "Camera recording file does not exist: {}",
                 camera_path
@@ -165,7 +171,7 @@ pub fn validate_export_inputs(project: &Project, options: &ExportOptions) -> Res
     }
 
     if let Some(mic_path) = &project.microphone_audio_path {
-        if !std::path::Path::new(mic_path).exists() {
+        if !path_exists(mic_path).await {
             return Err(AppError::Message(format!(
                 "Microphone recording file does not exist: {}",
                 mic_path
@@ -182,7 +188,7 @@ pub fn validate_export_inputs(project: &Project, options: &ExportOptions) -> Res
     if matches!(options.format, ExportFormat::Wav | ExportFormat::Mp3) {
         let has_screen_audio = has_audio_stream(&project.screen_video_path);
         let has_microphone_audio = match project.microphone_audio_path.as_deref() {
-            Some(mic_path) => std::path::Path::new(mic_path).exists(),
+            Some(mic_path) => path_exists(mic_path).await,
             None => false,
         };
         if !has_screen_audio && !has_microphone_audio {

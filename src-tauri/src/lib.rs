@@ -1455,7 +1455,7 @@ async fn export_project(
     let recordings_dir = recordings_dir_from_managed_state(&state)?;
     let project = project::load_project(&recordings_dir, &project_id).await?;
 
-    validate_export_inputs(&project, &options)?;
+    validate_export_inputs(&project, &options).await?;
 
     // Get downloads directory
     let downloads_dir = dirs::download_dir().unwrap_or_else(|| PathBuf::from("."));
