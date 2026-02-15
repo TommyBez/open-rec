@@ -23,6 +23,13 @@ import { withTimeout } from "../../../lib/withTimeout";
 const STOP_RECORDING_TIMEOUT_MS = 30_000;
 const PAUSE_RESUME_TIMEOUT_MS = 10_000;
 
+function fallbackDisplayLabel(sourceId: string, sourceOrdinal?: number | null): string {
+  if (typeof sourceOrdinal === "number" && Number.isFinite(sourceOrdinal)) {
+    return `Display ${sourceOrdinal + 1}`;
+  }
+  return `display source ${sourceId}`;
+}
+
 export function useRecordingWidgetRuntime() {
   const {
     state,
@@ -158,14 +165,12 @@ export function useRecordingWidgetRuntime() {
       const activeProjectId = resolveActiveProjectId();
       if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
       if (event.payload.sourceType !== "display") return;
-      const fallbackLabel =
-        typeof event.payload.sourceOrdinal === "number" &&
-        Number.isFinite(event.payload.sourceOrdinal)
-          ? `Display ${event.payload.sourceOrdinal + 1}`
-          : `display source ${event.payload.sourceId}`;
-      setPermissionError(
-        `The selected display became unavailable. Recording continued on ${fallbackLabel}.`
-      );
+      const warningMessage = `The selected display became unavailable. Recording continued on ${fallbackDisplayLabel(
+        event.payload.sourceId,
+        event.payload.sourceOrdinal
+      )}.`;
+      sourceUnavailableNoticeRef.current = warningMessage;
+      setPermissionError(warningMessage);
       clearPendingRecordingSourceFallbackNotice();
     });
 
@@ -186,14 +191,12 @@ export function useRecordingWidgetRuntime() {
       clearPendingRecordingSourceFallbackNotice();
       return;
     }
-    const fallbackLabel =
-      typeof pendingNotice.sourceOrdinal === "number" &&
-      Number.isFinite(pendingNotice.sourceOrdinal)
-        ? `Display ${pendingNotice.sourceOrdinal + 1}`
-        : `display source ${pendingNotice.sourceId}`;
-    setPermissionError(
-      `The selected display became unavailable. Recording continued on ${fallbackLabel}.`
-    );
+    const warningMessage = `The selected display became unavailable. Recording continued on ${fallbackDisplayLabel(
+      pendingNotice.sourceId,
+      pendingNotice.sourceOrdinal
+    )}.`;
+    sourceUnavailableNoticeRef.current = warningMessage;
+    setPermissionError(warningMessage);
     clearPendingRecordingSourceFallbackNotice();
   }, [projectId, state]);
 
@@ -317,17 +320,19 @@ export function useRecordingWidgetRuntime() {
           { projectId: activeProjectId }
         );
         if (!sourceStatus || sourceStatus.available || sourceStatus.sourceType !== "display") {
+          const previousNotice = sourceUnavailableNoticeRef.current;
           sourceUnavailableNoticeRef.current = null;
+          if (previousNotice) {
+            setPermissionError((current) =>
+              current === previousNotice ? null : current
+            );
+          }
           return;
         }
-        const fallbackLabel =
-          typeof sourceStatus.fallbackSource?.sourceOrdinal === "number" &&
-          Number.isFinite(sourceStatus.fallbackSource.sourceOrdinal)
-            ? `Display ${sourceStatus.fallbackSource.sourceOrdinal + 1}`
-            : sourceStatus.fallbackSource?.sourceId
-              ? `display source ${sourceStatus.fallbackSource.sourceId}`
-              : "an available display";
-        const warningMessage = `The selected display is disconnected. Recording will continue on ${fallbackLabel} when capture resumes.`;
+        const warningMessage = `The selected display is disconnected. Recording will continue on ${fallbackDisplayLabel(
+          sourceStatus.fallbackSource?.sourceId ?? sourceStatus.sourceId,
+          sourceStatus.fallbackSource?.sourceOrdinal
+        )} when capture resumes.`;
         if (sourceUnavailableNoticeRef.current === warningMessage) {
           return;
         }
