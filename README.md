@@ -71,6 +71,8 @@ Quick links:
   [`docs/RECOVERY_WARNING_PLAYBOOK.md`](docs/RECOVERY_WARNING_PLAYBOOK.md)
 - Unsigned install guide:
   [`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md)
+- CI workflow reference:
+  [`docs/CI_WORKFLOWS.md`](docs/CI_WORKFLOWS.md)
 
 ## Advanced runtime timeout overrides
 
