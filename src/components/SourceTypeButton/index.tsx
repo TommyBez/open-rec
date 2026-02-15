@@ -17,6 +17,7 @@ export function SourceTypeButton({
 }: SourceTypeButtonProps) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       className={cn(
