@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+#[cfg(target_os = "macos")]
+use std::time::Duration;
+use std::time::Instant;
 #[cfg(target_os = "macos")]
 use uuid::Uuid;
 
@@ -78,6 +80,7 @@ pub enum RecordingState {
 
 /// Information about an active recording session
 #[derive(Debug)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub struct RecordingSession {
     pub project_id: String,
     pub options: RecordingOptions,
@@ -112,6 +115,7 @@ pub struct RecordingSessionSnapshot {
 }
 
 /// Global recorder state
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub struct RecorderState {
     pub sessions: HashMap<String, RecordingSession>,
     pub recordings_dir: PathBuf,
@@ -161,6 +165,7 @@ pub struct StopRecordingResult {
     pub microphone_offset_ms: Option<i64>,
 }
 
+#[cfg(target_os = "macos")]
 fn make_even_dimension(value: u32) -> u32 {
     let base = value.max(2);
     if base % 2 == 0 {
@@ -171,6 +176,7 @@ fn make_even_dimension(value: u32) -> u32 {
 }
 
 impl RecordingQualityPreset {
+    #[cfg(target_os = "macos")]
     fn max_height(self) -> u32 {
         match self {
             RecordingQualityPreset::P72030 => 720,
@@ -179,6 +185,7 @@ impl RecordingQualityPreset {
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn fps(self) -> u32 {
         match self {
             RecordingQualityPreset::P72030
@@ -189,6 +196,7 @@ impl RecordingQualityPreset {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn resolve_output_dimensions(
     source_width: u32,
     source_height: u32,
@@ -253,6 +261,7 @@ fn find_display_or_fallback(
     Ok((fallback_display, true, 0))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn resolve_display_fallback_index(
     available_display_count: usize,
     preferred_display_ordinal: Option<u32>,
@@ -312,6 +321,7 @@ fn create_recording_output(
     })
 }
 
+#[cfg(target_os = "macos")]
 fn wait_for_file_ready(path: &PathBuf, timeout: Duration) -> Result<(), AppError> {
     let started = Instant::now();
     let mut last_size = 0;
@@ -735,6 +745,7 @@ pub fn set_media_offsets(
     Ok(())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn calculate_elapsed_duration_ms(session: &RecordingSession) -> u64 {
     let mut elapsed_ms = session.active_duration_ms;
     if session.state == RecordingState::Recording {
