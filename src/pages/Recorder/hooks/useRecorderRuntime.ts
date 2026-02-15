@@ -283,6 +283,24 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     }
   }, [sourceType, hasPermission, preferredSourceId, preferredSourceOrdinal]);
 
+  useEffect(() => {
+    if (!hasPermission || recordingState !== "idle") {
+      return;
+    }
+    const refreshIntervalId = window.setInterval(() => {
+      void loadSources();
+    }, 15000);
+    return () => {
+      window.clearInterval(refreshIntervalId);
+    };
+  }, [
+    hasPermission,
+    recordingState,
+    sourceType,
+    preferredSourceId,
+    preferredSourceOrdinal,
+  ]);
+
   async function checkPermission() {
     try {
       const granted = await invoke<boolean>("check_permission");
