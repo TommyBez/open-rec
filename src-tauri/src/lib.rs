@@ -708,6 +708,18 @@ fn start_screen_recording(
             "projectId": &result.project_id
         }),
     );
+    if let Some(fallback_source) = result.fallback_source.as_ref() {
+        emit_with_log(
+            &app,
+            "recording-source-fallback",
+            serde_json::json!({
+                "projectId": &result.project_id,
+                "sourceType": "display",
+                "sourceId": &fallback_source.source_id,
+                "sourceOrdinal": fallback_source.source_ordinal
+            }),
+        );
+    }
 
     Ok(result)
 }
@@ -886,7 +898,7 @@ fn resume_recording(
         ));
     }
 
-    let fallback_source_id = do_resume_recording(&state, &project_id)?;
+    let fallback_source = do_resume_recording(&state, &project_id)?;
 
     emit_with_log(
         &app,
@@ -896,14 +908,15 @@ fn resume_recording(
             "projectId": project_id
         }),
     );
-    if let Some(source_id) = fallback_source_id {
+    if let Some(fallback_source) = fallback_source {
         emit_with_log(
             &app,
             "recording-source-fallback",
             serde_json::json!({
                 "projectId": project_id,
                 "sourceType": "display",
-                "sourceId": source_id
+                "sourceId": fallback_source.source_id,
+                "sourceOrdinal": fallback_source.source_ordinal
             }),
         );
     }

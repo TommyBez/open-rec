@@ -149,7 +149,14 @@ pub struct StartRecordingResult {
     pub camera_video_path: Option<String>,
     pub recording_start_time_ms: i64,
     pub resolved_source_id: String,
-    pub fallback_source_id: Option<String>,
+    pub fallback_source: Option<RecordingSourceFallback>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingSourceFallback {
+    pub source_id: String,
+    pub source_ordinal: Option<u32>,
 }
 
 /// Result of stopping a recording
@@ -397,7 +404,7 @@ pub fn start_recording(
         source_height,
         resolved_source_id,
         resolved_display_ordinal,
-        fallback_source_id,
+        fallback_source,
     ) = match options.source_type {
         SourceType::Display => {
             let display_id = parse_display_id(&options.source_id)?;
@@ -424,7 +431,10 @@ pub fn start_recording(
                 display.display_id().to_string(),
                 Some(resolved_display_ordinal),
                 if used_fallback {
-                    Some(display.display_id().to_string())
+                    Some(RecordingSourceFallback {
+                        source_id: display.display_id().to_string(),
+                        source_ordinal: Some(resolved_display_ordinal),
+                    })
                 } else {
                     None
                 },
@@ -516,7 +526,7 @@ pub fn start_recording(
         camera_video_path: camera_video_path.map(|p| p.to_string_lossy().to_string()),
         recording_start_time_ms,
         resolved_source_id,
-        fallback_source_id,
+        fallback_source,
     })
 }
 
@@ -632,7 +642,7 @@ pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<
 pub fn resume_recording(
     state: &SharedRecorderState,
     project_id: &str,
-) -> Result<Option<String>, AppError> {
+) -> Result<Option<RecordingSourceFallback>, AppError> {
     let mut state_guard = state
         .lock()
         .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
@@ -668,7 +678,7 @@ pub fn resume_recording(
     let content = SCShareableContent::get()
         .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
-    let mut fallback_display_id: Option<String> = None;
+    let mut fallback_display: Option<RecordingSourceFallback> = None;
 
     // Recreate filter
     let filter = match session.options.source_type {
@@ -689,7 +699,10 @@ pub fn resume_recording(
                     display.display_id()
                 );
                 session.options.source_id = display.display_id().to_string();
-                fallback_display_id = Some(session.options.source_id.clone());
+                fallback_display = Some(RecordingSourceFallback {
+                    source_id: session.options.source_id.clone(),
+                    source_ordinal: session.options.preferred_display_ordinal,
+                });
             }
             SCContentFilter::create()
                 .with_display(&display)
@@ -738,7 +751,7 @@ pub fn resume_recording(
     session.screen_segments.push(segment_path);
     session.last_resume_instant = Some(Instant::now());
 
-    Ok(fallback_display_id)
+    Ok(fallback_display)
 }
 
 /// Update media offsets for camera/microphone recordings
@@ -886,7 +899,7 @@ pub fn pause_recording(_state: &SharedRecorderState, _project_id: &str) -> Resul
 pub fn resume_recording(
     _state: &SharedRecorderState,
     _project_id: &str,
-) -> Result<Option<String>, AppError> {
+) -> Result<Option<RecordingSourceFallback>, AppError> {
     Err(AppError::Message(
         "Screen capture is only supported on macOS".to_string(),
     ))

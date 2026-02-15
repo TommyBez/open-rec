@@ -130,12 +130,18 @@ export function useRecordingWidgetRuntime() {
       projectId: string;
       sourceType: "display" | "window";
       sourceId: string;
+      sourceOrdinal?: number | null;
     }>("recording-source-fallback", (event) => {
       const activeProjectId = resolveActiveProjectId();
       if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
       if (event.payload.sourceType !== "display") return;
+      const fallbackLabel =
+        typeof event.payload.sourceOrdinal === "number" &&
+        Number.isFinite(event.payload.sourceOrdinal)
+          ? `Display ${event.payload.sourceOrdinal + 1}`
+          : `display source ${event.payload.sourceId}`;
       setPermissionError(
-        `The selected display became unavailable. Recording continued on display source ${event.payload.sourceId}.`
+        `The selected display became unavailable. Recording continued on ${fallbackLabel}.`
       );
     });
 

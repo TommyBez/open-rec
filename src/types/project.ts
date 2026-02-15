@@ -120,7 +120,12 @@ export interface StartRecordingResult {
   cameraVideoPath?: string;
   recordingStartTimeMs: number;
   resolvedSourceId: string;
-  fallbackSourceId?: string | null;
+  fallbackSource?: RecordingSourceFallback | null;
+}
+
+export interface RecordingSourceFallback {
+  sourceId: string;
+  sourceOrdinal?: number | null;
 }
 
 export type BackendRecordingState = "recording" | "paused" | "stopped";
