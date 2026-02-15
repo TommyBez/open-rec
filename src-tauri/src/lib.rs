@@ -43,6 +43,11 @@ const TRAY_MENU_PAUSE_RESUME: &str = "tray.pause-resume";
 const TRAY_MENU_QUIT: &str = "tray.quit";
 const TRAY_MENU_RECENT_PREFIX: &str = "tray.recent.";
 const APP_MENU_NEW_WINDOW: &str = "app.new-window";
+const APP_MENU_CHECK_UPDATES: &str = "app.check-updates";
+const APP_MENU_UNSIGNED_INSTALL_GUIDE: &str = "app.unsigned-install-guide";
+const OPENREC_RELEASES_URL: &str = "https://github.com/TommyBez/open-rec/releases";
+const OPENREC_UNSIGNED_INSTALL_GUIDE_URL: &str =
+    "https://github.com/TommyBez/open-rec/blob/main/docs/UNSIGNED_MAC_INSTALL.md";
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -181,6 +186,22 @@ fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(
         .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
     let quit_item = MenuItem::with_id(manager, TRAY_MENU_QUIT, "Quit OpenRec", true, None::<&str>)
         .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+    let check_updates_item = MenuItem::with_id(
+        manager,
+        APP_MENU_CHECK_UPDATES,
+        "Check for Updates",
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+    let install_guide_item = MenuItem::with_id(
+        manager,
+        APP_MENU_UNSIGNED_INSTALL_GUIDE,
+        "Unsigned Install Guide",
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
     let separator_primary = PredefinedMenuItem::separator(manager)
         .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
     let separator = PredefinedMenuItem::separator(manager)
@@ -203,7 +224,15 @@ fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(
     )
     .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
 
-    Menu::with_items(manager, &[&file_submenu])
+    let help_submenu = Submenu::with_items(
+        manager,
+        "Help",
+        true,
+        &[&check_updates_item, &install_guide_item],
+    )
+    .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))?;
+
+    Menu::with_items(manager, &[&file_submenu, &help_submenu])
         .map_err(|error| AppError::Message(format!("Failed to build app menu: {}", error)))
 }
 
@@ -466,6 +495,41 @@ fn ensure_recording_disk_headroom(recordings_dir: &PathBuf) -> Result<(), AppErr
     }
 
     Ok(())
+}
+
+fn open_external_url(url: &str) -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
+    let output = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .output()
+        .map_err(|error| AppError::Message(format!("Failed to open URL {}: {}", url, error)))?;
+
+    #[cfg(target_os = "macos")]
+    let output = std::process::Command::new("open")
+        .arg(url)
+        .output()
+        .map_err(|error| AppError::Message(format!("Failed to open URL {}: {}", url, error)))?;
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let output = std::process::Command::new("xdg-open")
+        .arg(url)
+        .output()
+        .map_err(|error| AppError::Message(format!("Failed to open URL {}: {}", url, error)))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(AppError::Message(format!(
+        "Opening URL {} failed: {}",
+        url,
+        if stderr.is_empty() {
+            "launcher exited with a non-zero status".to_string()
+        } else {
+            stderr
+        }
+    )))
 }
 
 fn is_missing_process_error(stderr: &str) -> bool {
@@ -1761,7 +1825,7 @@ mod tests {
     use super::{
         build_editor_route, is_missing_process_error, normalize_opened_project_id,
         normalize_project_id_input, parse_ffmpeg_progress, project_id_from_opened_path,
-        resolve_project_dir_from_payload,
+        resolve_project_dir_from_payload, OPENREC_RELEASES_URL, OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
     };
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use super::{parse_startup_opened_arg, strip_wrapping_quotes};
@@ -1816,6 +1880,14 @@ mod tests {
             "Cannot find the process with PID 123"
         ));
         assert!(!is_missing_process_error("permission denied"));
+    }
+
+    #[test]
+    fn exposes_manual_update_urls() {
+        assert!(OPENREC_RELEASES_URL.starts_with("https://"));
+        assert!(OPENREC_RELEASES_URL.contains("/releases"));
+        assert!(OPENREC_UNSIGNED_INSTALL_GUIDE_URL.starts_with("https://"));
+        assert!(OPENREC_UNSIGNED_INSTALL_GUIDE_URL.contains("UNSIGNED_MAC_INSTALL.md"));
     }
 
     #[test]
@@ -2290,6 +2362,16 @@ pub fn run() {
                     APP_MENU_NEW_WINDOW => {
                         if let Err(error) = open_videos_library_window(app_handle) {
                             eprintln!("Failed to open new window from app menu: {}", error);
+                        }
+                    }
+                    APP_MENU_CHECK_UPDATES => {
+                        if let Err(error) = open_external_url(OPENREC_RELEASES_URL) {
+                            eprintln!("Failed to open releases URL: {}", error);
+                        }
+                    }
+                    APP_MENU_UNSIGNED_INSTALL_GUIDE => {
+                        if let Err(error) = open_external_url(OPENREC_UNSIGNED_INSTALL_GUIDE_URL) {
+                            eprintln!("Failed to open unsigned install guide URL: {}", error);
                         }
                     }
                     TRAY_MENU_OPEN_RECORDER => {
