@@ -41,6 +41,21 @@ interface ResolvedRecordingSource {
 }
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
+const DISPLAY_FALLBACK_WARNING_PREFIXES = [
+  "Display \"",
+  "Saved display is unavailable.",
+  "Selected display became unavailable.",
+] as const;
+
+function clearDisplayFallbackWarning(current: string | null): string | null {
+  if (!current) {
+    return null;
+  }
+  const isFallbackWarning = DISPLAY_FALLBACK_WARNING_PREFIXES.some((prefix) =>
+    current.startsWith(prefix)
+  );
+  return isFallbackWarning ? null : current;
+}
 
 function describeDisplaySource(sourceId: string, sourceOrdinal?: number | null): string {
   if (typeof sourceOrdinal === "number" && Number.isFinite(sourceOrdinal)) {
@@ -535,6 +550,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         setErrorMessage(
           `Saved display is unavailable. Switched to "${resolvedSource.name}".`
         );
+      } else {
+        setErrorMessage((current) => clearDisplayFallbackWarning(current));
       }
     } catch (error) {
       console.error("Failed to load capture sources:", error);
@@ -592,7 +609,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           `Saved display is unavailable. Recording will use "${resolvedSource.name}".`
         );
       } else {
-        setErrorMessage(null);
+        setErrorMessage((current) => clearDisplayFallbackWarning(current));
       }
       return {
         source: resolvedSource,
