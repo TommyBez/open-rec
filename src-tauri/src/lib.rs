@@ -696,21 +696,24 @@ async fn concatenate_screen_segments(
         merged_path.to_string_lossy().to_string(),
     ];
 
-    run_ffmpeg_command(app, &args).await?;
+    let merge_result = async {
+        run_ffmpeg_command(app, &args).await?;
 
-    if tokio::fs::metadata(&stop_result.screen_video_path)
-        .await
-        .is_ok()
-    {
-        tokio::fs::remove_file(&stop_result.screen_video_path)
+        if tokio::fs::metadata(&stop_result.screen_video_path)
             .await
-            .map_err(|e| {
-                AppError::Message(format!("Failed to remove old screen recording: {}", e))
-            })?;
+            .is_ok()
+        {
+            tokio::fs::remove_file(&stop_result.screen_video_path)
+                .await
+                .map_err(|e| {
+                    AppError::Message(format!("Failed to remove old screen recording: {}", e))
+                })?;
+        }
+        tokio::fs::rename(&merged_path, &stop_result.screen_video_path)
+            .await
+            .map_err(|e| AppError::Message(format!("Failed to finalize merged recording: {}", e)))
     }
-    tokio::fs::rename(&merged_path, &stop_result.screen_video_path)
-        .await
-        .map_err(|e| AppError::Message(format!("Failed to finalize merged recording: {}", e)))?;
+    .await;
 
     if let Err(error) = tokio::fs::remove_file(&concat_list_path).await {
         eprintln!(
@@ -719,6 +722,20 @@ async fn concatenate_screen_segments(
             error
         );
     }
+
+    if merge_result.is_err() {
+        if tokio::fs::metadata(&merged_path).await.is_ok() {
+            if let Err(error) = tokio::fs::remove_file(&merged_path).await {
+                eprintln!(
+                    "Failed to remove incomplete merged recording {}: {}",
+                    merged_path.display(),
+                    error
+                );
+            }
+        }
+        return merge_result;
+    }
+
     for path in &stop_result.screen_segment_paths {
         if path != &stop_result.screen_video_path {
             if let Err(error) = tokio::fs::remove_file(path).await {
@@ -727,7 +744,7 @@ async fn concatenate_screen_segments(
         }
     }
 
-    Ok(())
+    merge_result
 }
 
 fn probe_video_dimensions(screen_video_path: &PathBuf) -> Result<(u32, u32), AppError> {
