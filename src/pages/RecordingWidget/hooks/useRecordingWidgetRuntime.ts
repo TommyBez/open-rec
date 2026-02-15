@@ -319,7 +319,7 @@ export function useRecordingWidgetRuntime() {
           "get_recording_source_status",
           { projectId: activeProjectId }
         );
-        if (!sourceStatus || sourceStatus.available || sourceStatus.sourceType !== "display") {
+        if (!sourceStatus || sourceStatus.available) {
           const previousNotice = sourceUnavailableNoticeRef.current;
           sourceUnavailableNoticeRef.current = null;
           if (previousNotice) {
@@ -329,15 +329,24 @@ export function useRecordingWidgetRuntime() {
           }
           return;
         }
-        const warningMessage = `The selected display is disconnected. Recording will continue on ${fallbackDisplayLabel(
-          sourceStatus.fallbackSource?.sourceId ?? sourceStatus.sourceId,
-          sourceStatus.fallbackSource?.sourceOrdinal
-        )} when capture resumes.`;
+        const warningMessage =
+          sourceStatus.sourceType === "display"
+            ? `The selected display is disconnected. Recording will continue on ${fallbackDisplayLabel(
+                sourceStatus.fallbackSource?.sourceId ?? sourceStatus.sourceId,
+                sourceStatus.fallbackSource?.sourceOrdinal
+              )} when capture resumes.`
+            : "The selected window is unavailable. Recording may fail when resuming.";
         if (sourceUnavailableNoticeRef.current === warningMessage) {
           return;
         }
+        const previousNotice = sourceUnavailableNoticeRef.current;
         sourceUnavailableNoticeRef.current = warningMessage;
-        setPermissionError((current) => current ?? warningMessage);
+        setPermissionError((current) => {
+          if (!current || current === previousNotice) {
+            return warningMessage;
+          }
+          return current;
+        });
       } catch (error) {
         console.error("Failed to verify recording source availability:", error);
       }
