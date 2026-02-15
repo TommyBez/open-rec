@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useRecordingStore, RecordingState } from "../../../stores";
@@ -22,11 +22,8 @@ import {
   getRecordingWidgetStatusLabel,
   RecordingFinalizingStatus,
 } from "../../../lib/recordingFinalizingStatus";
+import { loadRuntimeTimeoutSettings } from "../../../lib/runtimeTimeoutSettings";
 import { withTimeout } from "../../../lib/withTimeout";
-
-const STOP_RECORDING_TIMEOUT_MS = 150_000;
-const PAUSE_RESUME_TIMEOUT_MS = 10_000;
-const STOPPING_RECOVERY_TIMEOUT_MS = 180_000;
 
 function fallbackDisplayLabel(sourceId: string, sourceOrdinal?: number | null): string {
   if (typeof sourceOrdinal === "number" && Number.isFinite(sourceOrdinal)) {
@@ -58,6 +55,7 @@ export function useRecordingWidgetRuntime() {
   const autoSegmentInFlightRef = useRef(false);
   const sourceStatusPollInFlightRef = useRef(false);
   const sourceUnavailableNoticeRef = useRef<string | null>(null);
+  const runtimeTimeoutSettings = useMemo(() => loadRuntimeTimeoutSettings(), []);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [finalizingStatus, setFinalizingStatus] =
     useState<RecordingFinalizingStatus | null>(null);
@@ -307,7 +305,7 @@ export function useRecordingWidgetRuntime() {
       beginRecordingStop();
       await withTimeout(
         invoke("stop_screen_recording", { projectId: currentProjectId }),
-        STOP_RECORDING_TIMEOUT_MS,
+        runtimeTimeoutSettings.widgetStopRecordingTimeoutMs,
         "Stopping recording timed out."
       );
       clearStoredCurrentProjectId();
@@ -369,11 +367,11 @@ export function useRecordingWidgetRuntime() {
         current ??
         "Recording finalization timed out in the widget. Open the recordings list to verify the saved project."
       );
-    }, STOPPING_RECOVERY_TIMEOUT_MS);
+    }, runtimeTimeoutSettings.widgetStoppingRecoveryTimeoutMs);
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [resetRecording, state]);
+  }, [resetRecording, runtimeTimeoutSettings.widgetStoppingRecoveryTimeoutMs, state]);
 
   useEffect(() => {
     if (state === "idle") {
@@ -439,12 +437,12 @@ export function useRecordingWidgetRuntime() {
       try {
         await withTimeout(
           invoke("pause_recording", { projectId: activeProjectId }),
-          PAUSE_RESUME_TIMEOUT_MS,
+          runtimeTimeoutSettings.widgetPauseResumeTimeoutMs,
           "Pause operation timed out during auto-segmentation."
         );
         await withTimeout(
           invoke("resume_recording", { projectId: activeProjectId }),
-          PAUSE_RESUME_TIMEOUT_MS,
+          runtimeTimeoutSettings.widgetPauseResumeTimeoutMs,
           "Resume operation timed out during auto-segmentation."
         );
         lastAutoSegmentAtRef.current = elapsedTime;
@@ -470,14 +468,14 @@ export function useRecordingWidgetRuntime() {
       if (state === "recording") {
         await withTimeout(
           invoke("pause_recording", { projectId: currentProjectId }),
-          PAUSE_RESUME_TIMEOUT_MS,
+          runtimeTimeoutSettings.widgetPauseResumeTimeoutMs,
           "Pausing recording timed out."
         );
         setRecordingState("paused");
       } else {
         await withTimeout(
           invoke("resume_recording", { projectId: currentProjectId }),
-          PAUSE_RESUME_TIMEOUT_MS,
+          runtimeTimeoutSettings.widgetPauseResumeTimeoutMs,
           "Resuming recording timed out."
         );
         setRecordingState("recording");

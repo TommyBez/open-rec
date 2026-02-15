@@ -101,5 +101,6 @@ and export/finalization recovery flows.
 1. Confirm current capture source still exists (display/window still present).
 2. Confirm permissions are granted (Screen Recording, Camera, Microphone as used).
 3. Confirm free disk space is above guardrail.
-4. Retry on a short recording session to validate recovery path quickly.
-5. Collect console/backend logs if the same warning persists across multiple runs.
+4. Tune advanced timeout overrides (if needed) via `openrec.runtime-timeout-settings-v1`.
+5. Retry on a short recording session to validate recovery path quickly.
+6. Collect console/backend logs if the same warning persists across multiple runs.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
@@ -33,6 +33,7 @@ import {
   getRecordingFinalizingMessage,
   RecordingFinalizingStatus,
 } from "../../../lib/recordingFinalizingStatus";
+import { loadRuntimeTimeoutSettings } from "../../../lib/runtimeTimeoutSettings";
 import { withTimeout } from "../../../lib/withTimeout";
 import { useRecordingCountdown } from "./useRecordingCountdown";
 
@@ -46,10 +47,6 @@ interface ResolvedRecordingSource {
   availableSources: CaptureSource[];
 }
 
-const START_RECORDING_TIMEOUT_MS = 15_000;
-const STOP_FINALIZATION_TIMEOUT_MS = 180_000;
-const OPEN_WIDGET_TIMEOUT_MS = 8_000;
-const HIDE_WINDOW_TIMEOUT_MS = 5_000;
 const WIDGET_HANDOFF_WARNING_PREFIXES = [
   "Recording started, but floating controls failed to open.",
   "Unable to open floating controls.",
@@ -204,6 +201,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   const pendingTrayQuickRecordRef = useRef(false);
   const loadSourcesInFlightRef = useRef(false);
   const { countdown, startCountdown } = useRecordingCountdown();
+  const runtimeTimeoutSettings = useMemo(() => loadRuntimeTimeoutSettings(), []);
   const appendDiagnostic = useRuntimeDiagnosticsStore((state) => state.appendEntry);
   const appendLifecycleEvent = useRuntimeDiagnosticsStore(
     (state) => state.appendLifecycleEvent
@@ -578,11 +576,17 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         current ??
         "Recording finalization is taking longer than expected. Check the recordings list for the saved project."
       );
-    }, STOP_FINALIZATION_TIMEOUT_MS);
+    }, runtimeTimeoutSettings.recorderStopFinalizationTimeoutMs);
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [recordingState, setProjectId, setRecordingState, setRecordingStartTimeMs]);
+  }, [
+    recordingState,
+    runtimeTimeoutSettings.recorderStopFinalizationTimeoutMs,
+    setProjectId,
+    setRecordingState,
+    setRecordingStartTimeMs,
+  ]);
 
   useEffect(() => {
     const unlisten = listen<string>("recording-stopped", (event) => {
@@ -910,7 +914,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
 
       result = await withTimeout(
         invoke<StartRecordingResult>("start_screen_recording", { options }),
-        START_RECORDING_TIMEOUT_MS,
+        runtimeTimeoutSettings.recorderStartRecordingTimeoutMs,
         "Recording start timed out"
       );
     } catch (error) {
@@ -982,13 +986,13 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     try {
       await withTimeout(
         invoke("open_recording_widget"),
-        OPEN_WIDGET_TIMEOUT_MS,
+        runtimeTimeoutSettings.recorderOpenWidgetTimeoutMs,
         "Opening recording widget timed out."
       );
       const mainWindow = getCurrentWindow();
       await withTimeout(
         mainWindow.hide(),
-        HIDE_WINDOW_TIMEOUT_MS,
+        runtimeTimeoutSettings.recorderHideWindowTimeoutMs,
         "Hiding recorder window timed out."
       );
       setErrorMessage((current) => clearWidgetHandoffWarning(current));
@@ -1047,7 +1051,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     try {
       await withTimeout(
         invoke("open_recording_widget"),
-        OPEN_WIDGET_TIMEOUT_MS,
+        runtimeTimeoutSettings.recorderOpenWidgetTimeoutMs,
         "Opening recording widget timed out."
       );
       setErrorMessage((current) => clearWidgetHandoffWarning(current));
@@ -1087,7 +1091,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       });
       await withTimeout(
         invoke("retry_recording_finalization", { projectId: retryProjectId }),
-        STOP_FINALIZATION_TIMEOUT_MS,
+        runtimeTimeoutSettings.recorderStopFinalizationTimeoutMs,
         "Retrying recording finalization timed out."
       );
       setRetryFinalizationProjectId(null);

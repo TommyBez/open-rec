@@ -12,6 +12,7 @@ A macOS screen and camera recording app with editing capabilities. Built with Ta
   - Floating recording widget with pause/resume/stop controls, plus in-recorder fallback button to reopen controls
   - Automatic display/window fallback when the selected capture target disappears mid-session
   - One-click recorder action to retry failed stop finalization
+  - Advanced runtime timeout presets for recorder/widget recovery paths
   - Inline recovery diagnostics panel with ordered recorder/export/runtime lifecycle telemetry
 - **Editing**
   - Cut and trim segments on a timeline
@@ -85,6 +86,21 @@ For warning-to-recovery guidance during manual validation, see
 [`docs/RECOVERY_WARNING_PLAYBOOK.md`](docs/RECOVERY_WARNING_PLAYBOOK.md).
 For optional post-closure polish items, see
 [`docs/NICE_TO_HAVE_BACKLOG.md`](docs/NICE_TO_HAVE_BACKLOG.md).
+
+### Advanced runtime timeout overrides
+
+Recorder/widget timeout budgets can be tuned for slower machines by setting
+`localStorage["openrec.runtime-timeout-settings-v1"]` to a JSON object in dev tools.
+
+Supported keys:
+
+- `recorderStartRecordingTimeoutMs`
+- `recorderStopFinalizationTimeoutMs`
+- `recorderOpenWidgetTimeoutMs`
+- `recorderHideWindowTimeoutMs`
+- `widgetStopRecordingTimeoutMs`
+- `widgetPauseResumeTimeoutMs`
+- `widgetStoppingRecoveryTimeoutMs`
 
 ### File associations
 
