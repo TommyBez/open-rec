@@ -3,6 +3,7 @@ import {
   clearPendingFinalizationRetryProjectId,
   getPendingFinalizationRetryProjectId,
   setPendingFinalizationRetryProjectId,
+  shouldClearPendingFinalizationRetryContext,
 } from "./pendingFinalizationRetryStore";
 
 const STORAGE_KEY = "openrec.pending-finalization-retry-project-id";
@@ -50,5 +51,13 @@ describe("pendingFinalizationRetryStore", () => {
     setPendingFinalizationRetryProjectId("project-abc");
     clearPendingFinalizationRetryProjectId();
     expect(getPendingFinalizationRetryProjectId()).toBeNull();
+  });
+
+  it("determines when pending retry context should clear", () => {
+    expect(shouldClearPendingFinalizationRetryContext(null, "project-a")).toBe(false);
+    expect(shouldClearPendingFinalizationRetryContext("project-a", "project-a")).toBe(true);
+    expect(shouldClearPendingFinalizationRetryContext(" project-a ", "project-a")).toBe(true);
+    expect(shouldClearPendingFinalizationRetryContext("project-a", "project-b")).toBe(false);
+    expect(shouldClearPendingFinalizationRetryContext("project-a", null)).toBe(true);
   });
 });

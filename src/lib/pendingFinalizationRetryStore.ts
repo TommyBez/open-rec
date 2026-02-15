@@ -11,6 +11,21 @@ function normalizeProjectId(value: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+export function shouldClearPendingFinalizationRetryContext(
+  pendingProjectId: string | null,
+  stoppedProjectId: string | null
+): boolean {
+  const normalizedPendingProjectId = normalizeProjectId(pendingProjectId);
+  if (!normalizedPendingProjectId) {
+    return false;
+  }
+  const normalizedStoppedProjectId = normalizeProjectId(stoppedProjectId);
+  if (!normalizedStoppedProjectId) {
+    return true;
+  }
+  return normalizedStoppedProjectId === normalizedPendingProjectId;
+}
+
 export function getPendingFinalizationRetryProjectId(): string | null {
   try {
     return normalizeProjectId(

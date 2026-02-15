@@ -10,6 +10,8 @@ import {
 import type { NavigateFunction } from "react-router-dom";
 import {
   clearPendingFinalizationRetryProjectId,
+  getPendingFinalizationRetryProjectId,
+  shouldClearPendingFinalizationRetryContext,
   setPendingFinalizationRetryProjectId,
 } from "../lib/pendingFinalizationRetryStore";
 import { requestTrayQuickRecord } from "../lib/trayQuickRecord";
@@ -179,7 +181,13 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
       }
     );
     const unlistenRecordingStoppedPromise = listen<string>("recording-stopped", (event) => {
-      if (!event.payload) {
+      const pendingProjectId = getPendingFinalizationRetryProjectId();
+      if (
+        !shouldClearPendingFinalizationRetryContext(
+          pendingProjectId,
+          event.payload ?? null
+        )
+      ) {
         return;
       }
       clearPendingFinalizationRetryProjectId();
