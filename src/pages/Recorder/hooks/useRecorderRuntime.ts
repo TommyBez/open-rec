@@ -143,6 +143,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   const [preferredDisplaySourceOrdinal, setPreferredDisplaySourceOrdinal] = useState<number | null>(null);
   const [preferredWindowSourceId, setPreferredWindowSourceId] = useState<string | null>(null);
   const pendingTrayQuickRecordRef = useRef(false);
+  const loadSourcesInFlightRef = useRef(false);
   const { countdown, startCountdown } = useRecordingCountdown();
 
   const {
@@ -446,6 +447,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }, [countdown, hasPermission, isLoadingSources, recordingState]);
 
   async function loadSources() {
+    if (loadSourcesInFlightRef.current) {
+      return;
+    }
+    loadSourcesInFlightRef.current = true;
     setIsLoadingSources(true);
     try {
       const result = await invoke<CaptureSource[]>("list_capture_sources", {
@@ -478,6 +483,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setSources([]);
       setSelectedSource(null);
     } finally {
+      loadSourcesInFlightRef.current = false;
       setIsLoadingSources(false);
     }
   }
