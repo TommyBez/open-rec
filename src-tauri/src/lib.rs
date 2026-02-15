@@ -593,6 +593,69 @@ fn terminate_process_by_pid(pid: u32) -> Result<(), AppError> {
     Ok(())
 }
 
+fn is_process_running(pid: u32) -> Result<bool, AppError> {
+    #[cfg(unix)]
+    {
+        let output = std::process::Command::new("kill")
+            .arg("-0")
+            .arg(pid.to_string())
+            .output()
+            .map_err(|error| {
+                AppError::Message(format!("Failed to inspect process {}: {}", pid, error))
+            })?;
+        if output.status.success() {
+            return Ok(true);
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let normalized = stderr.to_ascii_lowercase();
+        if is_missing_process_error(&stderr) {
+            return Ok(false);
+        }
+        if normalized.contains("operation not permitted")
+            || normalized.contains("permission denied")
+        {
+            return Ok(true);
+        }
+        return Err(AppError::Message(format!(
+            "Failed to inspect process {}: {}",
+            pid,
+            if stderr.is_empty() {
+                "kill -0 exited with non-zero status".to_string()
+            } else {
+                stderr
+            }
+        )));
+    }
+
+    #[cfg(windows)]
+    {
+        let output = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+            .output()
+            .map_err(|error| {
+                AppError::Message(format!("Failed to inspect process {}: {}", pid, error))
+            })?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(AppError::Message(format!(
+                "Failed to inspect process {}: {}",
+                pid,
+                if stderr.is_empty() {
+                    "tasklist exited with non-zero status".to_string()
+                } else {
+                    stderr
+                }
+            )));
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let normalized = stdout.trim().to_ascii_lowercase();
+        if normalized.is_empty() || normalized.contains("no tasks are running") {
+            return Ok(false);
+        }
+        return Ok(true);
+    }
+}
+
 fn cleanup_active_exports(export_jobs: &SharedExportJobs) -> Result<(), AppError> {
     let pids = {
         let mut jobs = export_jobs
@@ -1872,6 +1935,49 @@ fn cancel_export(
 }
 
 fn active_export_job_ids(export_jobs: &SharedExportJobs) -> Result<Vec<String>, AppError> {
+    let job_entries = {
+        let jobs = export_jobs
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Failed to lock export jobs state: {}", e)))?;
+        jobs.iter()
+            .map(|(job_id, pid)| (job_id.clone(), *pid))
+            .collect::<Vec<_>>()
+    };
+
+    let mut active_job_ids = Vec::new();
+    let mut stale_job_ids = Vec::new();
+
+    for (job_id, pid) in job_entries {
+        match is_process_running(pid) {
+            Ok(true) => active_job_ids.push(job_id),
+            Ok(false) => stale_job_ids.push(job_id),
+            Err(error) => {
+                eprintln!(
+                    "Failed to verify export process {} for job {}: {}. Keeping job as active.",
+                    pid, job_id, error
+                );
+                active_job_ids.push(job_id);
+            }
+        }
+    }
+
+    if !stale_job_ids.is_empty() {
+        let mut jobs = export_jobs
+            .lock()
+            .map_err(|e| AppError::Lock(format!("Failed to lock export jobs state: {}", e)))?;
+        for stale_job_id in stale_job_ids {
+            jobs.remove(&stale_job_id);
+        }
+    }
+
+    active_job_ids.sort();
+    Ok(active_job_ids)
+}
+
+#[cfg(test)]
+fn active_export_job_ids_without_process_check(
+    export_jobs: &SharedExportJobs,
+) -> Result<Vec<String>, AppError> {
     let jobs = export_jobs
         .lock()
         .map_err(|e| AppError::Lock(format!("Failed to lock export jobs state: {}", e)))?;
@@ -1954,9 +2060,9 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_export_job_ids, build_editor_route, is_missing_process_error,
-        normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
-        parse_ffprobe_dimensions_output, parse_ffprobe_duration_output,
+        active_export_job_ids_without_process_check, build_editor_route, is_missing_process_error,
+        is_process_running, normalize_opened_project_id, normalize_project_id_input,
+        parse_ffmpeg_progress, parse_ffprobe_dimensions_output, parse_ffprobe_duration_output,
         project_id_from_opened_path, resolve_project_dir_from_payload, OPENREC_RELEASES_URL,
         OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
     };
@@ -2060,8 +2166,8 @@ mod tests {
             ("job-a".to_string(), 1_u32),
             ("job-b".to_string(), 2_u32),
         ])));
-        let job_ids =
-            active_export_job_ids(&export_jobs).expect("active export ids should resolve");
+        let job_ids = active_export_job_ids_without_process_check(&export_jobs)
+            .expect("active export ids should resolve");
         assert_eq!(
             job_ids,
             vec![
@@ -2069,6 +2175,15 @@ mod tests {
                 "job-b".to_string(),
                 "job-c".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn detects_running_process_by_pid() {
+        let current_pid = std::process::id();
+        assert!(
+            is_process_running(current_pid).expect("process lookup should complete"),
+            "current process id should be running"
         );
     }
 
