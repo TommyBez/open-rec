@@ -24,6 +24,8 @@ A macOS screen and camera recording app with editing capabilities. Built with Ta
   - Browse and manage recorded projects
   - Open recordings in the editor
   - Open `.openrec` project files directly from Finder/Explorer
+- **Distribution UX**
+  - Help menu shortcuts for GitHub Releases and unsigned-install instructions
 
 ## Tech Stack
 
@@ -72,6 +74,7 @@ This is useful for internal testing or distribution without an Apple Developer I
 See the installation and Gatekeeper instructions in
 [`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md).
 Unsigned release workflows also publish `.sha256` checksum files for each DMG.
+The app menu **Help** section links directly to both the releases page and install guide.
 
 ### File associations
 
