@@ -39,3 +39,12 @@ Use this index to quickly find the right document.
 - macOS bundle label: **Open Rec.app**
 - Use “Result / Evidence / Notes” blocks for manual runbooks/checklists.
 - Keep validation status documents scoped to execution evidence; avoid duplicating full runbooks.
+
+## Documentation maintenance checklist
+
+When editing docs, quickly verify:
+
+1. links resolve (`README.md` + `docs/*.md`)
+2. no contradictory scope statements (Linux validation vs macOS manual gates)
+3. no duplicate status text copied across multiple docs
+4. warning/install/runtime procedures still point to the correct runbooks
