@@ -1051,7 +1051,7 @@ fn normalize_opened_project_id(raw: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-fn resolve_project_dir_from_payload(project_dir: &str, association_path: &Path) -> PathBuf {
+fn resolve_project_dir_from_payload(project_dir: &str, association_path: &Path) -> Option<PathBuf> {
     let mut resolved_path = match url::Url::parse(project_dir) {
         Ok(url) if url.scheme().eq_ignore_ascii_case("file") => match url.to_file_path() {
             Ok(file_path) => file_path,
@@ -1061,7 +1061,7 @@ fn resolve_project_dir_from_payload(project_dir: &str, association_path: &Path) 
                     association_path.display(),
                     project_dir
                 );
-                PathBuf::from(project_dir)
+                return None;
             }
         },
         Ok(url) => {
@@ -1070,7 +1070,7 @@ fn resolve_project_dir_from_payload(project_dir: &str, association_path: &Path) 
                 association_path.display(),
                 url.scheme()
             );
-            PathBuf::from(project_dir)
+            return None;
         }
         Err(_) => PathBuf::from(project_dir),
     };
@@ -1081,7 +1081,7 @@ fn resolve_project_dir_from_payload(project_dir: &str, association_path: &Path) 
         }
     }
 
-    resolved_path
+    Some(resolved_path)
 }
 
 fn project_id_from_opened_path(path: &Path) -> Option<String> {
@@ -1135,7 +1135,12 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
                         .or_else(|| json.get("project_path"))
                         .and_then(|value| value.as_str());
                     if let Some(project_dir) = project_dir {
-                        let project_dir_path = resolve_project_dir_from_payload(project_dir, path);
+                        let Some(project_dir_path) =
+                            resolve_project_dir_from_payload(project_dir, path)
+                        else {
+                            let stem = path.file_stem()?.to_string_lossy();
+                            return normalize_opened_project_id(&stem);
+                        };
                         if project_dir_path
                             .file_name()
                             .and_then(|value| value.to_str())
@@ -1714,6 +1719,22 @@ mod tests {
 
         let resolved = project_id_from_opened_path(&association_path);
         assert_eq!(resolved.as_deref(), Some("project-path-fallback"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn falls_back_to_association_stem_for_unsupported_project_dir_url_scheme() {
+        let root = create_test_dir("openrec-unsupported-url-scheme");
+        let association_path = root.join("unsupported-url-fallback.openrec");
+        let payload = serde_json::json!({
+            "projectDir": "https://example.com/projects/ignored-project"
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("unsupported-url-fallback"));
 
         let _ = std::fs::remove_dir_all(root);
     }
