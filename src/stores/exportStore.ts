@@ -2,16 +2,36 @@ import { create } from "zustand";
 
 interface ExportStore {
   activeExportCount: number;
-  incrementActiveExports: () => void;
-  decrementActiveExports: () => void;
+  registerExportJob: (jobId: string) => void;
+  unregisterExportJob: (jobId: string) => void;
   resetActiveExports: () => void;
+  activeExportJobIds: string[];
 }
 
 export const useExportStore = create<ExportStore>((set) => ({
   activeExportCount: 0,
-  incrementActiveExports: () =>
-    set((state) => ({ activeExportCount: state.activeExportCount + 1 })),
-  decrementActiveExports: () =>
-    set((state) => ({ activeExportCount: Math.max(0, state.activeExportCount - 1) })),
-  resetActiveExports: () => set({ activeExportCount: 0 }),
+  activeExportJobIds: [],
+  registerExportJob: (jobId) =>
+    set((state) => {
+      if (state.activeExportJobIds.includes(jobId)) {
+        return state;
+      }
+      const activeExportJobIds = [...state.activeExportJobIds, jobId];
+      return {
+        activeExportJobIds,
+        activeExportCount: activeExportJobIds.length,
+      };
+    }),
+  unregisterExportJob: (jobId) =>
+    set((state) => {
+      if (!state.activeExportJobIds.includes(jobId)) {
+        return state;
+      }
+      const activeExportJobIds = state.activeExportJobIds.filter((id) => id !== jobId);
+      return {
+        activeExportJobIds,
+        activeExportCount: activeExportJobIds.length,
+      };
+    }),
+  resetActiveExports: () => set({ activeExportCount: 0, activeExportJobIds: [] }),
 }));

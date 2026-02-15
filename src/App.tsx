@@ -24,6 +24,10 @@ interface ExportErrorEvent {
   message: string;
 }
 
+interface ExportLifecycleEvent {
+  jobId: string;
+}
+
 interface RecordingStopFailedEvent {
   projectId: string;
   message: string;
@@ -40,7 +44,7 @@ function notifyUser(title: string, body: string) {
 function App() {
   const navigate = useNavigate();
   const isMainWindow = getCurrentWindow().label === "main";
-  const { incrementActiveExports, decrementActiveExports } = useExportStore();
+  const { registerExportJob, unregisterExportJob } = useExportStore();
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +60,7 @@ function App() {
 
     ensureNotificationPermission().catch(console.error);
     const unlistenCompletePromise = listen<ExportCompleteEvent>("export-complete", (event) => {
-      decrementActiveExports();
+      unregisterExportJob(event.payload.jobId);
       if (!isMainWindow) {
         return;
       }
@@ -66,17 +70,17 @@ function App() {
       );
     });
     const unlistenErrorPromise = listen<ExportErrorEvent>("export-error", (event) => {
-      decrementActiveExports();
+      unregisterExportJob(event.payload.jobId);
       if (!isMainWindow) {
         return;
       }
       notifyUser("Export failed", event.payload.message);
     });
-    const unlistenStartedPromise = listen("export-started", () => {
-      incrementActiveExports();
+    const unlistenStartedPromise = listen<ExportLifecycleEvent>("export-started", (event) => {
+      registerExportJob(event.payload.jobId);
     });
-    const unlistenCancelledPromise = listen("export-cancelled", () => {
-      decrementActiveExports();
+    const unlistenCancelledPromise = listen<ExportLifecycleEvent>("export-cancelled", (event) => {
+      unregisterExportJob(event.payload.jobId);
     });
     const unlistenRecordingStopFailedPromise = listen<RecordingStopFailedEvent>(
       "recording-stop-failed",
@@ -119,7 +123,7 @@ function App() {
       unlistenTrayProjectsPromise.then((unlisten) => unlisten());
       unlistenTrayQuickRecordPromise.then((unlisten) => unlisten());
     };
-  }, [decrementActiveExports, incrementActiveExports, isMainWindow, navigate]);
+  }, [isMainWindow, navigate, registerExportJob, unregisterExportJob]);
 
   return (
     <Routes>
