@@ -148,6 +148,8 @@ pub struct StartRecordingResult {
     pub screen_video_path: String,
     pub camera_video_path: Option<String>,
     pub recording_start_time_ms: i64,
+    pub resolved_source_id: String,
+    pub fallback_source_id: Option<String>,
 }
 
 /// Result of stopping a recording
@@ -389,47 +391,59 @@ pub fn start_recording(
         .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
     // Create content filter based on source type and resolve dimensions
-    let (filter, source_width, source_height, resolved_source_id, resolved_display_ordinal) =
-        match options.source_type {
-            SourceType::Display => {
-                let display_id = parse_display_id(&options.source_id)?;
-                let (display, used_fallback, resolved_display_ordinal) =
-                    find_display_or_fallback_with_ordinal(
-                        &content,
-                        display_id,
-                        options.preferred_display_ordinal,
-                    )?;
+    let (
+        filter,
+        source_width,
+        source_height,
+        resolved_source_id,
+        resolved_display_ordinal,
+        fallback_source_id,
+    ) = match options.source_type {
+        SourceType::Display => {
+            let display_id = parse_display_id(&options.source_id)?;
+            let (display, used_fallback, resolved_display_ordinal) =
+                find_display_or_fallback_with_ordinal(
+                    &content,
+                    display_id,
+                    options.preferred_display_ordinal,
+                )?;
+            if used_fallback {
+                eprintln!(
+                    "Requested display {} was unavailable. Falling back to display {}.",
+                    display_id,
+                    display.display_id()
+                );
+            }
+            (
+                SCContentFilter::create()
+                    .with_display(&display)
+                    .with_excluding_windows(&[])
+                    .build(),
+                display.width(),
+                display.height(),
+                display.display_id().to_string(),
+                Some(resolved_display_ordinal),
                 if used_fallback {
-                    eprintln!(
-                        "Requested display {} was unavailable. Falling back to display {}.",
-                        display_id,
-                        display.display_id()
-                    );
-                }
-                (
-                    SCContentFilter::create()
-                        .with_display(&display)
-                        .with_excluding_windows(&[])
-                        .build(),
-                    display.width(),
-                    display.height(),
-                    display.display_id().to_string(),
-                    Some(resolved_display_ordinal),
-                )
-            }
-            SourceType::Window => {
-                let window_id = parse_window_id(&options.source_id)?;
-                let window = find_window(&content, window_id)?;
-                let frame = window.frame();
-                (
-                    SCContentFilter::create().with_window(window).build(),
-                    frame.width.round() as u32,
-                    frame.height.round() as u32,
-                    window_id.to_string(),
-                    None,
-                )
-            }
-        };
+                    Some(display.display_id().to_string())
+                } else {
+                    None
+                },
+            )
+        }
+        SourceType::Window => {
+            let window_id = parse_window_id(&options.source_id)?;
+            let window = find_window(&content, window_id)?;
+            let frame = window.frame();
+            (
+                SCContentFilter::create().with_window(window).build(),
+                frame.width.round() as u32,
+                frame.height.round() as u32,
+                window_id.to_string(),
+                None,
+                None,
+            )
+        }
+    };
 
     let (capture_width, capture_height) =
         resolve_output_dimensions(source_width, source_height, options.quality_preset);
@@ -467,7 +481,7 @@ pub fn start_recording(
 
     // Store session
     let mut session_options = options.clone();
-    session_options.source_id = resolved_source_id;
+    session_options.source_id = resolved_source_id.clone();
     session_options.preferred_display_ordinal = resolved_display_ordinal;
 
     let session = RecordingSession {
@@ -501,6 +515,8 @@ pub fn start_recording(
         screen_video_path: screen_video_path.to_string_lossy().to_string(),
         camera_video_path: camera_video_path.map(|p| p.to_string_lossy().to_string()),
         recording_start_time_ms,
+        resolved_source_id,
+        fallback_source_id,
     })
 }
 

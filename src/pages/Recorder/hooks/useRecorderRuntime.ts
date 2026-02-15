@@ -589,6 +589,15 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         "Recording start timed out"
       );
 
+      const resolvedCaptureSource = sources.find(
+        (source) =>
+          source.id === result.resolvedSourceId &&
+          source.type === resolvedSource.source.type
+      );
+      if (resolvedCaptureSource) {
+        setSelectedSource(resolvedCaptureSource);
+      }
+
       setProjectId(result.projectId);
       setRecordingStartTimeMs(result.recordingStartTimeMs);
       startRecording(result.projectId);
