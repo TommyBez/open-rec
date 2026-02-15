@@ -41,17 +41,18 @@ interface ResolvedRecordingSource {
 }
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
-const DISPLAY_FALLBACK_WARNING_PREFIXES = [
+const SOURCE_FALLBACK_WARNING_PREFIXES = [
   "Display \"",
   "Saved display is unavailable.",
   "Selected display became unavailable.",
+  "Selected window became unavailable.",
 ] as const;
 
-function clearDisplayFallbackWarning(current: string | null): string | null {
+function clearSourceFallbackWarning(current: string | null): string | null {
   if (!current) {
     return null;
   }
-  const isFallbackWarning = DISPLAY_FALLBACK_WARNING_PREFIXES.some((prefix) =>
+  const isFallbackWarning = SOURCE_FALLBACK_WARNING_PREFIXES.some((prefix) =>
     current.startsWith(prefix)
   );
   return isFallbackWarning ? null : current;
@@ -565,7 +566,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           `Saved display is unavailable. Switched to "${resolvedSource.name}".`
         );
       } else {
-        setErrorMessage((current) => clearDisplayFallbackWarning(current));
+        setErrorMessage((current) => clearSourceFallbackWarning(current));
       }
     } catch (error) {
       console.error("Failed to load capture sources:", error);
@@ -623,7 +624,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           `Saved display is unavailable. Recording will use "${resolvedSource.name}".`
         );
       } else {
-        setErrorMessage((current) => clearDisplayFallbackWarning(current));
+        setErrorMessage((current) => clearSourceFallbackWarning(current));
       }
       return {
         source: resolvedSource,
