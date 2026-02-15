@@ -392,6 +392,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setProjectId(null);
       setRecordingStartTimeMs(null);
       clearStoredCurrentProjectId();
+      clearPendingRecordingSourceFallbackNotice();
       if (stoppedProjectId.length > 0) {
         onRecordingStoppedNavigate(stoppedProjectId);
       }
@@ -627,6 +628,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setRecordingStartTimeMs(null);
       setRecordingState("idle");
       clearStoredCurrentProjectId();
+      clearPendingRecordingSourceFallbackNotice();
       setErrorMessage(
         toErrorMessage(error, "Failed to start recording. Please try again.")
       );
