@@ -42,6 +42,13 @@ interface ResolvedRecordingSource {
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
 
+function describeDisplaySource(sourceId: string, sourceOrdinal?: number | null): string {
+  if (typeof sourceOrdinal === "number" && Number.isFinite(sourceOrdinal)) {
+    return `Display ${sourceOrdinal + 1}`;
+  }
+  return `display source ${sourceId}`;
+}
+
 function parseNumericSourceId(sourceId: string): number | null {
   const numericId = Number.parseInt(sourceId, 10);
   if (Number.isFinite(numericId)) {
@@ -444,12 +451,20 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       if (typeof event.payload.sourceOrdinal === "number") {
         setPreferredDisplaySourceOrdinal(event.payload.sourceOrdinal);
       }
+      setErrorMessage(
+        `Selected display became unavailable. Recorder switched to ${describeDisplaySource(
+          event.payload.sourceId,
+          event.payload.sourceOrdinal
+        )}.`
+      );
       const matchingSource = sources.find(
         (source) =>
           source.type === "display" && source.id === event.payload.sourceId
       );
       if (matchingSource) {
         setSelectedSource(matchingSource);
+      } else {
+        void loadSources();
       }
     });
     return () => {
