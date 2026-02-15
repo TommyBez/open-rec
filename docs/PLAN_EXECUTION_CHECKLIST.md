@@ -1,6 +1,6 @@
 # OpenRec Plan Execution Checklist
 
-Documentation index: [`docs/README.md`](./README.md)
+Documentation index: [`README.md`](./README.md)
 
 This checklist tracks implementation closure status for this execution environment.
 

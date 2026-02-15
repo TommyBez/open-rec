@@ -1,6 +1,6 @@
 # OpenRec Nice-to-Have Backlog (Non-Blocking)
 
-Documentation index: [`docs/README.md`](./README.md)
+Documentation index: [`README.md`](./README.md)
 
 These items are intentionally **non-blocking** for current completion scope.
 They are quality-of-life and polish opportunities that can be addressed in future iterations.

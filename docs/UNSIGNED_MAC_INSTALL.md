@@ -1,6 +1,6 @@
 # Installing OpenRec Unsigned Builds (macOS)
 
-Documentation index: [`docs/README.md`](./README.md)
+Documentation index: [`README.md`](./README.md)
 
 OpenRec release artifacts can be distributed without Apple code signing/notarization.
 Unsigned builds work, but macOS Gatekeeper will warn on first launch.

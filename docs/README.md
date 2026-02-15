@@ -22,3 +22,10 @@ Use this index to quickly find the right document.
 5. Use supporting operational docs as needed:
    - install/run unsigned builds: [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md)
    - triage runtime warnings: [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md)
+
+## Documentation conventions
+
+- Product name in docs: **OpenRec**
+- macOS bundle label: **Open Rec.app**
+- Use “Result / Evidence / Notes” blocks for manual runbooks/checklists.
+- Keep validation status documents scoped to execution evidence; avoid duplicating full runbooks.

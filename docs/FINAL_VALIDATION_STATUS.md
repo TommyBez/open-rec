@@ -1,6 +1,6 @@
 # OpenRec Validation Status
 
-Documentation index: [`docs/README.md`](./README.md)
+Documentation index: [`README.md`](./README.md)
 
 This document summarizes what is validated inside the Linux execution environment
 and what still requires manual macOS runtime verification.
