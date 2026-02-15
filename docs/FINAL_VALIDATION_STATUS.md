@@ -5,6 +5,14 @@ Documentation index: [`README.md`](./README.md)
 This document summarizes what is validated inside the Linux execution environment
 and what still requires manual macOS runtime verification.
 
+## Quick navigation
+
+1. [Automated baseline (in-scope evidence)](#1-automated-baseline-in-scope-evidence)
+2. [Validated implementation areas](#2-validated-implementation-areas)
+3. [Remaining manual gates (macOS-only)](#3-remaining-manual-gates-macos-only)
+4. [Closure scope for this execution environment](#4-closure-scope-for-this-execution-environment)
+5. [Related documents](#related-documents)
+
 ## 1) Automated baseline (in-scope evidence)
 
 The following checks are run repeatedly and are expected green:

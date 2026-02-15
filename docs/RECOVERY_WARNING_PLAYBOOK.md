@@ -4,6 +4,14 @@ Documentation index: [`README.md`](./README.md)
 
 Use this playbook during manual validation and support triage.
 
+## Quick navigation
+
+1. [Recording source fallback warnings](#1-recording-source-fallback-warnings)
+2. [Floating controls / widget handoff warnings](#2-floating-controls--widget-handoff-warnings)
+3. [Permission and disk-pressure warnings](#3-permission-and-disk-pressure-warnings)
+4. [Stop/finalization warnings](#4-stopfinalization-warnings)
+5. [Quick triage when warnings repeat](#5-quick-triage-when-warnings-repeat)
+
 Format per entry:
 - **Message / signal**
 - **Likely cause**

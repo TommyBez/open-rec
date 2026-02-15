@@ -5,6 +5,16 @@ Documentation index: [`README.md`](./README.md)
 Use this runbook for final acceptance on real macOS hardware.
 This checklist is the source of truth for out-of-scope runtime validation.
 
+## Quick navigation
+
+1. [Capture source disconnect/reconnect behavior](#1-capture-source-disconnectreconnect-behavior)
+2. [Permission revocation flows](#2-permission-revocation-flows)
+3. [Long-run stability](#3-long-run-stability)
+4. [Export correctness and cancellation](#4-export-correctness-and-cancellation)
+5. [Performance gate (Apple Silicon)](#5-performance-gate-apple-silicon)
+6. [Unsigned distribution and Gatekeeper flow](#6-unsigned-distribution-and-gatekeeper-flow)
+7. [Multi-window / tray / menu behavior](#7-multi-window--tray--menu-behavior)
+
 ## Session metadata (fill before running)
 
 - Date:
