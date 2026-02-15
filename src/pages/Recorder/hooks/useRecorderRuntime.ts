@@ -39,6 +39,7 @@ interface UseRecorderRuntimeOptions {
 interface ResolvedRecordingSource {
   source: CaptureSource;
   preferredDisplayOrdinal: number | null;
+  availableSources: CaptureSource[];
 }
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
@@ -787,6 +788,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           resolvedSource,
           availableSources
         ),
+        availableSources,
       };
     } catch (error) {
       console.error("Failed to refresh capture sources before recording:", error);
@@ -842,7 +844,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         source.id === result.resolvedSourceId &&
         source.type === resolvedSource.source.type
     );
-    if (resolvedCaptureSource) {
+    const resolvedCaptureSourceFromLatest = resolvedSource.availableSources.find(
+      (source) =>
+        source.id === result.resolvedSourceId &&
+        source.type === resolvedSource.source.type
+    );
+    if (resolvedCaptureSourceFromLatest) {
+      setSelectedSource(resolvedCaptureSourceFromLatest);
+    } else if (resolvedCaptureSource) {
       setSelectedSource(resolvedCaptureSource);
     }
 
@@ -857,10 +866,20 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         sourceId: result.fallbackSource.sourceId,
         sourceOrdinal: result.fallbackSource.sourceOrdinal ?? null,
       });
+      setErrorMessage(
+        resolvedSource.source.type === "display"
+          ? `Selected display became unavailable. Recorder switched to ${describeDisplaySource(
+              result.fallbackSource.sourceId,
+              result.fallbackSource.sourceOrdinal
+            )}.`
+          : `Selected window became unavailable. Recorder switched to ${describeWindowSource(
+              result.fallbackSource.sourceId
+            )}.`
+      );
     } else {
       clearPendingRecordingSourceFallbackNotice();
+      setErrorMessage((current) => clearSourceFallbackWarning(current));
     }
-    setErrorMessage(null);
 
     try {
       await withTimeout(
