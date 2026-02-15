@@ -159,6 +159,12 @@ pub struct RecordingSourceFallback {
     pub source_ordinal: Option<u32>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RecordingSourceFallbackUpdate {
+    pub source_type: SourceType,
+    pub fallback_source: RecordingSourceFallback,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingSourceStatus {
@@ -331,6 +337,32 @@ fn find_window<'a>(
 }
 
 #[cfg(target_os = "macos")]
+fn find_window_or_fallback<'a>(
+    content: &'a SCShareableContent,
+    requested_window_id: u32,
+) -> Result<(&'a SCWindow, bool), AppError> {
+    let mut on_screen_windows = content
+        .windows()
+        .iter()
+        .filter(|window| window.is_on_screen())
+        .collect::<Vec<_>>();
+    if on_screen_windows.is_empty() {
+        return Err(AppError::Message(
+            "No windows are currently available for capture".to_string(),
+        ));
+    }
+    if let Some(window) = on_screen_windows
+        .iter()
+        .copied()
+        .find(|window| window.window_id() == requested_window_id)
+    {
+        return Ok((window, false));
+    }
+    on_screen_windows.sort_by_key(|window| window.window_id());
+    Ok((on_screen_windows[0], true))
+}
+
+#[cfg(target_os = "macos")]
 fn create_recording_output(
     config: &SCRecordingOutputConfiguration,
 ) -> Result<SCRecordingOutput, AppError> {
@@ -451,15 +483,29 @@ pub fn start_recording(
         }
         SourceType::Window => {
             let window_id = parse_window_id(&options.source_id)?;
-            let window = find_window(&content, window_id)?;
+            let (window, used_fallback) = find_window_or_fallback(&content, window_id)?;
+            if used_fallback {
+                eprintln!(
+                    "Requested window {} was unavailable. Falling back to window {}.",
+                    window_id,
+                    window.window_id()
+                );
+            }
             let frame = window.frame();
             (
                 SCContentFilter::create().with_window(window).build(),
                 frame.width.round() as u32,
                 frame.height.round() as u32,
-                window_id.to_string(),
+                window.window_id().to_string(),
                 None,
-                None,
+                if used_fallback {
+                    Some(RecordingSourceFallback {
+                        source_id: window.window_id().to_string(),
+                        source_ordinal: None,
+                    })
+                } else {
+                    None
+                },
             )
         }
     };
@@ -651,7 +697,7 @@ pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<
 pub fn resume_recording(
     state: &SharedRecorderState,
     project_id: &str,
-) -> Result<Option<RecordingSourceFallback>, AppError> {
+) -> Result<Option<RecordingSourceFallbackUpdate>, AppError> {
     let mut state_guard = state
         .lock()
         .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
@@ -687,7 +733,7 @@ pub fn resume_recording(
     let content = SCShareableContent::get()
         .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
-    let mut fallback_display: Option<RecordingSourceFallback> = None;
+    let mut fallback_source: Option<RecordingSourceFallbackUpdate> = None;
 
     // Recreate filter
     let filter = match session.options.source_type {
@@ -708,9 +754,12 @@ pub fn resume_recording(
                     display.display_id()
                 );
                 session.options.source_id = display.display_id().to_string();
-                fallback_display = Some(RecordingSourceFallback {
-                    source_id: session.options.source_id.clone(),
-                    source_ordinal: session.options.preferred_display_ordinal,
+                fallback_source = Some(RecordingSourceFallbackUpdate {
+                    source_type: SourceType::Display,
+                    fallback_source: RecordingSourceFallback {
+                        source_id: session.options.source_id.clone(),
+                        source_ordinal: session.options.preferred_display_ordinal,
+                    },
                 });
             }
             SCContentFilter::create()
@@ -720,7 +769,23 @@ pub fn resume_recording(
         }
         SourceType::Window => {
             let window_id = parse_window_id(&session.options.source_id)?;
-            let window = find_window(&content, window_id)?;
+            let (window, used_fallback) = find_window_or_fallback(&content, window_id)?;
+            if used_fallback {
+                eprintln!(
+                    "Requested window {} for project {} is unavailable. Resuming on window {}.",
+                    window_id,
+                    project_id,
+                    window.window_id()
+                );
+                session.options.source_id = window.window_id().to_string();
+                fallback_source = Some(RecordingSourceFallbackUpdate {
+                    source_type: SourceType::Window,
+                    fallback_source: RecordingSourceFallback {
+                        source_id: session.options.source_id.clone(),
+                        source_ordinal: None,
+                    },
+                });
+            }
             SCContentFilter::create().with_window(window).build()
         }
     };
@@ -760,7 +825,7 @@ pub fn resume_recording(
     session.screen_segments.push(segment_path);
     session.last_resume_instant = Some(Instant::now());
 
-    Ok(fallback_display)
+    Ok(fallback_source)
 }
 
 /// Update media offsets for camera/microphone recordings
@@ -841,15 +906,40 @@ pub fn get_recording_source_status(
         }
         SourceType::Window => {
             let window_id = parse_window_id(&source_id)?;
-            let is_available = content
+            let mut on_screen_windows = content
                 .windows()
                 .iter()
-                .any(|window| window.window_id() == window_id && window.is_on_screen());
+                .filter(|window| window.is_on_screen())
+                .collect::<Vec<_>>();
+            if on_screen_windows.is_empty() {
+                return Ok(Some(RecordingSourceStatus {
+                    source_type,
+                    source_id,
+                    available: false,
+                    fallback_source: None,
+                }));
+            }
+            if on_screen_windows
+                .iter()
+                .any(|window| window.window_id() == window_id)
+            {
+                return Ok(Some(RecordingSourceStatus {
+                    source_type,
+                    source_id,
+                    available: true,
+                    fallback_source: None,
+                }));
+            }
+            on_screen_windows.sort_by_key(|window| window.window_id());
+            let fallback_window = on_screen_windows[0];
             Ok(Some(RecordingSourceStatus {
                 source_type,
                 source_id,
-                available: is_available,
-                fallback_source: None,
+                available: false,
+                fallback_source: Some(RecordingSourceFallback {
+                    source_id: fallback_window.window_id().to_string(),
+                    source_ordinal: None,
+                }),
             }))
         }
     }
@@ -974,7 +1064,7 @@ pub fn pause_recording(_state: &SharedRecorderState, _project_id: &str) -> Resul
 pub fn resume_recording(
     _state: &SharedRecorderState,
     _project_id: &str,
-) -> Result<Option<RecordingSourceFallback>, AppError> {
+) -> Result<Option<RecordingSourceFallbackUpdate>, AppError> {
     Err(AppError::Message(
         "Screen capture is only supported on macOS".to_string(),
     ))

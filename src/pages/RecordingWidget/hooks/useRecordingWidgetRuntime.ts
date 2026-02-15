@@ -30,6 +30,10 @@ function fallbackDisplayLabel(sourceId: string, sourceOrdinal?: number | null): 
   return `display source ${sourceId}`;
 }
 
+function fallbackWindowLabel(sourceId: string): string {
+  return `window source ${sourceId}`;
+}
+
 export function useRecordingWidgetRuntime() {
   const {
     state,
@@ -175,11 +179,15 @@ export function useRecordingWidgetRuntime() {
     }>("recording-source-fallback", (event) => {
       const activeProjectId = resolveActiveProjectId();
       if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
-      if (event.payload.sourceType !== "display") return;
-      const warningMessage = `The selected display became unavailable. Recording continued on ${fallbackDisplayLabel(
-        event.payload.sourceId,
-        event.payload.sourceOrdinal
-      )}.`;
+      const warningMessage =
+        event.payload.sourceType === "display"
+          ? `The selected display became unavailable. Recording continued on ${fallbackDisplayLabel(
+              event.payload.sourceId,
+              event.payload.sourceOrdinal
+            )}.`
+          : `The selected window became unavailable. Recording continued on ${fallbackWindowLabel(
+              event.payload.sourceId
+            )}.`;
       applySourceUnavailableWarning(warningMessage);
       clearPendingRecordingSourceFallbackNotice();
     });
@@ -197,14 +205,15 @@ export function useRecordingWidgetRuntime() {
     if (!activeProjectId) return;
     const pendingNotice = getPendingRecordingSourceFallbackNotice();
     if (!pendingNotice || pendingNotice.projectId !== activeProjectId) return;
-    if (pendingNotice.sourceType !== "display") {
-      clearPendingRecordingSourceFallbackNotice();
-      return;
-    }
-    const warningMessage = `The selected display became unavailable. Recording continued on ${fallbackDisplayLabel(
-      pendingNotice.sourceId,
-      pendingNotice.sourceOrdinal
-    )}.`;
+    const warningMessage =
+      pendingNotice.sourceType === "display"
+        ? `The selected display became unavailable. Recording continued on ${fallbackDisplayLabel(
+            pendingNotice.sourceId,
+            pendingNotice.sourceOrdinal
+          )}.`
+        : `The selected window became unavailable. Recording continued on ${fallbackWindowLabel(
+            pendingNotice.sourceId
+          )}.`;
     applySourceUnavailableWarning(warningMessage);
     clearPendingRecordingSourceFallbackNotice();
   }, [projectId, state]);

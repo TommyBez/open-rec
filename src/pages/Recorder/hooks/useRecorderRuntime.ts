@@ -64,6 +64,10 @@ function describeDisplaySource(sourceId: string, sourceOrdinal?: number | null):
   return `display source ${sourceId}`;
 }
 
+function describeWindowSource(sourceId: string): string {
+  return `window source ${sourceId}`;
+}
+
 function parseNumericSourceId(sourceId: string): number | null {
   const numericId = Number.parseInt(sourceId, 10);
   if (Number.isFinite(numericId)) {
@@ -463,22 +467,28 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       if (projectId && event.payload.projectId !== projectId) {
         return;
       }
-      if (event.payload.sourceType !== "display") {
-        return;
-      }
-      setPreferredDisplaySourceId(event.payload.sourceId);
-      if (typeof event.payload.sourceOrdinal === "number") {
-        setPreferredDisplaySourceOrdinal(event.payload.sourceOrdinal);
+      if (event.payload.sourceType === "display") {
+        setPreferredDisplaySourceId(event.payload.sourceId);
+        if (typeof event.payload.sourceOrdinal === "number") {
+          setPreferredDisplaySourceOrdinal(event.payload.sourceOrdinal);
+        }
+      } else {
+        setPreferredWindowSourceId(event.payload.sourceId);
       }
       setErrorMessage(
-        `Selected display became unavailable. Recorder switched to ${describeDisplaySource(
-          event.payload.sourceId,
-          event.payload.sourceOrdinal
-        )}.`
+        event.payload.sourceType === "display"
+          ? `Selected display became unavailable. Recorder switched to ${describeDisplaySource(
+              event.payload.sourceId,
+              event.payload.sourceOrdinal
+            )}.`
+          : `Selected window became unavailable. Recorder switched to ${describeWindowSource(
+              event.payload.sourceId
+            )}.`
       );
       const matchingSource = sources.find(
         (source) =>
-          source.type === "display" && source.id === event.payload.sourceId
+          source.type === event.payload.sourceType &&
+          source.id === event.payload.sourceId
       );
       if (matchingSource) {
         setSelectedSource(matchingSource);
@@ -672,7 +682,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       if (result.fallbackSource?.sourceId) {
         setPendingRecordingSourceFallbackNotice({
           projectId: result.projectId,
-          sourceType: "display",
+          sourceType: resolvedSource.source.type,
           sourceId: result.fallbackSource.sourceId,
           sourceOrdinal: result.fallbackSource.sourceOrdinal ?? null,
         });

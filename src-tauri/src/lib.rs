@@ -697,6 +697,7 @@ fn start_screen_recording(
     let recordings_dir = recordings_dir_from_managed_state(&state)?;
     ensure_recording_disk_headroom(&recordings_dir)?;
 
+    let source_type_for_event = options.source_type;
     let result = do_start_recording(&state, options)?;
 
     emit_with_log(&app, "recording-started", &result);
@@ -714,7 +715,7 @@ fn start_screen_recording(
             "recording-source-fallback",
             serde_json::json!({
                 "projectId": &result.project_id,
-                "sourceType": "display",
+                "sourceType": source_type_for_event,
                 "sourceId": &fallback_source.source_id,
                 "sourceOrdinal": fallback_source.source_ordinal
             }),
@@ -917,15 +918,15 @@ fn resume_recording(
             "projectId": project_id
         }),
     );
-    if let Some(fallback_source) = fallback_source {
+    if let Some(fallback_update) = fallback_source {
         emit_with_log(
             &app,
             "recording-source-fallback",
             serde_json::json!({
                 "projectId": project_id,
-                "sourceType": "display",
-                "sourceId": fallback_source.source_id,
-                "sourceOrdinal": fallback_source.source_ordinal
+                "sourceType": fallback_update.source_type,
+                "sourceId": fallback_update.fallback_source.source_id,
+                "sourceOrdinal": fallback_update.fallback_source.source_ordinal
             }),
         );
     }
