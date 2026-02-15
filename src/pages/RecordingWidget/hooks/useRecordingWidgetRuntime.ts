@@ -18,12 +18,15 @@ import {
 } from "../../../lib/recordingSourceFallbackNotice";
 import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpace";
 import { toErrorMessage } from "../../../lib/errorMessage";
+import {
+  getRecordingWidgetStatusLabel,
+  RecordingFinalizingStatus,
+} from "../../../lib/recordingFinalizingStatus";
 import { withTimeout } from "../../../lib/withTimeout";
 
 const STOP_RECORDING_TIMEOUT_MS = 150_000;
 const PAUSE_RESUME_TIMEOUT_MS = 10_000;
 const STOPPING_RECOVERY_TIMEOUT_MS = 180_000;
-type RecordingFinalizingStatus = "merging" | "verifying" | "saving";
 
 function fallbackDisplayLabel(sourceId: string, sourceOrdinal?: number | null): string {
   if (typeof sourceOrdinal === "number" && Number.isFinite(sourceOrdinal)) {
@@ -172,7 +175,7 @@ export function useRecordingWidgetRuntime() {
       (event) => {
         const activeProjectId = resolveActiveProjectId();
         if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
-        setFinalizingStatus(event.payload.status ?? "merging");
+        setFinalizingStatus(event.payload.status ?? "stopping-capture");
         setRecordingState("stopping");
       }
     );
@@ -510,13 +513,7 @@ export function useRecordingWidgetRuntime() {
   const isRecording = state === "recording";
   const isStopping = state === "stopping";
   const statusLabel = isStopping
-    ? finalizingStatus === "merging"
-      ? "Merging"
-      : finalizingStatus === "verifying"
-        ? "Finalizing"
-        : finalizingStatus === "saving"
-          ? "Saving"
-          : "Stopping"
+    ? getRecordingWidgetStatusLabel(finalizingStatus)
     : isRecording
       ? "Live"
       : "Paused";

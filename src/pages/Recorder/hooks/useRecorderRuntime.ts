@@ -29,6 +29,10 @@ import {
 } from "../../../lib/currentProjectStorage";
 import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpace";
 import { toErrorMessage } from "../../../lib/errorMessage";
+import {
+  getRecordingFinalizingMessage,
+  RecordingFinalizingStatus,
+} from "../../../lib/recordingFinalizingStatus";
 import { withTimeout } from "../../../lib/withTimeout";
 import { useRecordingCountdown } from "./useRecordingCountdown";
 
@@ -46,7 +50,6 @@ const START_RECORDING_TIMEOUT_MS = 15_000;
 const STOP_FINALIZATION_TIMEOUT_MS = 180_000;
 const OPEN_WIDGET_TIMEOUT_MS = 8_000;
 const HIDE_WINDOW_TIMEOUT_MS = 5_000;
-type RecordingFinalizingStatus = "merging" | "verifying" | "saving";
 const WIDGET_HANDOFF_WARNING_PREFIXES = [
   "Recording started, but floating controls failed to open.",
   "Unable to open floating controls.",
@@ -498,7 +501,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       if (!activeProjectId || event.payload.projectId !== activeProjectId) {
         return;
       }
-      setFinalizingStatus(event.payload.status ?? "merging");
+      setFinalizingStatus(event.payload.status ?? "stopping-capture");
       setRecordingState("stopping");
     });
 
@@ -593,13 +596,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
 
   const finalizingMessage =
     recordingState === "stopping"
-      ? finalizingStatus === "merging"
-        ? "Finalizing recording segments…"
-        : finalizingStatus === "verifying"
-          ? "Verifying finalized recording…"
-          : finalizingStatus === "saving"
-            ? "Saving project metadata…"
-            : "Stopping recording…"
+      ? getRecordingFinalizingMessage(finalizingStatus)
       : null;
 
   useEffect(() => {

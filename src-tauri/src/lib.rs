@@ -1008,6 +1008,22 @@ async fn stop_screen_recording(
     project_id: String,
 ) -> Result<(), AppError> {
     let project_id = normalize_project_id_input(project_id, "stop recording")?;
+    emit_with_log(
+        &app,
+        "recording-state-changed",
+        serde_json::json!({
+            "state": "stopping",
+            "projectId": &project_id
+        }),
+    );
+    emit_with_log(
+        &app,
+        "recording-finalizing",
+        serde_json::json!({
+            "projectId": &project_id,
+            "status": "stopping-capture"
+        }),
+    );
     let stop_result = match do_stop_recording(&state, &project_id) {
         Ok(result) => result,
         Err(error) => {
@@ -1043,21 +1059,12 @@ async fn stop_screen_recording(
         );
     };
 
-    emit_finalizing_status("merging");
-    emit_with_log(
-        &app,
-        "recording-state-changed",
-        serde_json::json!({
-            "state": "stopping",
-            "projectId": &project_id
-        }),
-    );
-
     let finalization_result = tokio::time::timeout(
         std::time::Duration::from_secs(STOP_RECORDING_FINALIZATION_TIMEOUT_SECS),
         async {
+            emit_finalizing_status("concatenating-segments");
             concatenate_screen_segments(&app, &stop_result).await?;
-            emit_finalizing_status("verifying");
+            emit_finalizing_status("verifying-duration");
 
             // Get the recordings directory from state
             let recordings_dir = recordings_dir_from_managed_state(&state)?;
@@ -1073,6 +1080,7 @@ async fn stop_screen_recording(
                     stop_result.duration_seconds.max(0.1)
                 }
             };
+            emit_finalizing_status("verifying-dimensions");
             let (width, height) = match probe_video_dimensions(&stop_result.screen_video_path) {
                 Ok(dimensions) => dimensions,
                 Err(error) => {
@@ -1094,8 +1102,9 @@ async fn stop_screen_recording(
                 stop_result.camera_offset_ms,
                 stop_result.microphone_offset_ms,
             );
-            emit_finalizing_status("saving");
+            emit_finalizing_status("saving-project");
             project::save_project(&recordings_dir, &project).await?;
+            emit_finalizing_status("refreshing-ui");
             refresh_tray_menu(&app, &recordings_dir);
             Ok::<(), AppError>(())
         },

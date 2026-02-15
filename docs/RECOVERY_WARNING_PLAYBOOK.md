@@ -78,6 +78,12 @@ and export/finalization recovery flows.
 
 ## Stop/finalization warnings
 
+### Finalization status timeline (normal path)
+- `stopping-capture` → `concatenating-segments` → `verifying-duration` → `verifying-dimensions` → `saving-project` → `refreshing-ui`
+- **Surface:** Recorder finalization banner + widget status text
+- **Meaning:** Progressive backend stop/finalization milestones are being emitted.
+- **Operator tip:** If status stalls for an unusual duration, check disk space and ffmpeg availability before retry.
+
 ### `Recording stopped, but finalization failed...`
 - **Surface:** Recorder page and/or recording widget warning text
 - **Meaning:** Capture stopped, but one or more finalization steps failed (merge, probe, save).
