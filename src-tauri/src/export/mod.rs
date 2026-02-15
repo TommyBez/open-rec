@@ -1248,6 +1248,7 @@ pub fn get_export_output_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project::SpeedEffect;
     use std::path::{Path, PathBuf};
     use uuid::Uuid;
 
@@ -1387,5 +1388,43 @@ mod tests {
         let result = validate_export_inputs(&project, &default_options()).await;
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn builds_atempo_chain_for_extreme_speeds() {
+        assert_eq!(atempo_chain(1.0), None);
+        assert_eq!(
+            atempo_chain(4.0),
+            Some("atempo=2.0,atempo=2.00000".to_string())
+        );
+        assert_eq!(
+            atempo_chain(0.125),
+            Some("atempo=0.5,atempo=0.5,atempo=0.50000".to_string())
+        );
+    }
+
+    #[test]
+    fn build_audio_timeline_filter_includes_atempo_for_speed_edits() {
+        let mut project = build_test_project(
+            "speed-project",
+            PathBuf::from("/tmp/speed-screen.mp4"),
+            None,
+            None,
+        );
+        project.duration = 9.0;
+        project.edits.speed.push(SpeedEffect {
+            id: "speed-1".to_string(),
+            start_time: 0.0,
+            end_time: 9.0,
+            speed: 1.5,
+        });
+
+        let pieces = build_timeline_pieces(&project);
+        let (filters, output_label) = build_audio_timeline_filter("[0:a]", &pieces, "speed");
+        let combined = filters.join(" ");
+
+        assert!(combined.contains("atrim=start=0.000000:end=9.000000"));
+        assert!(combined.contains("atempo=1.50000"));
+        assert!(output_label.starts_with("[speed"));
     }
 }
