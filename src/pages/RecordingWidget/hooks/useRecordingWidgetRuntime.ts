@@ -91,9 +91,10 @@ export function useRecordingWidgetRuntime() {
           setProjectId(null);
           return;
         }
-        if (event.payload.projectId) {
-          setStoredCurrentProjectId(event.payload.projectId);
-          setProjectId(event.payload.projectId);
+        const nextProjectId = event.payload.projectId?.trim();
+        if (nextProjectId) {
+          setStoredCurrentProjectId(nextProjectId);
+          setProjectId(nextProjectId);
         }
       }
     );
