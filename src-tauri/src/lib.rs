@@ -1055,7 +1055,14 @@ fn resolve_project_dir_from_payload(project_dir: &str, association_path: &Path) 
                 PathBuf::from(project_dir)
             }
         },
-        Ok(_) => PathBuf::from(project_dir),
+        Ok(url) => {
+            eprintln!(
+                "Unsupported URL scheme in .openrec projectDir payload ({}): {}",
+                association_path.display(),
+                url.scheme()
+            );
+            PathBuf::from(project_dir)
+        }
         Err(_) => PathBuf::from(project_dir),
     };
 
