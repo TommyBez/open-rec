@@ -1,5 +1,7 @@
 # macOS Runtime Validation Checklist
 
+Documentation index: [`docs/README.md`](./README.md)
+
 Use this runbook for final acceptance on real macOS hardware.
 This checklist is the source of truth for out-of-scope runtime validation.
 

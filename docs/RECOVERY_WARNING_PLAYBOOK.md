@@ -1,5 +1,7 @@
 # OpenRec Recovery Warning Playbook
 
+Documentation index: [`docs/README.md`](./README.md)
+
 Use this playbook during manual validation and support triage.
 
 Format per entry:
