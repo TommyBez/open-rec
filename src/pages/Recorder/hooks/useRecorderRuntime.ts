@@ -205,11 +205,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
 
   useEffect(() => {
     const unlisten = listen<string>("recording-stopped", (event) => {
+      const stoppedProjectId = event.payload.trim();
       setRecordingState("idle");
       setProjectId(null);
       setRecordingStartTimeMs(null);
       clearStoredCurrentProjectId();
-      onRecordingStoppedNavigate(event.payload);
+      if (stoppedProjectId.length > 0) {
+        onRecordingStoppedNavigate(stoppedProjectId);
+      }
     });
 
     return () => {
