@@ -181,6 +181,21 @@ export function useRecordingWidgetRuntime() {
       setPermissionError(null);
       setFinalizingStatus(null);
     });
+    const unlistenStopFailed = listen<{ projectId: string; message?: string }>(
+      "recording-stop-failed",
+      (event) => {
+        const activeProjectId = resolveActiveProjectId();
+        if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
+        clearStoredCurrentProjectId();
+        clearPendingRecordingSourceFallbackNotice();
+        resetRecording();
+        setFinalizingStatus(null);
+        setPermissionError(
+          event.payload.message?.trim() ||
+            "Recording stopped, but finalization failed. Check recordings before starting again."
+        );
+      }
+    );
     const unlistenSourceFallback = listen<{
       projectId: string;
       sourceType: "display" | "window";
@@ -205,6 +220,7 @@ export function useRecordingWidgetRuntime() {
     return () => {
       unlistenFinalizing.then((fn) => fn());
       unlistenStopped.then((fn) => fn());
+      unlistenStopFailed.then((fn) => fn());
       unlistenSourceFallback.then((fn) => fn());
     };
   }, [projectId, resetRecording, setRecordingState]);
@@ -280,7 +296,6 @@ export function useRecordingWidgetRuntime() {
       resetRecording();
       return false;
     }
-    const fallbackState = state === "paused" ? "paused" : "recording";
     try {
       beginRecordingStop();
       await withTimeout(
@@ -294,7 +309,11 @@ export function useRecordingWidgetRuntime() {
       return true;
     } catch (error) {
       console.error("[RecordingWidget] Failed to stop recording:", error);
-      setRecordingState(fallbackState);
+      clearStoredCurrentProjectId();
+      clearPendingRecordingSourceFallbackNotice();
+      resetRecording();
+      setFinalizingStatus(null);
+      setRecordingState("idle");
       setPermissionError(toErrorMessage(error, "Failed to stop recording."));
       return false;
     }

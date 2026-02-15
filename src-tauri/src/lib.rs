@@ -904,45 +904,72 @@ async fn stop_screen_recording(
         }),
     );
 
-    concatenate_screen_segments(&app, &stop_result).await?;
-    emit_finalizing_status("verifying");
+    let finalization_result = async {
+        concatenate_screen_segments(&app, &stop_result).await?;
+        emit_finalizing_status("verifying");
 
-    // Get the recordings directory from state
-    let recordings_dir = recordings_dir_from_managed_state(&state)?;
+        // Get the recordings directory from state
+        let recordings_dir = recordings_dir_from_managed_state(&state)?;
 
-    // Create project.json for the recording
-    let duration = match probe_video_duration(&stop_result.screen_video_path) {
-        Ok(value) if value.is_finite() && value > 0.0 => value,
-        Ok(_) => stop_result.duration_seconds.max(0.1),
-        Err(error) => {
-            eprintln!(
-                "Failed to probe recording duration, falling back to session timing: {error}"
-            );
-            stop_result.duration_seconds.max(0.1)
-        }
-    };
-    let (width, height) = match probe_video_dimensions(&stop_result.screen_video_path) {
-        Ok(dimensions) => dimensions,
-        Err(error) => {
-            eprintln!("Failed to probe recording dimensions, falling back to source size: {error}");
-            (stop_result.source_width, stop_result.source_height)
-        }
-    };
+        // Create project.json for the recording
+        let duration = match probe_video_duration(&stop_result.screen_video_path) {
+            Ok(value) if value.is_finite() && value > 0.0 => value,
+            Ok(_) => stop_result.duration_seconds.max(0.1),
+            Err(error) => {
+                eprintln!(
+                    "Failed to probe recording duration, falling back to session timing: {error}"
+                );
+                stop_result.duration_seconds.max(0.1)
+            }
+        };
+        let (width, height) = match probe_video_dimensions(&stop_result.screen_video_path) {
+            Ok(dimensions) => dimensions,
+            Err(error) => {
+                eprintln!(
+                    "Failed to probe recording dimensions, falling back to source size: {error}"
+                );
+                (stop_result.source_width, stop_result.source_height)
+            }
+        };
 
-    let project = Project::new(
-        stop_result.project_id.clone(),
-        stop_result.screen_video_path.clone(),
-        stop_result.camera_video_path.clone(),
-        stop_result.microphone_audio_path.clone(),
-        duration,
-        width,
-        height,
-        stop_result.camera_offset_ms,
-        stop_result.microphone_offset_ms,
-    );
-    emit_finalizing_status("saving");
-    project::save_project(&recordings_dir, &project).await?;
-    refresh_tray_menu(&app, &recordings_dir);
+        let project = Project::new(
+            stop_result.project_id.clone(),
+            stop_result.screen_video_path.clone(),
+            stop_result.camera_video_path.clone(),
+            stop_result.microphone_audio_path.clone(),
+            duration,
+            width,
+            height,
+            stop_result.camera_offset_ms,
+            stop_result.microphone_offset_ms,
+        );
+        emit_finalizing_status("saving");
+        project::save_project(&recordings_dir, &project).await?;
+        refresh_tray_menu(&app, &recordings_dir);
+        Ok::<(), AppError>(())
+    }
+    .await;
+
+    if let Err(error) = finalization_result {
+        emit_with_log(
+            &app,
+            "recording-stop-failed",
+            serde_json::json!({
+                "projectId": &project_id,
+                "message": error.to_string()
+            }),
+        );
+        emit_with_log(
+            &app,
+            "recording-state-changed",
+            serde_json::json!({
+                "state": "idle",
+                "projectId": &project_id
+            }),
+        );
+        return Err(error);
+    }
+
     emit_with_log(
         &app,
         "recording-state-changed",

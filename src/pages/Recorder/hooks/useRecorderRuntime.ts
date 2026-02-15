@@ -527,6 +527,37 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setRecordingStartTimeMs,
   ]);
 
+  useEffect(() => {
+    const unlisten = listen<{ projectId: string; message?: string }>(
+      "recording-stop-failed",
+      (event) => {
+        const activeProjectId = projectId ?? getStoredCurrentProjectId();
+        const eventProjectId = event.payload.projectId?.trim() ?? "";
+        if (
+          activeProjectId &&
+          eventProjectId.length > 0 &&
+          eventProjectId !== activeProjectId
+        ) {
+          return;
+        }
+        setRecordingState("idle");
+        setProjectId(null);
+        setRecordingStartTimeMs(null);
+        clearStoredCurrentProjectId();
+        clearPendingRecordingSourceFallbackNotice();
+        setFinalizingStatus(null);
+        setErrorMessage(
+          event.payload.message?.trim() ||
+            "Recording stopped, but finalization failed. Check the recordings list and retry."
+        );
+      }
+    );
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [projectId, setProjectId, setRecordingState, setRecordingStartTimeMs]);
+
   const finalizingMessage =
     recordingState === "stopping"
       ? finalizingStatus === "merging"
