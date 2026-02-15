@@ -32,11 +32,9 @@ interface RecordingStopFailedEvent {
 }
 
 function notifyUser(title: string, body: string) {
-  try {
-    sendNotification({ title, body });
-  } catch (error) {
+  Promise.resolve(sendNotification({ title, body })).catch((error: unknown) => {
     console.error("Failed to dispatch desktop notification:", error);
-  }
+  });
 }
 
 export function useAppRuntimeEvents(navigate: NavigateFunction) {
