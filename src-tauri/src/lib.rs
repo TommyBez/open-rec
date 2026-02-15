@@ -1263,7 +1263,16 @@ fn resume_recording(
 
 /// Open the recording widget window
 #[tauri::command]
-fn open_recording_widget(app: AppHandle) -> Result<(), AppError> {
+fn open_recording_widget(
+    app: AppHandle,
+    state: tauri::State<'_, SharedRecorderState>,
+) -> Result<(), AppError> {
+    if !has_active_recording_session(state.inner())? {
+        return Err(AppError::Message(
+            "No active recording session available for floating controls.".to_string(),
+        ));
+    }
+
     // Check if widget already exists
     if let Some(widget_window) = app.get_webview_window("recording-widget") {
         log_if_err(
@@ -1312,6 +1321,18 @@ fn recordings_dir_from_managed_state(
         .lock()
         .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
     Ok(state_guard.recordings_dir.clone())
+}
+
+fn has_active_recording_session(state: &SharedRecorderState) -> Result<bool, AppError> {
+    let state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    Ok(state_guard.sessions.values().any(|session| {
+        matches!(
+            session.state,
+            RecorderRecordingState::Recording | RecorderRecordingState::Paused
+        )
+    }))
 }
 
 async fn resolve_project_json_path_async(project_dir: &Path) -> Result<PathBuf, AppError> {
@@ -2061,16 +2082,20 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 mod tests {
     use super::{
         active_export_job_ids, active_export_job_ids_without_process_check, build_editor_route,
-        is_missing_process_error, is_process_running, normalize_opened_project_id,
-        normalize_project_id_input, parse_ffmpeg_progress, parse_ffprobe_dimensions_output,
-        parse_ffprobe_duration_output, project_id_from_opened_path,
-        resolve_project_dir_from_payload, OPENREC_RELEASES_URL, OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
+        has_active_recording_session, is_missing_process_error, is_process_running,
+        normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
+        parse_ffprobe_dimensions_output, parse_ffprobe_duration_output,
+        project_id_from_opened_path, resolve_project_dir_from_payload, RecorderRecordingState,
+        RecorderState, RecordingOptions, SharedRecorderState, SourceType, OPENREC_RELEASES_URL,
+        OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
     };
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use super::{parse_startup_opened_arg, strip_wrapping_quotes};
+    use crate::recording::{RecordingCodec, RecordingQualityPreset, RecordingSession};
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
+    use std::time::Instant;
     use uuid::Uuid;
 
     fn create_test_dir(name: &str) -> PathBuf {
@@ -2214,6 +2239,61 @@ mod tests {
             .expect("failed to lock jobs after pruning")
             .len();
         assert_eq!(remaining_jobs, 0, "stale job entry should be removed");
+    }
+
+    #[test]
+    fn has_active_recording_session_detects_recording_or_paused_sessions() {
+        let recordings_dir = create_test_dir("active-session-detection");
+        let state: SharedRecorderState = Arc::new(Mutex::new(RecorderState::new(recordings_dir)));
+
+        assert!(
+            !has_active_recording_session(&state).expect("session query should succeed"),
+            "empty recorder state should not report active sessions"
+        );
+
+        {
+            let mut guard = state
+                .lock()
+                .expect("failed to lock recorder state for session insertion");
+            guard.sessions.insert(
+                "active-project".to_string(),
+                RecordingSession {
+                    project_id: "active-project".to_string(),
+                    options: RecordingOptions {
+                        source_id: "display-1".to_string(),
+                        source_type: SourceType::Display,
+                        preferred_display_ordinal: Some(1),
+                        capture_camera: false,
+                        capture_microphone: false,
+                        capture_system_audio: true,
+                        quality_preset: RecordingQualityPreset::P1080P30,
+                        codec: RecordingCodec::H264,
+                    },
+                    state: RecorderRecordingState::Paused,
+                    screen_video_path: PathBuf::from("/tmp/screen.mp4"),
+                    camera_video_path: None,
+                    microphone_audio_path: None,
+                    start_time: chrono::Utc::now(),
+                    recording_start_time_ms: 0,
+                    segment_index: 0,
+                    capture_width: 1920,
+                    capture_height: 1080,
+                    capture_fps: 30,
+                    recording_codec: RecordingCodec::H264,
+                    screen_segments: vec![PathBuf::from("/tmp/screen.mp4")],
+                    current_segment_path: PathBuf::from("/tmp/screen.mp4"),
+                    active_duration_ms: 0,
+                    last_resume_instant: Some(Instant::now()),
+                    camera_offset_ms: None,
+                    microphone_offset_ms: None,
+                },
+            );
+        }
+
+        assert!(
+            has_active_recording_session(&state).expect("session query should succeed"),
+            "paused session should report an active recording session"
+        );
     }
 
     #[test]
