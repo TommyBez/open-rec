@@ -68,6 +68,17 @@ fn log_if_err<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) {
     }
 }
 
+fn normalize_project_id_input(project_id: String, context: &str) -> Result<String, AppError> {
+    let normalized = project_id.trim().to_string();
+    if normalized.is_empty() {
+        return Err(AppError::Message(format!(
+            "Missing project id for {}",
+            context
+        )));
+    }
+    Ok(normalized)
+}
+
 fn show_main_window(app_handle: &AppHandle) {
     if let Some(main_window) = app_handle.get_webview_window("main") {
         log_if_err(main_window.show(), "Failed to show main window");
@@ -704,6 +715,7 @@ async fn stop_screen_recording(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
+    let project_id = normalize_project_id_input(project_id, "stop recording")?;
     let stop_result = do_stop_recording(&state, &project_id)?;
 
     emit_with_log(
@@ -806,6 +818,7 @@ fn set_recording_media_offsets(
     camera_offset_ms: Option<i64>,
     microphone_offset_ms: Option<i64>,
 ) -> Result<(), AppError> {
+    let project_id = normalize_project_id_input(project_id, "set media offsets")?;
     do_set_media_offsets(&state, &project_id, camera_offset_ms, microphone_offset_ms)
 }
 
@@ -814,6 +827,7 @@ fn get_recording_state(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<Option<RecorderRecordingState>, AppError> {
+    let project_id = normalize_project_id_input(project_id, "get recording state")?;
     do_get_recording_state(&state, &project_id)
 }
 
@@ -824,6 +838,7 @@ fn pause_recording(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
+    let project_id = normalize_project_id_input(project_id, "pause recording")?;
     if !check_screen_recording_permission() {
         return Err(AppError::PermissionDenied(
             "Screen recording permission was revoked".to_string(),
@@ -851,6 +866,7 @@ fn resume_recording(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
+    let project_id = normalize_project_id_input(project_id, "resume recording")?;
     if !check_screen_recording_permission() {
         return Err(AppError::PermissionDenied(
             "Screen recording permission was revoked".to_string(),
@@ -1230,6 +1246,7 @@ fn collect_startup_opened_paths() -> Vec<PathBuf> {
 /// Open a project editor in a separate window
 #[tauri::command]
 fn open_project_window(app: AppHandle, project_id: String) -> Result<(), AppError> {
+    let project_id = normalize_project_id_input(project_id, "open project window")?;
     open_project_editor_window(&app, &project_id)
 }
 
@@ -1239,6 +1256,7 @@ async fn load_project(
     state: tauri::State<SharedRecorderState>,
     project_id: String,
 ) -> Result<Project, AppError> {
+    let project_id = normalize_project_id_input(project_id, "load project")?;
     let recordings_dir = recordings_dir_from_managed_state(&state)?;
     project::load_project(&recordings_dir, &project_id).await
 }
@@ -1270,6 +1288,7 @@ async fn delete_project(
     state: tauri::State<'_, SharedRecorderState>,
     project_id: String,
 ) -> Result<(), AppError> {
+    let project_id = normalize_project_id_input(project_id, "delete project")?;
     let recordings_dir = recordings_dir_from_managed_state(&state)?;
 
     project::delete_project(&recordings_dir, &project_id).await?;
@@ -1286,6 +1305,7 @@ async fn export_project(
     project_id: String,
     options: ExportOptions,
 ) -> Result<ExportStartResult, AppError> {
+    let project_id = normalize_project_id_input(project_id, "export project")?;
     let recordings_dir = recordings_dir_from_managed_state(&state)?;
     let project = project::load_project(&recordings_dir, &project_id).await?;
 
@@ -1520,7 +1540,10 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_opened_project_id, parse_ffmpeg_progress, project_id_from_opened_path};
+    use super::{
+        normalize_opened_project_id, parse_ffmpeg_progress, project_id_from_opened_path,
+        resolve_project_dir_from_payload,
+    };
     use std::path::PathBuf;
     use uuid::Uuid;
 
@@ -1578,6 +1601,36 @@ mod tests {
             normalize_opened_project_id("already-normalized").as_deref(),
             Some("already-normalized")
         );
+    }
+
+    #[test]
+    fn resolves_project_dir_from_file_url_payload() {
+        let root = create_test_dir("resolve-project-dir-file-url");
+        let file_url = url::Url::from_file_path(root.join("url-target"))
+            .expect("failed to create file url")
+            .to_string();
+        let association_path = root.join("association.openrec");
+
+        let resolved = resolve_project_dir_from_payload(&file_url, &association_path)
+            .expect("expected payload path to resolve");
+        assert_eq!(
+            resolved.file_name().and_then(|value| value.to_str()),
+            Some("url-target")
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_project_dir_payload_with_unsupported_url_scheme() {
+        let root = create_test_dir("resolve-project-dir-unsupported-url");
+        let association_path = root.join("association.openrec");
+
+        let resolved =
+            resolve_project_dir_from_payload("https://example.com/path", &association_path);
+        assert_eq!(resolved, None);
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
