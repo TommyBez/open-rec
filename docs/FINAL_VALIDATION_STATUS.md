@@ -10,6 +10,8 @@ The following checks are run repeatedly after reliability and architecture commi
 - `pnpm run verify:frontend`
   - component size guard (`check-component-size`) passes
   - TypeScript compile (`tsc --noEmit`) passes
+- `pnpm run test:frontend`
+  - Vitest regression suites for frontend runtime/state helpers pass
 - `cargo fmt --all --manifest-path src-tauri/Cargo.toml`
 - `cargo test --manifest-path src-tauri/Cargo.toml`
   - backend unit tests cover export validation paths, ffprobe parsing helpers,

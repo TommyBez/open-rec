@@ -55,6 +55,7 @@ Per latest scope decision, macOS runtime validation is out of scope for this exe
 Job completion is now gated by:
 
 - [x] Automated baseline green (`pnpm run verify:frontend`, `cargo fmt`, `cargo test`)
+- [x] Frontend regression baseline green (`pnpm run test:frontend`)
 - [x] No known open P0/P1 blockers in implemented cross-platform/runtime logic
 - [x] Final sign-off documentation updated with explicit out-of-scope macOS runtime checklist
 
