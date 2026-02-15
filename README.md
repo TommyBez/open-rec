@@ -1,68 +1,51 @@
-# Open Rec
+# OpenRec
 
-A macOS screen and camera recording app with editing capabilities. Built with Tauri 2, React, and TypeScript.
+OpenRec is a Tauri-based desktop screen recorder/editor focused on reliable capture,
+recoverable stop/finalization flows, and practical export tooling.
 
-## Features
+> Naming note: the product is referred to as **OpenRec** in docs.  
+> The macOS app bundle appears as **Open Rec.app** in Finder.
 
-- **Recording**
-  - Screen or window capture (full display or specific app window)
-  - Camera overlay
-  - Microphone capture
-  - System audio capture
-  - Floating recording widget with pause/resume/stop controls, plus in-recorder fallback button to reopen controls
-  - Automatic display/window fallback when the selected capture target disappears mid-session
-  - One-click recorder action to retry failed stop finalization
-  - Advanced runtime timeout presets for recorder/widget recovery paths
-  - Inline recovery diagnostics panel with ordered recorder/export/runtime lifecycle telemetry
-- **Editing**
-  - Cut and trim segments on a timeline
-  - Zoom effects (scale, position)
-  - Speed effects (variable playback speed)
-  - Undo support
-- **Export**
-  - MP4 or GIF output
-  - Quality presets (minimal, social, web)
-  - Resolution options (720p, 1080p, 4K)
-- **My Recordings**
-  - Browse and manage recorded projects
-  - Open recordings in the editor
-  - Open `.openrec` project files directly from Finder/Explorer
-- **Distribution UX**
-  - Help menu shortcuts for GitHub Releases and unsigned-install instructions
+## Highlights
 
-## Tech Stack
+- Screen or window recording (ScreenCaptureKit)
+- Optional camera + microphone tracks
+- Pause/resume with segment stitching at stop
+- Floating recording widget with shortcut-based fallback control
+- Recovery-oriented stop/finalization flow with retry support
+- Timeline editing (trim/cut, zoom, speed effects, undo)
+- MP4/GIF exports with queueing, progress, and cancellation
+- `.openrec` project association + recent-project window open actions
 
-- **[Tauri 2](https://tauri.app/)** – Desktop app framework
-- **[React 19](https://react.dev/)** + **[TypeScript](https://www.typescriptlang.org/)** + **[Vite 7](https://vite.dev/)**
-- **[Tailwind CSS 4](https://tailwindcss.com/)** + **[shadcn/ui](https://ui.shadcn.com/)**
-- **[Zustand](https://github.com/pmndrs/zustand)** – State management
-- **ScreenCaptureKit** – macOS native screen capture (macOS 15+)
-- **FFmpeg** – Video export (bundled)
+## Tech stack
 
-## Prerequisites
+- [Tauri 2](https://tauri.app/)
+- [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) + [Vite 7](https://vite.dev/)
+- [Tailwind CSS 4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/)
+- [Zustand](https://github.com/pmndrs/zustand)
+- FFmpeg / ffprobe (bundled sidecars where available)
 
-- **macOS 15.0+** (ScreenCaptureKit requirement)
-- [Node.js](https://nodejs.org/) (with pnpm)
-- [Rust](https://www.rust-lang.org/tools/install)
-- Screen Recording permission (granted on first run)
+## Requirements
 
-## Development
+- macOS 15+ for ScreenCaptureKit runtime behavior
+- Node.js + pnpm
+- Rust toolchain
+
+## Development quick start
 
 ```bash
-# Install dependencies
+# install dependencies
 pnpm install
 
-# Verify backend checks
+# frontend checks
+pnpm run verify:frontend
+pnpm run test:frontend
+
+# backend checks
 cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# Verify frontend constraints
-pnpm run verify:frontend
-
-# Run frontend runtime regression tests
-pnpm run test:frontend
-
-# Run in development mode
+# run app
 pnpm tauri dev
 ```
 
@@ -72,28 +55,27 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
-### Unsigned macOS build
+## Documentation map
 
-OpenRec is configured to build as an unsigned macOS app (`signingIdentity: null`).
-This is useful for internal testing or distribution without an Apple Developer ID.
+See [`docs/README.md`](docs/README.md) for full navigation.  
+Quick links:
 
-See the installation and Gatekeeper instructions in
-[`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md).
-Unsigned release workflows also publish `.sha256` checksum files for each DMG.
-The app menu **Help** section links directly to both the releases page and install guide.
-Current implementation and validation status is tracked in
-[`docs/FINAL_VALIDATION_STATUS.md`](docs/FINAL_VALIDATION_STATUS.md).
-Use [`docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md)
-to execute and record final macOS acceptance runs.
-For warning-to-recovery guidance during manual validation, see
-[`docs/RECOVERY_WARNING_PLAYBOOK.md`](docs/RECOVERY_WARNING_PLAYBOOK.md).
-For optional post-closure polish items, see
-[`docs/NICE_TO_HAVE_BACKLOG.md`](docs/NICE_TO_HAVE_BACKLOG.md).
+- Validation status snapshot:
+  [`docs/FINAL_VALIDATION_STATUS.md`](docs/FINAL_VALIDATION_STATUS.md)
+- Execution checklist:
+  [`docs/PLAN_EXECUTION_CHECKLIST.md`](docs/PLAN_EXECUTION_CHECKLIST.md)
+- macOS runtime acceptance checklist:
+  [`docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md)
+- Recovery warning playbook:
+  [`docs/RECOVERY_WARNING_PLAYBOOK.md`](docs/RECOVERY_WARNING_PLAYBOOK.md)
+- Unsigned install guide:
+  [`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md)
 
-### Advanced runtime timeout overrides
+## Advanced runtime timeout overrides
 
-Recorder/widget timeout budgets can be tuned for slower machines by setting
-`localStorage["openrec.runtime-timeout-settings-v1"]` to a JSON object in dev tools.
+Recorder/widget timeout budgets can be overridden through:
+
+`localStorage["openrec.runtime-timeout-settings-v1"]`
 
 Supported keys:
 
@@ -104,41 +86,3 @@ Supported keys:
 - `widgetStopRecordingTimeoutMs`
 - `widgetPauseResumeTimeoutMs`
 - `widgetStoppingRecoveryTimeoutMs`
-
-### File associations
-
-OpenRec registers the `.openrec` extension as a project document type.
-
-- Double-clicking a `.openrec` file opens the project in an editor window.
-- Tray and app menu recent-project entries also open project windows directly.
-
-## Project Structure
-
-```
-├── src/                    # React frontend
-│   ├── components/         # UI components
-│   ├── pages/              # Recorder, Editor, RecordingWidget, VideoSelection
-│   ├── stores/             # Zustand stores (recording, editor)
-│   ├── hooks/              # Custom hooks
-│   └── types/              # TypeScript types
-├── src-tauri/              # Rust backend
-│   ├── src/
-│   │   ├── recording/      # Screen capture, ScreenCaptureKit
-│   │   ├── project/        # Project management
-│   │   └── export/         # FFmpeg export
-│   └── binaries/           # Bundled FFmpeg (plus Linux wrappers to system ffmpeg)
-└── components.json         # shadcn/ui config
-```
-
-## Routes
-
-| Path | Description |
-|------|-------------|
-| `/recorder` | Main recording interface |
-| `/editor/:projectId` | Video editor |
-| `/recording-widget` | Floating control during recording |
-| `/videos` | My Recordings library |
-
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
