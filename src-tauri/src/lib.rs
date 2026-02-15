@@ -112,6 +112,27 @@ fn show_main_window(app_handle: &AppHandle) {
     }
 }
 
+fn prepare_main_window_for_post_recording(app: &AppHandle) {
+    if let Some(main_window) = app.get_webview_window("main") {
+        log_if_err(
+            main_window.set_size(tauri::LogicalSize::new(1200, 800)),
+            "Failed to resize main window for editor",
+        );
+        log_if_err(main_window.center(), "Failed to center main window");
+        log_if_err(main_window.show(), "Failed to show main window");
+        log_if_err(main_window.set_focus(), "Failed to focus main window");
+    }
+}
+
+fn close_recording_widget_window(app: &AppHandle) {
+    if let Some(widget_window) = app.get_webview_window("recording-widget") {
+        log_if_err(
+            widget_window.close(),
+            "Failed to close recording widget window",
+        );
+    }
+}
+
 fn truncate_tray_label(value: &str, max_chars: usize) -> String {
     if max_chars == 0 {
         return String::new();
@@ -977,6 +998,8 @@ async fn stop_screen_recording(
                 "projectId": &project_id
             }),
         );
+        prepare_main_window_for_post_recording(&app);
+        close_recording_widget_window(&app);
         return Err(error);
     }
 
@@ -990,16 +1013,7 @@ async fn stop_screen_recording(
     );
 
     // First, show and prepare the main window BEFORE emitting events
-    if let Some(main_window) = app.get_webview_window("main") {
-        // Resize window for editor view
-        log_if_err(
-            main_window.set_size(tauri::LogicalSize::new(1200, 800)),
-            "Failed to resize main window for editor",
-        );
-        log_if_err(main_window.center(), "Failed to center main window");
-        log_if_err(main_window.show(), "Failed to show main window");
-        log_if_err(main_window.set_focus(), "Failed to focus main window");
-    }
+    prepare_main_window_for_post_recording(&app);
 
     // Small delay to ensure the window is ready to receive events
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1008,12 +1022,7 @@ async fn stop_screen_recording(
     emit_with_log(&app, "recording-stopped", &project_id);
 
     // Close recording widget window after main window is ready
-    if let Some(widget_window) = app.get_webview_window("recording-widget") {
-        log_if_err(
-            widget_window.close(),
-            "Failed to close recording widget window",
-        );
-    }
+    close_recording_widget_window(&app);
 
     Ok(())
 }
