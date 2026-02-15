@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: unsigned-macos-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-unsigned-dmg:
     name: Build ${{ matrix.target }} DMG
