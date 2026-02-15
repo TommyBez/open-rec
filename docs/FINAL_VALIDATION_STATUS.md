@@ -37,6 +37,9 @@ run on real macOS machines before declaring full plan completion:
 4. Hardware export performance target verification on Apple Silicon
 5. Unsigned Gatekeeper install/open validation on clean Intel + Apple Silicon systems
 
+For execution details and pass/fail capture fields, use:
+[`docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](./MACOS_RUNTIME_VALIDATION_CHECKLIST.md).
+
 ## Conclusion
 
 Automated reliability/architecture hardening is continuously validated and currently green in this environment.
