@@ -65,6 +65,11 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
 
     ensureNotificationPermission().catch(console.error);
     syncActiveExportJobs().catch(console.error);
+    const refreshActiveExports = () => {
+      void syncActiveExportJobs();
+    };
+    window.addEventListener("focus", refreshActiveExports);
+    window.addEventListener("visibilitychange", refreshActiveExports);
     const unlistenCompletePromise = listen<ExportCompleteEvent>("export-complete", (event) => {
       unregisterExportJob(event.payload.jobId);
       if (!isMainWindow) return;
@@ -110,6 +115,8 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
 
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", refreshActiveExports);
+      window.removeEventListener("visibilitychange", refreshActiveExports);
       unlistenCompletePromise.then((unlisten) => unlisten());
       unlistenErrorPromise.then((unlisten) => unlisten());
       unlistenStartedPromise.then((unlisten) => unlisten());
