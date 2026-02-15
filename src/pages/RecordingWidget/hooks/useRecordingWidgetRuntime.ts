@@ -126,11 +126,12 @@ export function useRecordingWidgetRuntime() {
       "recording-state-changed",
       (event) => {
         const activeProjectId = resolveActiveProjectId();
+        if (!activeProjectId) {
+          return;
+        }
         const eventProjectId = event.payload.projectId?.trim() ?? "";
         const hasEventProjectId = eventProjectId.length > 0;
-        const hasActiveProject = Boolean(activeProjectId);
         if (
-          hasActiveProject &&
           hasEventProjectId &&
           eventProjectId !== activeProjectId
         ) {
