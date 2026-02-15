@@ -46,6 +46,10 @@ const STOP_FINALIZATION_TIMEOUT_MS = 180_000;
 const OPEN_WIDGET_TIMEOUT_MS = 8_000;
 const HIDE_WINDOW_TIMEOUT_MS = 5_000;
 type RecordingFinalizingStatus = "merging" | "verifying" | "saving";
+const WIDGET_HANDOFF_WARNING_PREFIXES = [
+  "Recording started, but floating controls failed to open.",
+  "Unable to open floating controls.",
+] as const;
 const SOURCE_FALLBACK_WARNING_PREFIXES = [
   "Display \"",
   "Saved display is unavailable.",
@@ -61,6 +65,16 @@ function clearSourceFallbackWarning(current: string | null): string | null {
     current.startsWith(prefix)
   );
   return isFallbackWarning ? null : current;
+}
+
+function clearWidgetHandoffWarning(current: string | null): string | null {
+  if (!current) {
+    return null;
+  }
+  const isHandoffWarning = WIDGET_HANDOFF_WARNING_PREFIXES.some((prefix) =>
+    current.startsWith(prefix)
+  );
+  return isHandoffWarning ? null : current;
 }
 
 function describeDisplaySource(sourceId: string, sourceOrdinal?: number | null): string {
@@ -860,6 +874,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         HIDE_WINDOW_TIMEOUT_MS,
         "Hiding recorder window timed out."
       );
+      setErrorMessage((current) => clearWidgetHandoffWarning(current));
     } catch (error) {
       console.error("Recording started but widget handoff failed:", error);
       setErrorMessage(
@@ -903,6 +918,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         OPEN_WIDGET_TIMEOUT_MS,
         "Opening recording widget timed out."
       );
+      setErrorMessage((current) => clearWidgetHandoffWarning(current));
     } catch (error) {
       console.error("Failed to open recording widget:", error);
       setErrorMessage(
