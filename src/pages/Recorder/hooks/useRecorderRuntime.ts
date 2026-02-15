@@ -252,6 +252,16 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }, [selectedSource, sourceType, sources]);
 
   useEffect(() => {
+    if (!selectedSource || selectedSource.type !== sourceType) {
+      return;
+    }
+    if (preferredSourceId === selectedSource.id) {
+      return;
+    }
+    setPreferredSourceId(selectedSource.id);
+  }, [preferredSourceId, selectedSource, sourceType]);
+
+  useEffect(() => {
     if (!preferencesLoaded) return;
     void saveRecordingPreferences({
       sourceType,
