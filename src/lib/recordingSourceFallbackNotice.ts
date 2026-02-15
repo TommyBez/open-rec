@@ -13,6 +13,33 @@ let hasLoggedReadError = false;
 let hasLoggedWriteError = false;
 let hasLoggedRemoveError = false;
 
+function normalizeSourceOrdinal(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  const normalized = Math.floor(value);
+  if (normalized < 0) {
+    return null;
+  }
+  return normalized;
+}
+
+function normalizePendingNotice(
+  notice: PendingRecordingSourceFallbackNotice
+): PendingRecordingSourceFallbackNotice | null {
+  const projectId = notice.projectId.trim();
+  const sourceId = notice.sourceId.trim();
+  if (projectId.length === 0 || sourceId.length === 0) {
+    return null;
+  }
+  return {
+    projectId,
+    sourceType: notice.sourceType,
+    sourceId,
+    sourceOrdinal: normalizeSourceOrdinal(notice.sourceOrdinal),
+  };
+}
+
 function parsePendingNotice(
   rawValue: string | null
 ): PendingRecordingSourceFallbackNotice | null {
@@ -34,13 +61,13 @@ function parsePendingNotice(
     if (sourceType !== "display" && sourceType !== "window") {
       return null;
     }
-    return {
+    const normalizedNotice = normalizePendingNotice({
       projectId,
       sourceType,
       sourceId,
-      sourceOrdinal:
-        typeof sourceOrdinal === "number" ? sourceOrdinal : null,
-    };
+      sourceOrdinal: normalizeSourceOrdinal(sourceOrdinal),
+    });
+    return normalizedNotice;
   } catch {
     return null;
   }
@@ -48,9 +75,12 @@ function parsePendingNotice(
 
 export function getPendingRecordingSourceFallbackNotice(): PendingRecordingSourceFallbackNotice | null {
   try {
-    return parsePendingNotice(
-      sessionStorage.getItem(PENDING_RECORDING_SOURCE_FALLBACK_KEY)
-    );
+    const rawValue = sessionStorage.getItem(PENDING_RECORDING_SOURCE_FALLBACK_KEY);
+    const parsedNotice = parsePendingNotice(rawValue);
+    if (rawValue && !parsedNotice) {
+      clearPendingRecordingSourceFallbackNotice();
+    }
+    return parsedNotice;
   } catch (error) {
     if (!hasLoggedReadError) {
       console.warn("Unable to read pending source fallback notice:", error);
@@ -63,10 +93,15 @@ export function getPendingRecordingSourceFallbackNotice(): PendingRecordingSourc
 export function setPendingRecordingSourceFallbackNotice(
   notice: PendingRecordingSourceFallbackNotice
 ): void {
+  const normalizedNotice = normalizePendingNotice(notice);
+  if (!normalizedNotice) {
+    clearPendingRecordingSourceFallbackNotice();
+    return;
+  }
   try {
     sessionStorage.setItem(
       PENDING_RECORDING_SOURCE_FALLBACK_KEY,
-      JSON.stringify(notice)
+      JSON.stringify(normalizedNotice)
     );
   } catch (error) {
     if (!hasLoggedWriteError) {
