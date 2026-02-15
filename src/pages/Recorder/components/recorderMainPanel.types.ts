@@ -4,6 +4,7 @@ export interface RecorderMainPanelProps {
   selectedSource: CaptureSource | null;
   countdown: number | null;
   errorMessage: string | null;
+  finalizingMessage: string | null;
   diskWarning: string | null;
   sourceType: "display" | "window";
   sources: CaptureSource[];

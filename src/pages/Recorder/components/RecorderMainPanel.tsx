@@ -16,6 +16,7 @@ export function RecorderMainPanel({
   selectedSource,
   countdown,
   errorMessage,
+  finalizingMessage,
   diskWarning,
   sourceType,
   sources,
@@ -57,6 +58,11 @@ export function RecorderMainPanel({
         {errorMessage && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {errorMessage}
+          </div>
+        )}
+        {finalizingMessage && (
+          <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-300">
+            {finalizingMessage}
           </div>
         )}
         {diskWarning && (

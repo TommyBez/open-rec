@@ -8,6 +8,7 @@ export function RecorderPage() {
   const {
     countdown,
     errorMessage,
+    finalizingMessage,
     diskWarning,
     hasPermission,
     isRecording,
@@ -51,6 +52,7 @@ export function RecorderPage() {
       selectedSource={selectedSource}
       countdown={countdown}
       errorMessage={errorMessage}
+      finalizingMessage={finalizingMessage}
       diskWarning={diskWarning}
       sourceType={sourceType}
       sources={sources}

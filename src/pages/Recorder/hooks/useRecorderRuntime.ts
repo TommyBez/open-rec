@@ -43,6 +43,7 @@ interface ResolvedRecordingSource {
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
 const STOP_FINALIZATION_TIMEOUT_MS = 60_000;
+type RecordingFinalizingStatus = "merging" | "verifying" | "saving";
 const SOURCE_FALLBACK_WARNING_PREFIXES = [
   "Display \"",
   "Saved display is unavailable.",
@@ -172,6 +173,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [diskWarning, setDiskWarning] = useState<string | null>(null);
+  const [finalizingStatus, setFinalizingStatus] =
+    useState<RecordingFinalizingStatus | null>(null);
   const [preferredDisplaySourceId, setPreferredDisplaySourceId] = useState<string | null>(null);
   const [preferredDisplaySourceOrdinal, setPreferredDisplaySourceOrdinal] = useState<number | null>(null);
   const [preferredWindowSourceId, setPreferredWindowSourceId] = useState<string | null>(null);
@@ -434,6 +437,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         if (event.payload.state === "idle") {
           setProjectId(null);
           setRecordingStartTimeMs(null);
+          setFinalizingStatus(null);
           clearStoredCurrentProjectId();
           clearPendingRecordingSourceFallbackNotice();
           return;
@@ -452,6 +456,24 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }, [projectId, setProjectId, setRecordingState, setRecordingStartTimeMs]);
 
   useEffect(() => {
+    const unlisten = listen<{
+      projectId: string;
+      status?: RecordingFinalizingStatus;
+    }>("recording-finalizing", (event) => {
+      const activeProjectId = projectId ?? getStoredCurrentProjectId();
+      if (!activeProjectId || event.payload.projectId !== activeProjectId) {
+        return;
+      }
+      setFinalizingStatus(event.payload.status ?? "merging");
+      setRecordingState("stopping");
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [projectId, setRecordingState]);
+
+  useEffect(() => {
     if (recordingState !== "stopping") {
       return;
     }
@@ -459,6 +481,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setRecordingState("idle");
       setProjectId(null);
       setRecordingStartTimeMs(null);
+      setFinalizingStatus(null);
       clearStoredCurrentProjectId();
       clearPendingRecordingSourceFallbackNotice();
       setErrorMessage((current) =>
@@ -485,6 +508,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setRecordingState("idle");
       setProjectId(null);
       setRecordingStartTimeMs(null);
+      setFinalizingStatus(null);
       clearStoredCurrentProjectId();
       clearPendingRecordingSourceFallbackNotice();
       if (stoppedProjectId.length > 0) {
@@ -502,6 +526,17 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setRecordingState,
     setRecordingStartTimeMs,
   ]);
+
+  const finalizingMessage =
+    recordingState === "stopping"
+      ? finalizingStatus === "merging"
+        ? "Finalizing recording segments…"
+        : finalizingStatus === "verifying"
+          ? "Verifying finalized recording…"
+          : finalizingStatus === "saving"
+            ? "Saving project metadata…"
+            : "Stopping recording…"
+      : null;
 
   useEffect(() => {
     const unlisten = listen("global-shortcut-start-stop", () => {
@@ -799,6 +834,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   return {
     countdown,
     errorMessage,
+    finalizingMessage,
     diskWarning,
     hasPermission,
     recordingState,
