@@ -1119,6 +1119,13 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
         .to_string_lossy()
         .eq_ignore_ascii_case("project.json")
     {
+        if !path.is_file() {
+            eprintln!(
+                "Ignoring opened project.json path because it is not a file: {}",
+                path.display()
+            );
+            return None;
+        }
         let parent_name = path.parent()?.file_name()?.to_string_lossy();
         return normalize_opened_project_id(&parent_name);
     }
@@ -1722,6 +1729,17 @@ mod tests {
 
         let resolved = project_id_from_opened_path(&project_json_path);
         assert_eq!(resolved.as_deref(), Some("project-uppercase-file"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ignores_missing_project_json_path() {
+        let root = create_test_dir("path-missing-project-json");
+        let missing_project_file = root.join("missing-project").join("project.json");
+
+        let resolved = project_id_from_opened_path(&missing_project_file);
+        assert_eq!(resolved, None);
 
         let _ = std::fs::remove_dir_all(root);
     }
