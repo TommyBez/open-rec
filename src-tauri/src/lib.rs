@@ -19,11 +19,12 @@ use tauri_plugin_shell::ShellExt;
 use export::{build_ffmpeg_args, get_export_output_path, validate_export_inputs, ExportOptions};
 use project::Project;
 use recording::{
-    check_screen_recording_permission, get_recording_state as do_get_recording_state,
-    pause_recording as do_pause_recording, request_screen_recording_permission,
-    resume_recording as do_resume_recording, set_media_offsets as do_set_media_offsets,
-    start_recording as do_start_recording, stop_recording as do_stop_recording, CaptureSource,
-    RecorderState, RecordingOptions, RecordingState as RecorderRecordingState, SharedRecorderState,
+    check_screen_recording_permission, get_recording_snapshot as do_get_recording_snapshot,
+    get_recording_state as do_get_recording_state, pause_recording as do_pause_recording,
+    request_screen_recording_permission, resume_recording as do_resume_recording,
+    set_media_offsets as do_set_media_offsets, start_recording as do_start_recording,
+    stop_recording as do_stop_recording, CaptureSource, RecorderState, RecordingOptions,
+    RecordingSessionSnapshot, RecordingState as RecorderRecordingState, SharedRecorderState,
     SourceType, StartRecordingResult, StopRecordingResult,
 };
 use uuid::Uuid;
@@ -829,6 +830,15 @@ fn get_recording_state(
 ) -> Result<Option<RecorderRecordingState>, AppError> {
     let project_id = normalize_project_id_input(project_id, "get recording state")?;
     do_get_recording_state(&state, &project_id)
+}
+
+#[tauri::command]
+fn get_recording_snapshot(
+    state: tauri::State<SharedRecorderState>,
+    project_id: String,
+) -> Result<Option<RecordingSessionSnapshot>, AppError> {
+    let project_id = normalize_project_id_input(project_id, "get recording snapshot")?;
+    do_get_recording_snapshot(&state, &project_id)
 }
 
 /// Pause screen recording
@@ -2133,6 +2143,7 @@ pub fn run() {
             stop_screen_recording,
             set_recording_media_offsets,
             get_recording_state,
+            get_recording_snapshot,
             pause_recording,
             resume_recording,
             open_recording_widget,

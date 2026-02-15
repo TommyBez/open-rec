@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useRecordingStore, RecordingState } from "../../../stores";
-import { BackendRecordingState, DiskSpaceStatus } from "../../../types/project";
+import { DiskSpaceStatus, RecordingSessionSnapshot } from "../../../types/project";
 import {
   clearStoredCurrentProjectId,
   getStoredCurrentProjectId,
@@ -21,6 +21,7 @@ export function useRecordingWidgetRuntime() {
     elapsedTime,
     projectId,
     setRecordingState,
+    setElapsedTime,
     incrementElapsedTime,
     setProjectId,
     beginRecordingStop,
@@ -49,13 +50,14 @@ export function useRecordingWidgetRuntime() {
       if (state !== "idle") return;
 
       try {
-        const backendState = await invoke<BackendRecordingState | null>("get_recording_state", {
+        const snapshot = await invoke<RecordingSessionSnapshot | null>("get_recording_snapshot", {
           projectId: effectiveProjectId,
         });
         if (cancelled) return;
 
-        if (backendState === "recording" || backendState === "paused") {
-          setRecordingState(backendState);
+        if (snapshot && (snapshot.state === "recording" || snapshot.state === "paused")) {
+          setRecordingState(snapshot.state);
+          setElapsedTime(Math.max(0, Math.floor(snapshot.elapsedSeconds)));
           return;
         }
 
@@ -71,7 +73,7 @@ export function useRecordingWidgetRuntime() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, setProjectId, state, setRecordingState]);
+  }, [projectId, setElapsedTime, setProjectId, state, setRecordingState]);
 
   useEffect(() => {
     const hasPersistedSession = Boolean(resolveActiveProjectId());

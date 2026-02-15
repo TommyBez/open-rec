@@ -122,6 +122,11 @@ export interface StartRecordingResult {
 
 export type BackendRecordingState = "recording" | "paused" | "stopped";
 
+export interface RecordingSessionSnapshot {
+  state: BackendRecordingState;
+  elapsedSeconds: number;
+}
+
 export interface DiskSpaceStatus {
   freeBytes: number;
   minimumRequiredBytes: number;

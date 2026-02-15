@@ -101,6 +101,13 @@ pub struct RecordingSession {
     pub recording_output: Option<SCRecordingOutput>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingSessionSnapshot {
+    pub state: RecordingState,
+    pub elapsed_seconds: f64,
+}
+
 /// Global recorder state
 pub struct RecorderState {
     pub sessions: HashMap<String, RecordingSession>,
@@ -652,6 +659,16 @@ pub fn set_media_offsets(
     Ok(())
 }
 
+fn calculate_elapsed_duration_ms(session: &RecordingSession) -> u64 {
+    let mut elapsed_ms = session.active_duration_ms;
+    if session.state == RecordingState::Recording {
+        if let Some(last_resume) = session.last_resume_instant.as_ref() {
+            elapsed_ms = elapsed_ms.saturating_add(last_resume.elapsed().as_millis() as u64);
+        }
+    }
+    elapsed_ms
+}
+
 #[cfg(target_os = "macos")]
 pub fn get_recording_state(
     state: &SharedRecorderState,
@@ -664,6 +681,23 @@ pub fn get_recording_state(
         .sessions
         .get(project_id)
         .map(|session| session.state))
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_recording_snapshot(
+    state: &SharedRecorderState,
+    project_id: &str,
+) -> Result<Option<RecordingSessionSnapshot>, AppError> {
+    let state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    Ok(state_guard.sessions.get(project_id).map(|session| {
+        let elapsed_seconds = calculate_elapsed_duration_ms(session) as f64 / 1000.0;
+        RecordingSessionSnapshot {
+            state: session.state,
+            elapsed_seconds,
+        }
+    }))
 }
 
 /// Cleanup all active recording streams (used on app termination)
@@ -763,6 +797,14 @@ pub fn get_recording_state(
     _state: &SharedRecorderState,
     _project_id: &str,
 ) -> Result<Option<RecordingState>, AppError> {
+    Ok(None)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_recording_snapshot(
+    _state: &SharedRecorderState,
+    _project_id: &str,
+) -> Result<Option<RecordingSessionSnapshot>, AppError> {
     Ok(None)
 }
 
