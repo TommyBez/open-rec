@@ -24,6 +24,7 @@ import {
 } from "../../../lib/trayQuickRecord";
 import {
   clearStoredCurrentProjectId,
+  getStoredCurrentProjectId,
   setStoredCurrentProjectId,
 } from "../../../lib/currentProjectStorage";
 import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpace";
@@ -413,8 +414,51 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }
 
   useEffect(() => {
+    const unlisten = listen<{ state: typeof recordingState; projectId: string }>(
+      "recording-state-changed",
+      (event) => {
+        const activeProjectId = projectId ?? getStoredCurrentProjectId();
+        const eventProjectId = event.payload.projectId?.trim() ?? "";
+        if (
+          activeProjectId &&
+          eventProjectId.length > 0 &&
+          eventProjectId !== activeProjectId
+        ) {
+          return;
+        }
+
+        setRecordingState(event.payload.state);
+        if (event.payload.state === "idle") {
+          setProjectId(null);
+          setRecordingStartTimeMs(null);
+          clearStoredCurrentProjectId();
+          clearPendingRecordingSourceFallbackNotice();
+          return;
+        }
+
+        if (eventProjectId.length > 0) {
+          setProjectId(eventProjectId);
+          setStoredCurrentProjectId(eventProjectId);
+        }
+      }
+    );
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [projectId, setProjectId, setRecordingState, setRecordingStartTimeMs]);
+
+  useEffect(() => {
     const unlisten = listen<string>("recording-stopped", (event) => {
       const stoppedProjectId = event.payload.trim();
+      const activeProjectId = projectId ?? getStoredCurrentProjectId();
+      if (
+        activeProjectId &&
+        stoppedProjectId.length > 0 &&
+        stoppedProjectId !== activeProjectId
+      ) {
+        return;
+      }
       setRecordingState("idle");
       setProjectId(null);
       setRecordingStartTimeMs(null);
@@ -429,6 +473,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       unlisten.then((fn) => fn());
     };
   }, [
+    projectId,
     onRecordingStoppedNavigate,
     setProjectId,
     setRecordingState,
