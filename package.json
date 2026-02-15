@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "verify:frontend": "pnpm run check:component-size && tsc --noEmit",
+    "verify:docs": "node ./check-doc-links.mjs",
     "test:frontend": "vitest run",
     "build:frontend": "vite build",
     "build": "pnpm run verify:frontend && pnpm run build:frontend",

@@ -45,6 +45,7 @@ Use this index to quickly find the right document.
 When editing docs, quickly verify:
 
 1. links resolve (`README.md` + `docs/*.md`)
+   - run `pnpm run verify:docs`
 2. no contradictory scope statements (Linux validation vs macOS manual gates)
 3. no duplicate status text copied across multiple docs
 4. warning/install/runtime procedures still point to the correct runbooks

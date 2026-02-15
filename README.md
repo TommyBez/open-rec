@@ -39,6 +39,7 @@ pnpm install
 
 # frontend checks
 pnpm run verify:frontend
+pnpm run verify:docs
 pnpm run test:frontend
 
 # backend checks
