@@ -305,13 +305,15 @@ pub async fn save_project(recordings_dir: &PathBuf, project: &Project) -> Result
     let association_content = serde_json::to_string_pretty(&association_payload).map_err(|e| {
         AppError::Message(format!("Failed to serialize project association: {}", e))
     })?;
-    if let Err(error) = tokio::fs::write(&association_path, association_content).await {
-        eprintln!(
-            "Project saved but failed to write association file {}: {}",
-            association_path.display(),
-            error
-        );
-    }
+    tokio::fs::write(&association_path, association_content)
+        .await
+        .map_err(|error| {
+            AppError::Io(format!(
+                "Failed to write project association file {}: {}",
+                association_path.display(),
+                error
+            ))
+        })?;
 
     Ok(())
 }
@@ -378,11 +380,11 @@ pub async fn delete_project(recordings_dir: &PathBuf, project_id: &str) -> Resul
         recordings_dir.join(format!("{}.{}", project_id, PROJECT_ASSOCIATION_EXTENSION));
     if let Err(error) = tokio::fs::remove_file(&association_path).await {
         if error.kind() != std::io::ErrorKind::NotFound {
-            eprintln!(
-                "Project deleted but failed to remove association file {}: {}",
+            return Err(AppError::Io(format!(
+                "Failed to delete project association file {}: {}",
                 association_path.display(),
                 error
-            );
+            )));
         }
     }
 
@@ -476,6 +478,74 @@ mod tests {
         assert!(
             tokio::fs::metadata(&association_path).await.is_err(),
             "association sidecar should be removed"
+        );
+
+        let _ = tokio::fs::remove_dir_all(&recordings_dir).await;
+    }
+
+    #[tokio::test]
+    async fn save_project_fails_when_association_path_is_directory() {
+        let recordings_dir = create_test_recordings_dir("save-association-directory-conflict");
+        let project_id = format!("project-{}", Uuid::new_v4());
+        let project = build_test_project(&recordings_dir, &project_id);
+        let association_path =
+            recordings_dir.join(format!("{}.{}", project_id, PROJECT_ASSOCIATION_EXTENSION));
+        tokio::fs::create_dir_all(&association_path)
+            .await
+            .expect("failed to create conflicting association directory");
+
+        let error = save_project(&recordings_dir, &project)
+            .await
+            .expect_err("save should fail when association path is a directory");
+        assert!(
+            error
+                .to_string()
+                .contains("Failed to write project association file"),
+            "unexpected save error: {error}"
+        );
+
+        let project_dir = recordings_dir.join(&project_id);
+        assert!(
+            tokio::fs::metadata(&project_dir).await.is_ok(),
+            "project directory should still be created before association failure"
+        );
+
+        let _ = tokio::fs::remove_dir_all(&recordings_dir).await;
+    }
+
+    #[tokio::test]
+    async fn delete_project_fails_when_association_path_is_directory() {
+        let recordings_dir = create_test_recordings_dir("delete-association-directory-conflict");
+        let project_id = format!("project-{}", Uuid::new_v4());
+        let project = build_test_project(&recordings_dir, &project_id);
+
+        save_project(&recordings_dir, &project)
+            .await
+            .expect("project should save before delete conflict");
+
+        let association_path =
+            recordings_dir.join(format!("{}.{}", project_id, PROJECT_ASSOCIATION_EXTENSION));
+        tokio::fs::remove_file(&association_path)
+            .await
+            .expect("failed to remove association file before conflict setup");
+        tokio::fs::create_dir_all(&association_path)
+            .await
+            .expect("failed to create conflicting association directory");
+
+        let error = delete_project(&recordings_dir, &project_id)
+            .await
+            .expect_err("delete should fail when association path is a directory");
+        assert!(
+            error
+                .to_string()
+                .contains("Failed to delete project association file"),
+            "unexpected delete error: {error}"
+        );
+
+        let project_dir = recordings_dir.join(&project_id);
+        assert!(
+            tokio::fs::metadata(&project_dir).await.is_err(),
+            "project directory should be removed even when sidecar removal fails"
         );
 
         let _ = tokio::fs::remove_dir_all(&recordings_dir).await;
