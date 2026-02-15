@@ -424,9 +424,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       "recording-state-changed",
       (event) => {
         const activeProjectId = projectId ?? getStoredCurrentProjectId();
+        if (!activeProjectId) {
+          return;
+        }
         const eventProjectId = event.payload.projectId?.trim() ?? "";
         if (
-          activeProjectId &&
           eventProjectId.length > 0 &&
           eventProjectId !== activeProjectId
         ) {
@@ -498,11 +500,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     const unlisten = listen<string>("recording-stopped", (event) => {
       const stoppedProjectId = event.payload.trim();
       const activeProjectId = projectId ?? getStoredCurrentProjectId();
-      if (
-        activeProjectId &&
-        stoppedProjectId.length > 0 &&
-        stoppedProjectId !== activeProjectId
-      ) {
+      if (!activeProjectId) {
+        return;
+      }
+      if (stoppedProjectId.length > 0 && stoppedProjectId !== activeProjectId) {
         return;
       }
       setRecordingState("idle");
@@ -532,12 +533,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       "recording-stop-failed",
       (event) => {
         const activeProjectId = projectId ?? getStoredCurrentProjectId();
+        if (!activeProjectId) {
+          return;
+        }
         const eventProjectId = event.payload.projectId?.trim() ?? "";
-        if (
-          activeProjectId &&
-          eventProjectId.length > 0 &&
-          eventProjectId !== activeProjectId
-        ) {
+        if (eventProjectId.length > 0 && eventProjectId !== activeProjectId) {
           return;
         }
         setRecordingState("idle");
@@ -599,7 +599,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       sourceId: string;
       sourceOrdinal?: number | null;
     }>("recording-source-fallback", (event) => {
-      if (projectId && event.payload.projectId !== projectId) {
+      const activeProjectId = projectId ?? getStoredCurrentProjectId();
+      if (!activeProjectId || event.payload.projectId !== activeProjectId) {
         return;
       }
       if (event.payload.sourceType === "display") {
