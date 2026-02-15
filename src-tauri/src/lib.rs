@@ -1228,17 +1228,30 @@ fn handle_opened_project_paths(app: &AppHandle, paths: Vec<PathBuf>) {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
+fn strip_wrapping_quotes(value: &str) -> &str {
+    if value.len() >= 2 {
+        let starts_with_double = value.starts_with('"') && value.ends_with('"');
+        let starts_with_single = value.starts_with('\'') && value.ends_with('\'');
+        if starts_with_double || starts_with_single {
+            return &value[1..value.len() - 1];
+        }
+    }
+    value
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn collect_startup_opened_paths() -> Vec<PathBuf> {
     std::env::args()
         .skip(1)
         .filter(|arg| !arg.starts_with('-'))
         .map(|arg| {
-            if let Ok(url) = url::Url::parse(&arg) {
+            let normalized_arg = strip_wrapping_quotes(&arg);
+            if let Ok(url) = url::Url::parse(normalized_arg) {
                 if let Ok(path) = url.to_file_path() {
                     return path;
                 }
             }
-            PathBuf::from(arg)
+            PathBuf::from(normalized_arg)
         })
         .collect()
 }
@@ -1540,6 +1553,8 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    use super::strip_wrapping_quotes;
     use super::{
         normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
         project_id_from_opened_path, resolve_project_dir_from_payload,
@@ -1650,6 +1665,23 @@ mod tests {
         assert_eq!(resolved, None);
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn strips_wrapping_quotes_from_startup_arguments() {
+        assert_eq!(
+            strip_wrapping_quotes("\"/tmp/sample.openrec\""),
+            "/tmp/sample.openrec"
+        );
+        assert_eq!(
+            strip_wrapping_quotes("'/tmp/sample.openrec'"),
+            "/tmp/sample.openrec"
+        );
+        assert_eq!(
+            strip_wrapping_quotes("/tmp/sample.openrec"),
+            "/tmp/sample.openrec"
+        );
     }
 
     #[test]
