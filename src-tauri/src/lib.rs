@@ -705,16 +705,11 @@ async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), AppE
     loop {
         tokio::select! {
             _ = &mut timeout => {
-                if let Err(error) = terminate_process_by_pid(pid) {
-                    eprintln!(
-                        "Failed to terminate timed-out ffmpeg process {}: {}",
-                        pid, error
-                    );
-                }
-                return Err(AppError::Message(format!(
-                    "ffmpeg command timed out after {} seconds",
-                    FFMPEG_COMMAND_TIMEOUT_SECS
-                )));
+                return Err(handle_ffmpeg_timeout(
+                    pid,
+                    FFMPEG_COMMAND_TIMEOUT_SECS,
+                    terminate_process_by_pid,
+                ));
             }
             event = rx.recv() => {
                 let Some(event) = event else {
@@ -739,6 +734,22 @@ async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), AppE
 
     Err(AppError::Message(
         "ffmpeg process terminated unexpectedly".to_string(),
+    ))
+}
+
+fn handle_ffmpeg_timeout<F>(pid: u32, timeout_secs: u64, terminate_process: F) -> AppError
+where
+    F: FnOnce(u32) -> Result<(), AppError>,
+{
+    if let Err(error) = terminate_process(pid) {
+        eprintln!(
+            "Failed to terminate timed-out ffmpeg process {}: {}",
+            pid, error
+        );
+    }
+    AppError::Message(format!(
+        "ffmpeg command timed out after {} seconds",
+        timeout_secs
     ))
 }
 
@@ -2230,13 +2241,14 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 mod tests {
     use super::{
         active_export_job_ids, active_export_job_ids_without_process_check, build_editor_route,
-        clear_pending_finalization, get_pending_finalization, has_active_recording_session,
-        is_missing_process_error, is_process_running, normalize_opened_project_id,
-        normalize_project_id_input, parse_ffmpeg_progress, parse_ffprobe_dimensions_output,
-        parse_ffprobe_duration_output, project_id_from_opened_path,
-        resolve_project_dir_from_payload, store_pending_finalization, RecorderRecordingState,
-        RecorderState, RecordingOptions, SharedPendingFinalizations, SharedRecorderState,
-        SourceType, StopRecordingResult, OPENREC_RELEASES_URL, OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
+        clear_pending_finalization, get_pending_finalization, handle_ffmpeg_timeout,
+        has_active_recording_session, is_missing_process_error, is_process_running,
+        normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
+        parse_ffprobe_dimensions_output, parse_ffprobe_duration_output,
+        project_id_from_opened_path, resolve_project_dir_from_payload, store_pending_finalization,
+        AppError, RecorderRecordingState, RecorderState, RecordingOptions,
+        SharedPendingFinalizations, SharedRecorderState, SourceType, StopRecordingResult,
+        OPENREC_RELEASES_URL, OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
     };
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use super::{parse_startup_opened_arg, strip_wrapping_quotes};
@@ -2257,6 +2269,31 @@ mod tests {
     fn parses_out_time_us_progress() {
         let parsed = parse_ffmpeg_progress("out_time_us=3500000");
         assert_eq!(parsed, Some(3.5));
+    }
+
+    #[test]
+    fn ffmpeg_timeout_handler_invokes_termination_callback() {
+        let mut captured_pid = 0_u32;
+        let timeout_error = handle_ffmpeg_timeout(42, 12, |pid| {
+            captured_pid = pid;
+            Ok(())
+        });
+        let AppError::Message(message) = timeout_error else {
+            panic!("ffmpeg timeout helper should return message errors");
+        };
+        assert_eq!(captured_pid, 42, "timed-out ffmpeg pid should be forwarded");
+        assert_eq!(message, "ffmpeg command timed out after 12 seconds");
+    }
+
+    #[test]
+    fn ffmpeg_timeout_handler_returns_timeout_error_when_termination_fails() {
+        let timeout_error = handle_ffmpeg_timeout(77, 9, |_pid| {
+            Err(AppError::Message("termination failed".to_string()))
+        });
+        let AppError::Message(message) = timeout_error else {
+            panic!("ffmpeg timeout helper should return message errors");
+        };
+        assert_eq!(message, "ffmpeg command timed out after 9 seconds");
     }
 
     #[test]
