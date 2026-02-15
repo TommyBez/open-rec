@@ -44,14 +44,21 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
 
   useEffect(() => {
     let cancelled = false;
+    let syncInFlight = false;
 
     async function syncActiveExportJobs() {
+      if (syncInFlight) {
+        return;
+      }
+      syncInFlight = true;
       try {
         const activeJobIds = await invoke<string[]>("list_active_export_jobs");
         if (cancelled) return;
         replaceActiveExportJobs(activeJobIds);
       } catch (error) {
         console.error("Failed to sync active export jobs:", error);
+      } finally {
+        syncInFlight = false;
       }
     }
 
@@ -66,6 +73,9 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     ensureNotificationPermission().catch(console.error);
     syncActiveExportJobs().catch(console.error);
     const refreshActiveExports = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
       void syncActiveExportJobs();
     };
     window.addEventListener("focus", refreshActiveExports);
