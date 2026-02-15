@@ -146,37 +146,42 @@ fn has_audio_stream(path: &str) -> bool {
     }
 }
 
-async fn path_exists(path: &str) -> bool {
-    tokio::fs::metadata(path).await.is_ok()
+async fn validate_media_file(path: &str, label: &str) -> Result<(), AppError> {
+    let metadata = tokio::fs::metadata(path).await.map_err(|error| {
+        AppError::Message(format!(
+            "{} file does not exist or cannot be accessed: {} ({})",
+            label, path, error
+        ))
+    })?;
+    if !metadata.is_file() {
+        return Err(AppError::Message(format!(
+            "{} path is not a file: {}",
+            label, path
+        )));
+    }
+
+    tokio::fs::File::open(path).await.map_err(|error| {
+        AppError::Message(format!(
+            "{} file is not readable: {} ({})",
+            label, path, error
+        ))
+    })?;
+
+    Ok(())
 }
 
 pub async fn validate_export_inputs(
     project: &Project,
     options: &ExportOptions,
 ) -> Result<(), AppError> {
-    if !path_exists(&project.screen_video_path).await {
-        return Err(AppError::Message(format!(
-            "Screen recording file does not exist: {}",
-            project.screen_video_path
-        )));
-    }
+    validate_media_file(&project.screen_video_path, "Screen recording").await?;
 
     if let Some(camera_path) = &project.camera_video_path {
-        if !path_exists(camera_path).await {
-            return Err(AppError::Message(format!(
-                "Camera recording file does not exist: {}",
-                camera_path
-            )));
-        }
+        validate_media_file(camera_path, "Camera recording").await?;
     }
 
     if let Some(mic_path) = &project.microphone_audio_path {
-        if !path_exists(mic_path).await {
-            return Err(AppError::Message(format!(
-                "Microphone recording file does not exist: {}",
-                mic_path
-            )));
-        }
+        validate_media_file(mic_path, "Microphone recording").await?;
     }
 
     if project.edits.segments.iter().all(|s| !s.enabled) {
@@ -187,10 +192,7 @@ pub async fn validate_export_inputs(
 
     if matches!(options.format, ExportFormat::Wav | ExportFormat::Mp3) {
         let has_screen_audio = has_audio_stream(&project.screen_video_path);
-        let has_microphone_audio = match project.microphone_audio_path.as_deref() {
-            Some(mic_path) => path_exists(mic_path).await,
-            None => false,
-        };
+        let has_microphone_audio = project.microphone_audio_path.is_some();
         if !has_screen_audio && !has_microphone_audio {
             return Err(AppError::Message(
                 "Audio export requires at least one audio source (system or microphone)"
@@ -1336,6 +1338,31 @@ mod tests {
             result,
             Err(AppError::Message(message))
                 if message.contains("Camera recording file does not exist")
+                    && message.contains(&camera_path.to_string_lossy().to_string())
+        ));
+    }
+
+    #[tokio::test]
+    async fn validate_export_inputs_rejects_camera_directory_path() {
+        let test_dir = TestDirectory::new();
+        let screen_path = test_dir.path.join("screen.mp4");
+        let camera_path = test_dir.path.join("camera-directory");
+        write_empty_file(&screen_path);
+        std::fs::create_dir_all(&camera_path).expect("failed to create camera directory fixture");
+
+        let project = build_test_project(
+            "camera-directory",
+            screen_path,
+            Some(camera_path.clone()),
+            None,
+        );
+
+        let result = validate_export_inputs(&project, &default_options()).await;
+
+        assert!(matches!(
+            result,
+            Err(AppError::Message(message))
+                if message.contains("Camera recording path is not a file")
                     && message.contains(&camera_path.to_string_lossy().to_string())
         ));
     }
