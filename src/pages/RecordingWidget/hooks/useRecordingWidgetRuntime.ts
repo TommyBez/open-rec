@@ -22,6 +22,7 @@ import { withTimeout } from "../../../lib/withTimeout";
 
 const STOP_RECORDING_TIMEOUT_MS = 30_000;
 const PAUSE_RESUME_TIMEOUT_MS = 10_000;
+type RecordingFinalizingStatus = "merging" | "verifying" | "saving";
 
 function fallbackDisplayLabel(sourceId: string, sourceOrdinal?: number | null): string {
   if (typeof sourceOrdinal === "number" && Number.isFinite(sourceOrdinal)) {
@@ -54,6 +55,8 @@ export function useRecordingWidgetRuntime() {
   const sourceStatusPollInFlightRef = useRef(false);
   const sourceUnavailableNoticeRef = useRef<string | null>(null);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [finalizingStatus, setFinalizingStatus] =
+    useState<RecordingFinalizingStatus | null>(null);
   const resolveActiveProjectId = () => projectId ?? getStoredCurrentProjectId();
 
   function applySourceUnavailableWarning(message: string) {
@@ -156,11 +159,15 @@ export function useRecordingWidgetRuntime() {
   }, [projectId, setElapsedTime, setProjectId, setRecordingState]);
 
   useEffect(() => {
-    const unlistenFinalizing = listen<{ projectId: string }>(
+    const unlistenFinalizing = listen<{
+      projectId: string;
+      status?: RecordingFinalizingStatus;
+    }>(
       "recording-finalizing",
       (event) => {
         const activeProjectId = resolveActiveProjectId();
         if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
+        setFinalizingStatus(event.payload.status ?? "merging");
         setRecordingState("stopping");
       }
     );
@@ -171,6 +178,7 @@ export function useRecordingWidgetRuntime() {
       clearPendingRecordingSourceFallbackNotice();
       resetRecording();
       setPermissionError(null);
+      setFinalizingStatus(null);
     });
     const unlistenSourceFallback = listen<{
       projectId: string;
@@ -326,6 +334,7 @@ export function useRecordingWidgetRuntime() {
       autoSegmentInFlightRef.current = false;
       sourceStatusPollInFlightRef.current = false;
       sourceUnavailableNoticeRef.current = null;
+      setFinalizingStatus(null);
     }
   }, [state]);
 
@@ -455,7 +464,17 @@ export function useRecordingWidgetRuntime() {
 
   const isRecording = state === "recording";
   const isStopping = state === "stopping";
-  const statusLabel = isStopping ? "Stopping" : isRecording ? "Live" : "Paused";
+  const statusLabel = isStopping
+    ? finalizingStatus === "merging"
+      ? "Merging"
+      : finalizingStatus === "verifying"
+        ? "Finalizing"
+        : finalizingStatus === "saving"
+          ? "Saving"
+          : "Stopping"
+    : isRecording
+      ? "Live"
+      : "Paused";
 
   return {
     elapsedTime,

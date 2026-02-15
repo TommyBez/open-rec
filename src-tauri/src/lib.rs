@@ -814,15 +814,18 @@ async fn stop_screen_recording(
 ) -> Result<(), AppError> {
     let project_id = normalize_project_id_input(project_id, "stop recording")?;
     let stop_result = do_stop_recording(&state, &project_id)?;
+    let emit_finalizing_status = |status: &str| {
+        emit_with_log(
+            &app,
+            "recording-finalizing",
+            serde_json::json!({
+                "projectId": &project_id,
+                "status": status
+            }),
+        );
+    };
 
-    emit_with_log(
-        &app,
-        "recording-finalizing",
-        serde_json::json!({
-            "projectId": project_id,
-            "status": "merging"
-        }),
-    );
+    emit_finalizing_status("merging");
     emit_with_log(
         &app,
         "recording-state-changed",
@@ -833,6 +836,7 @@ async fn stop_screen_recording(
     );
 
     concatenate_screen_segments(&app, &stop_result).await?;
+    emit_finalizing_status("verifying");
 
     // Get the recordings directory from state
     let recordings_dir = recordings_dir_from_managed_state(&state)?;
@@ -869,6 +873,7 @@ async fn stop_screen_recording(
     );
     project::save_project(&recordings_dir, &project).await?;
     refresh_tray_menu(&app, &recordings_dir);
+    emit_finalizing_status("saving");
     emit_with_log(
         &app,
         "recording-state-changed",
