@@ -38,9 +38,3 @@ They are quality-of-life and polish opportunities that can be addressed in futur
 8. **Automated smoke test for export-job drift recovery**
    - Validate periodic/focus-based export job resync behavior against stale-state scenarios
 
-## Documentation improvements
-
-9. **Troubleshooting playbook for recovery warnings**
-    - Add user-facing docs mapping warning text to expected recovery steps
-    - Include examples for fallback, timeout, and finalization failure messages
-

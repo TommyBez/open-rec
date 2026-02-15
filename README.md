@@ -79,6 +79,8 @@ Current implementation and validation status is tracked in
 [`docs/FINAL_VALIDATION_STATUS.md`](docs/FINAL_VALIDATION_STATUS.md).
 Use [`docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md)
 to execute and record final macOS acceptance runs.
+For warning-to-recovery guidance during manual validation, see
+[`docs/RECOVERY_WARNING_PLAYBOOK.md`](docs/RECOVERY_WARNING_PLAYBOOK.md).
 For optional post-closure polish items, see
 [`docs/NICE_TO_HAVE_BACKLOG.md`](docs/NICE_TO_HAVE_BACKLOG.md).
 

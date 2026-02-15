@@ -60,3 +60,6 @@ macOS runtime gates remain to be executed externally using the dedicated checkli
 For non-blocking future polish opportunities, see:
 [`docs/NICE_TO_HAVE_BACKLOG.md`](./NICE_TO_HAVE_BACKLOG.md).
 
+For operator guidance on runtime warnings and expected recovery actions, see:
+[`docs/RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md).
+
