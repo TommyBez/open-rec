@@ -1270,8 +1270,17 @@ fn parse_startup_opened_arg(arg: &str) -> Option<PathBuf> {
         return None;
     }
     if let Ok(url) = url::Url::parse(normalized_arg) {
-        if let Ok(path) = url.to_file_path() {
-            return Some(path);
+        if url.scheme().eq_ignore_ascii_case("file") {
+            if let Ok(path) = url.to_file_path() {
+                return Some(path);
+            }
+            return None;
+        }
+        let looks_like_windows_drive = normalized_arg.len() >= 2
+            && normalized_arg.as_bytes()[1] == b':'
+            && url.scheme().len() == 1;
+        if !looks_like_windows_drive {
+            return None;
         }
     }
     Some(PathBuf::from(normalized_arg))
@@ -1740,6 +1749,15 @@ mod tests {
         let parsed_url = parse_startup_opened_arg("file:///tmp/url-sample.openrec")
             .expect("file url should parse");
         assert_eq!(parsed_url, PathBuf::from("/tmp/url-sample.openrec"));
+
+        assert_eq!(
+            parse_startup_opened_arg("https://example.com/file.openrec"),
+            None
+        );
+
+        let windows_drive_like = parse_startup_opened_arg("C:/tmp/sample.openrec")
+            .expect("windows drive-like path should be preserved");
+        assert_eq!(windows_drive_like, PathBuf::from("C:/tmp/sample.openrec"));
     }
 
     #[test]
