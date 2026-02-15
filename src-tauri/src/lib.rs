@@ -1541,8 +1541,8 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_opened_project_id, parse_ffmpeg_progress, project_id_from_opened_path,
-        resolve_project_dir_from_payload,
+        normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
+        project_id_from_opened_path, resolve_project_dir_from_payload,
     };
     use std::path::PathBuf;
     use uuid::Uuid;
@@ -1600,6 +1600,25 @@ mod tests {
         assert_eq!(
             normalize_opened_project_id("already-normalized").as_deref(),
             Some("already-normalized")
+        );
+    }
+
+    #[test]
+    fn normalizes_project_id_input() {
+        assert_eq!(
+            normalize_project_id_input("  project-123  ".to_string(), "test context")
+                .expect("project id should normalize"),
+            "project-123".to_string()
+        );
+    }
+
+    #[test]
+    fn rejects_empty_project_id_input() {
+        let error = normalize_project_id_input("   ".to_string(), "test context")
+            .expect_err("empty project id should fail");
+        assert_eq!(
+            error.to_string(),
+            "Missing project id for test context".to_string()
         );
     }
 
