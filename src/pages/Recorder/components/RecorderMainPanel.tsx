@@ -43,6 +43,8 @@ export function RecorderMainPanel({
   onOpenRecordingWidget,
   onStartRecording,
 }: RecorderMainPanelProps) {
+  const sourceControlsLocked = isRecording || countdown !== null;
+
   return (
     <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background p-5">
       <div
@@ -73,27 +75,12 @@ export function RecorderMainPanel({
         )}
         <div className="studio-panel animate-fade-up-delay-1 rounded-xl p-1">
           <div className="flex gap-1">
-            <SourceTypeButton
-              active={sourceType === "display"}
-              onClick={() => onSetSourceType("display")}
-              icon={<Monitor className="size-4" />}
-              label="Screen"
-            />
-            <SourceTypeButton
-              active={sourceType === "window"}
-              onClick={() => onSetSourceType("window")}
-              icon={<AppWindow className="size-4" />}
-              label="Window"
-            />
+            <SourceTypeButton active={sourceType === "display"} onClick={() => onSetSourceType("display")} icon={<Monitor className="size-4" />} label="Screen" disabled={sourceControlsLocked} />
+            <SourceTypeButton active={sourceType === "window"} onClick={() => onSetSourceType("window")} icon={<AppWindow className="size-4" />} label="Window" disabled={sourceControlsLocked} />
           </div>
         </div>
         <div className="animate-fade-up-delay-2">
-          <SourceSelector
-            sources={sources}
-            selectedSource={selectedSource}
-            onSelect={onSetSelectedSource}
-            isLoading={isLoadingSources}
-          />
+          <SourceSelector sources={sources} selectedSource={selectedSource} onSelect={onSetSelectedSource} isLoading={isLoadingSources} disabled={sourceControlsLocked} />
         </div>
         <AnimatePresence>
           {captureCamera && (

@@ -10,6 +10,7 @@ interface SourceSelectorProps {
   selectedSource: CaptureSource | null;
   onSelect: (source: CaptureSource) => void;
   isLoading?: boolean;
+  disabled?: boolean;
 }
 
 export function SourceSelector({
@@ -17,6 +18,7 @@ export function SourceSelector({
   selectedSource,
   onSelect,
   isLoading = false,
+  disabled = false,
 }: SourceSelectorProps) {
   const handleValueChange = (value: string) => {
     const source = sources.find((s) => s.id === value);
@@ -29,7 +31,7 @@ export function SourceSelector({
     <Select
       value={selectedSource?.id ?? ""}
       onValueChange={handleValueChange}
-      disabled={isLoading}
+      disabled={isLoading || disabled}
     >
       <SelectTrigger 
         className={cn(
