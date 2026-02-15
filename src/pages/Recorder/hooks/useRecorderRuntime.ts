@@ -949,7 +949,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     }
   }
 
+  const hasActiveRecordingSession = Boolean(projectId ?? getStoredCurrentProjectId());
   const showOpenRecordingWidgetButton =
+    hasActiveRecordingSession &&
     recordingState !== "idle" &&
     recordingState !== "starting" &&
     recordingState !== "stopping";
