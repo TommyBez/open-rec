@@ -253,6 +253,22 @@ fn find_display_or_fallback(
     Ok((fallback_display, true, 0))
 }
 
+fn resolve_display_fallback_index(
+    available_display_count: usize,
+    preferred_display_ordinal: Option<u32>,
+) -> usize {
+    if available_display_count == 0 {
+        return 0;
+    }
+    if let Some(ordinal) = preferred_display_ordinal {
+        let preferred_index = ordinal as usize;
+        if preferred_index < available_display_count {
+            return preferred_index;
+        }
+    }
+    0
+}
+
 #[cfg(target_os = "macos")]
 fn find_display_or_fallback_with_ordinal(
     content: &SCShareableContent,
@@ -265,14 +281,12 @@ fn find_display_or_fallback_with_ordinal(
         return Ok((display, used_fallback, requested_ordinal));
     }
 
-    let preferred_index = preferred_display_ordinal.map(|ordinal| ordinal as usize);
     let mut displays: Vec<SCDisplay> = content.displays().into_iter().collect();
     displays.sort_by_key(|candidate| candidate.display_id());
-    if let Some(index) = preferred_index {
-        if index < displays.len() {
-            let preferred_display = displays.remove(index);
-            return Ok((preferred_display, true, index as u32));
-        }
+    let fallback_index = resolve_display_fallback_index(displays.len(), preferred_display_ordinal);
+    if fallback_index < displays.len() {
+        let preferred_display = displays.remove(fallback_index);
+        return Ok((preferred_display, true, fallback_index as u32));
     }
     Ok((display, used_fallback, requested_ordinal))
 }
@@ -878,6 +892,14 @@ pub fn cleanup_active_recordings(_state: &SharedRecorderState) -> Result<(), App
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolves_display_fallback_index_from_preferred_ordinal() {
+        assert_eq!(resolve_display_fallback_index(3, Some(2)), 2);
+        assert_eq!(resolve_display_fallback_index(3, Some(99)), 0);
+        assert_eq!(resolve_display_fallback_index(3, None), 0);
+        assert_eq!(resolve_display_fallback_index(0, Some(1)), 0);
+    }
 
     fn build_test_session(
         state: RecordingState,
