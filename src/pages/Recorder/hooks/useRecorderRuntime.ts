@@ -419,25 +419,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     } catch (error) {
       console.error("Failed to load capture sources:", error);
       setErrorMessage("Could not load capture sources. Check permissions and retry.");
-      const mockSources: CaptureSource[] =
-        sourceType === "display"
-          ? [{ id: "main", name: "Built-in Display", type: "display" }]
-          : [
-              { id: "1", name: "Cursor", type: "window" },
-              { id: "2", name: "Safari", type: "window" },
-              { id: "3", name: "Finder", type: "window" },
-            ];
-      setSources(mockSources);
-      const currentSourceId =
-        selectedSource?.type === sourceType ? selectedSource.id : null;
-      const preferredMock = resolvePreferredSource(
-        mockSources,
-        sourceType,
-        currentSourceId,
-        preferredSourceId,
-        preferredSourceOrdinal
-      );
-      setSelectedSource(preferredMock);
+      setSources([]);
+      setSelectedSource(null);
     } finally {
       setIsLoadingSources(false);
     }
