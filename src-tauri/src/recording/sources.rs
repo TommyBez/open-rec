@@ -70,12 +70,14 @@ pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource
 
     match source_type {
         SourceType::Display => {
-            let displays = content.displays();
+            let mut displays = content.displays().into_iter().collect::<Vec<_>>();
+            displays.sort_by_key(|display| display.display_id());
             Ok(displays
-                .iter()
-                .map(|d| CaptureSource {
-                    id: d.display_id().to_string(),
-                    name: format!("Display {}", d.display_id()),
+                .into_iter()
+                .enumerate()
+                .map(|(index, display)| CaptureSource {
+                    id: display.display_id().to_string(),
+                    name: format!("Display {}", index + 1),
                     source_type: SourceType::Display,
                     thumbnail: None,
                 })
