@@ -336,6 +336,22 @@ fn find_window<'a>(
         .ok_or_else(|| AppError::Message(format!("Window not found: {}", window_id)))
 }
 
+#[cfg(any(target_os = "macos", test))]
+fn resolve_window_fallback_id(
+    requested_window_id: u32,
+    available_window_ids: &[u32],
+) -> Option<(u32, bool)> {
+    if available_window_ids.is_empty() {
+        return None;
+    }
+    let mut sorted_window_ids = available_window_ids.to_vec();
+    sorted_window_ids.sort_unstable();
+    if sorted_window_ids.contains(&requested_window_id) {
+        return Some((requested_window_id, false));
+    }
+    Some((sorted_window_ids[0], true))
+}
+
 #[cfg(target_os = "macos")]
 fn find_window_or_fallback<'a>(
     content: &'a SCShareableContent,
@@ -346,20 +362,28 @@ fn find_window_or_fallback<'a>(
         .iter()
         .filter(|window| window.is_on_screen())
         .collect::<Vec<_>>();
-    if on_screen_windows.is_empty() {
+    let available_window_ids = on_screen_windows
+        .iter()
+        .map(|window| window.window_id())
+        .collect::<Vec<_>>();
+    let Some((resolved_window_id, used_fallback)) =
+        resolve_window_fallback_id(requested_window_id, &available_window_ids)
+    else {
         return Err(AppError::Message(
             "No windows are currently available for capture".to_string(),
         ));
-    }
-    if let Some(window) = on_screen_windows
+    };
+    let resolved_window = on_screen_windows
         .iter()
         .copied()
-        .find(|window| window.window_id() == requested_window_id)
-    {
-        return Ok((window, false));
-    }
-    on_screen_windows.sort_by_key(|window| window.window_id());
-    Ok((on_screen_windows[0], true))
+        .find(|window| window.window_id() == resolved_window_id)
+        .ok_or_else(|| {
+            AppError::Message(format!(
+                "Window not found after fallback resolution: {}",
+                resolved_window_id
+            ))
+        })?;
+    Ok((resolved_window, used_fallback))
 }
 
 #[cfg(target_os = "macos")]
@@ -906,23 +930,26 @@ pub fn get_recording_source_status(
         }
         SourceType::Window => {
             let window_id = parse_window_id(&source_id)?;
-            let mut on_screen_windows = content
+            let on_screen_windows = content
                 .windows()
                 .iter()
                 .filter(|window| window.is_on_screen())
                 .collect::<Vec<_>>();
-            if on_screen_windows.is_empty() {
+            let available_window_ids = on_screen_windows
+                .iter()
+                .map(|window| window.window_id())
+                .collect::<Vec<_>>();
+            let Some((resolved_window_id, used_fallback)) =
+                resolve_window_fallback_id(window_id, &available_window_ids)
+            else {
                 return Ok(Some(RecordingSourceStatus {
                     source_type,
                     source_id,
                     available: false,
                     fallback_source: None,
                 }));
-            }
-            if on_screen_windows
-                .iter()
-                .any(|window| window.window_id() == window_id)
-            {
+            };
+            if !used_fallback {
                 return Ok(Some(RecordingSourceStatus {
                     source_type,
                     source_id,
@@ -930,14 +957,12 @@ pub fn get_recording_source_status(
                     fallback_source: None,
                 }));
             }
-            on_screen_windows.sort_by_key(|window| window.window_id());
-            let fallback_window = on_screen_windows[0];
             Ok(Some(RecordingSourceStatus {
                 source_type,
                 source_id,
                 available: false,
                 fallback_source: Some(RecordingSourceFallback {
-                    source_id: fallback_window.window_id().to_string(),
+                    source_id: resolved_window_id.to_string(),
                     source_ordinal: None,
                 }),
             }))
@@ -1122,6 +1147,19 @@ mod tests {
         assert_eq!(resolve_display_fallback_index(3, Some(99)), 0);
         assert_eq!(resolve_display_fallback_index(3, None), 0);
         assert_eq!(resolve_display_fallback_index(0, Some(1)), 0);
+    }
+
+    #[test]
+    fn resolves_window_fallback_id_from_available_sources() {
+        assert_eq!(
+            resolve_window_fallback_id(12, &[12, 44, 7]),
+            Some((12, false))
+        );
+        assert_eq!(
+            resolve_window_fallback_id(99, &[12, 44, 7]),
+            Some((7, true))
+        );
+        assert_eq!(resolve_window_fallback_id(99, &[]), None);
     }
 
     fn build_test_session(
