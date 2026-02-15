@@ -732,18 +732,7 @@ fn probe_video_dimensions(screen_video_path: &PathBuf) -> Result<(u32, u32), App
     }
 
     let dimensions = String::from_utf8_lossy(&output.stdout);
-    let mut parts = dimensions.trim().split('x');
-    let width = parts
-        .next()
-        .ok_or_else(|| AppError::Message("ffprobe did not return a video width".to_string()))?
-        .parse()
-        .map_err(|error| AppError::Message(format!("Invalid ffprobe width value: {}", error)))?;
-    let height = parts
-        .next()
-        .ok_or_else(|| AppError::Message("ffprobe did not return a video height".to_string()))?
-        .parse()
-        .map_err(|error| AppError::Message(format!("Invalid ffprobe height value: {}", error)))?;
-    Ok((width, height))
+    parse_ffprobe_dimensions_output(&dimensions)
 }
 
 fn probe_video_duration(screen_video_path: &PathBuf) -> Result<f64, AppError> {
@@ -766,10 +755,52 @@ fn probe_video_duration(screen_video_path: &PathBuf) -> Result<f64, AppError> {
     }
 
     let duration = String::from_utf8_lossy(&output.stdout);
-    duration
+    parse_ffprobe_duration_output(&duration)
+}
+
+fn parse_ffprobe_dimensions_output(raw: &str) -> Result<(u32, u32), AppError> {
+    let mut parts = raw.trim().split('x');
+    let width = parts
+        .next()
+        .ok_or_else(|| AppError::Message("ffprobe did not return a video width".to_string()))?
         .trim()
+        .parse::<u32>()
+        .map_err(|error| AppError::Message(format!("Invalid ffprobe width value: {}", error)))?;
+    let height = parts
+        .next()
+        .ok_or_else(|| AppError::Message("ffprobe did not return a video height".to_string()))?
+        .trim()
+        .parse::<u32>()
+        .map_err(|error| AppError::Message(format!("Invalid ffprobe height value: {}", error)))?;
+    if parts.next().is_some() {
+        return Err(AppError::Message(
+            "Invalid ffprobe dimensions format; expected WIDTHxHEIGHT".to_string(),
+        ));
+    }
+    if width == 0 || height == 0 {
+        return Err(AppError::Message(
+            "ffprobe returned non-positive video dimensions".to_string(),
+        ));
+    }
+    Ok((width, height))
+}
+
+fn parse_ffprobe_duration_output(raw: &str) -> Result<f64, AppError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("n/a") {
+        return Err(AppError::Message(
+            "ffprobe did not return a valid duration".to_string(),
+        ));
+    }
+    let duration = trimmed
         .parse::<f64>()
-        .map_err(|error| AppError::Message(format!("Invalid ffprobe duration value: {}", error)))
+        .map_err(|error| AppError::Message(format!("Invalid ffprobe duration value: {}", error)))?;
+    if !duration.is_finite() || duration <= 0.0 {
+        return Err(AppError::Message(
+            "ffprobe returned a non-positive duration".to_string(),
+        ));
+    }
+    Ok(duration)
 }
 
 /// Check if screen recording permission is granted
@@ -1798,7 +1829,8 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 mod tests {
     use super::{
         build_editor_route, is_missing_process_error, normalize_opened_project_id,
-        normalize_project_id_input, parse_ffmpeg_progress, project_id_from_opened_path,
+        normalize_project_id_input, parse_ffmpeg_progress, parse_ffprobe_dimensions_output,
+        parse_ffprobe_duration_output, project_id_from_opened_path,
         resolve_project_dir_from_payload, OPENREC_RELEASES_URL, OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
     };
     #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -1862,6 +1894,34 @@ mod tests {
         assert!(OPENREC_RELEASES_URL.contains("/releases"));
         assert!(OPENREC_UNSIGNED_INSTALL_GUIDE_URL.starts_with("https://"));
         assert!(OPENREC_UNSIGNED_INSTALL_GUIDE_URL.contains("UNSIGNED_MAC_INSTALL.md"));
+    }
+
+    #[test]
+    fn parses_ffprobe_dimensions_output() {
+        assert!(matches!(
+            parse_ffprobe_dimensions_output("1920x1080"),
+            Ok((1920, 1080))
+        ));
+        assert!(matches!(
+            parse_ffprobe_dimensions_output(" 3840x2160 "),
+            Ok((3840, 2160))
+        ));
+        assert!(parse_ffprobe_dimensions_output("0x1080").is_err());
+        assert!(parse_ffprobe_dimensions_output("1920x0").is_err());
+        assert!(parse_ffprobe_dimensions_output("1920x1080x24").is_err());
+        assert!(parse_ffprobe_dimensions_output("invalid").is_err());
+    }
+
+    #[test]
+    fn parses_ffprobe_duration_output() {
+        assert!(
+            matches!(parse_ffprobe_duration_output("12.5"), Ok(value) if (value - 12.5).abs() < f64::EPSILON)
+        );
+        assert!(parse_ffprobe_duration_output("0").is_err());
+        assert!(parse_ffprobe_duration_output("-2.0").is_err());
+        assert!(parse_ffprobe_duration_output("NaN").is_err());
+        assert!(parse_ffprobe_duration_output("N/A").is_err());
+        assert!(parse_ffprobe_duration_output("").is_err());
     }
 
     #[test]
