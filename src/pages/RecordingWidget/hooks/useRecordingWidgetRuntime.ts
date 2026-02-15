@@ -22,6 +22,7 @@ import { withTimeout } from "../../../lib/withTimeout";
 
 const STOP_RECORDING_TIMEOUT_MS = 30_000;
 const PAUSE_RESUME_TIMEOUT_MS = 10_000;
+const STOPPING_RECOVERY_TIMEOUT_MS = 60_000;
 type RecordingFinalizingStatus = "merging" | "verifying" | "saving";
 
 function fallbackDisplayLabel(sourceId: string, sourceOrdinal?: number | null): string {
@@ -326,6 +327,25 @@ export function useRecordingWidgetRuntime() {
     }, 5000);
     return () => clearInterval(intervalId);
   }, [state, projectId]);
+
+  useEffect(() => {
+    if (state !== "stopping") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      clearStoredCurrentProjectId();
+      clearPendingRecordingSourceFallbackNotice();
+      resetRecording();
+      setFinalizingStatus(null);
+      setPermissionError((current) =>
+        current ??
+        "Recording finalization timed out in the widget. Open the recordings list to verify the saved project."
+      );
+    }, STOPPING_RECOVERY_TIMEOUT_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [resetRecording, state]);
 
   useEffect(() => {
     if (state === "idle") {
