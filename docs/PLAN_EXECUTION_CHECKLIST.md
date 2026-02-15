@@ -73,6 +73,8 @@ Completion for this workspace is gated by:
 ## 4) Pointer documents
 
 - Validation snapshot: [`FINAL_VALIDATION_STATUS.md`](./FINAL_VALIDATION_STATUS.md)
+- CI workflow matrix: [`CI_WORKFLOWS.md`](./CI_WORKFLOWS.md)
+- Local build troubleshooting: [`LOCAL_BUILD_TROUBLESHOOTING.md`](./LOCAL_BUILD_TROUBLESHOOTING.md)
 - macOS acceptance runbook: [`MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](./MACOS_RUNTIME_VALIDATION_CHECKLIST.md)
 - Recovery triage playbook: [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md)
 

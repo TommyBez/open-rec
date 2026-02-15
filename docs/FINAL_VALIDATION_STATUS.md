@@ -94,6 +94,8 @@ Completion in this workspace is defined by:
 ## Related documents
 
 - Execution checklist: [`PLAN_EXECUTION_CHECKLIST.md`](./PLAN_EXECUTION_CHECKLIST.md)
+- CI workflow matrix: [`CI_WORKFLOWS.md`](./CI_WORKFLOWS.md)
+- Local build troubleshooting: [`LOCAL_BUILD_TROUBLESHOOTING.md`](./LOCAL_BUILD_TROUBLESHOOTING.md)
 - Recovery triage playbook: [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md)
 - Runtime timeout tuning reference: [`RUNTIME_TIMEOUT_OVERRIDES.md`](./RUNTIME_TIMEOUT_OVERRIDES.md)
 - Unsigned install guide: [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md)
