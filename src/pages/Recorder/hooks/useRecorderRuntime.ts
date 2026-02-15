@@ -782,6 +782,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }
 
   async function startRecordingSession() {
+    if (useRecordingStore.getState().state !== "idle") {
+      return;
+    }
     const resolvedSource = await resolveAvailableSourceForRecording();
     if (!resolvedSource) return;
 
@@ -869,7 +872,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }
 
   async function handleStartRecording() {
-    if (countdown !== null) return;
+    if (countdown !== null || useRecordingStore.getState().state !== "idle") return;
     try {
       const status = await invoke<DiskSpaceStatus>("check_recording_disk_space");
       if (!status.sufficient) {
