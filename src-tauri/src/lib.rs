@@ -946,10 +946,18 @@ fn resolve_project_json_path(project_dir: &Path) -> Result<PathBuf, AppError> {
                 error
             ))
         })?;
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .eq_ignore_ascii_case("project.json")
+        let file_type = entry.file_type().map_err(|error| {
+            AppError::Io(format!(
+                "Failed to inspect project directory entry type ({}): {}",
+                project_dir.display(),
+                error
+            ))
+        })?;
+        if file_type.is_file()
+            && entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("project.json")
         {
             return Ok(entry.path());
         }
@@ -1690,6 +1698,19 @@ mod tests {
         std::fs::create_dir_all(&empty_dir).expect("failed to create empty directory");
 
         let resolved = project_id_from_opened_path(&empty_dir);
+        assert_eq!(resolved, None);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ignores_project_directory_when_project_json_name_is_directory() {
+        let root = create_test_dir("openrec-project-json-directory-name");
+        let project_dir = root.join("project-json-directory-name");
+        std::fs::create_dir_all(project_dir.join("PROJECT.JSON"))
+            .expect("failed to create directory named project.json");
+
+        let resolved = project_id_from_opened_path(&project_dir);
         assert_eq!(resolved, None);
 
         let _ = std::fs::remove_dir_all(root);
