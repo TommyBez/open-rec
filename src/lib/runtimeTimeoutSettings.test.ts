@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getDefaultRuntimeTimeoutSettings,
   hasCustomRuntimeTimeoutSettings,
@@ -65,5 +65,16 @@ describe("runtimeTimeoutSettings", () => {
       widgetStoppingRecoveryTimeoutMs: 1_000,
     });
     expect(hasCustomRuntimeTimeoutSettings(settings)).toBe(true);
+  });
+
+  it("falls back to defaults when persisted JSON is malformed", () => {
+    const storage = installLocalStorageMock();
+    storage.set(SETTINGS_KEY, "{invalid-json");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const settings = loadRuntimeTimeoutSettings();
+    expect(settings).toEqual(getDefaultRuntimeTimeoutSettings());
+    expect(hasCustomRuntimeTimeoutSettings(settings)).toBe(false);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 });

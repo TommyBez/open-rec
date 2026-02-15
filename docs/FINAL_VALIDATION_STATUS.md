@@ -40,6 +40,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Automated export drift recovery coverage for stale-process pruning while preserving running jobs
 - Frontend scoped-event isolation coverage via `recordingEventScope` tests (project-id filtering and active-project resolution)
 - Frontend local-storage resilience coverage for runtime timeout overrides and pending finalization retry context stores
+- Frontend runtime-timeout storage coverage includes malformed JSON fallback behavior
 - Frontend runtime diagnostics store coverage (dedupe window, sequence ordering, lifecycle metadata, capped history)
 - Frontend export store coverage for active-job registration, drift resync metadata preservation, and reset/unregister behavior
 - Help menu links for manual update/install docs via opener plugin
