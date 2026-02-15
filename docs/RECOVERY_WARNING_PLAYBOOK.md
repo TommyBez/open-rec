@@ -73,3 +73,13 @@ Format per entry:
    [`RUNTIME_TIMEOUT_OVERRIDES.md`](./RUNTIME_TIMEOUT_OVERRIDES.md)
 5. Retry with a short capture to validate recovery path quickly.
 6. If still reproducible, collect logs + exact warning sequence and attach to issue report.
+
+### Minimum report bundle for issues
+
+When escalating a repeated warning, include:
+
+- exact warning message text (copy/paste)
+- active source type (display/window) and source identity
+- whether camera/microphone/system-audio were enabled
+- whether timeout overrides were set
+- reproduction sequence with timing (start/pause/resume/stop)

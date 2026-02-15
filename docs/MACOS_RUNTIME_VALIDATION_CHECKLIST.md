@@ -15,6 +15,15 @@ This checklist is the source of truth for out-of-scope runtime validation.
 6. [Unsigned distribution and Gatekeeper flow](#6-unsigned-distribution-and-gatekeeper-flow)
 7. [Multi-window / tray / menu behavior](#7-multi-window--tray--menu-behavior)
 
+## Supporting references
+
+- Warning triage during runtime tests:
+  [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md)
+- Unsigned install + Gatekeeper instructions:
+  [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md)
+- Runtime timeout tuning (for controlled stress/recovery testing):
+  [`RUNTIME_TIMEOUT_OVERRIDES.md`](./RUNTIME_TIMEOUT_OVERRIDES.md)
+
 ## Session metadata (fill before running)
 
 - Date:
