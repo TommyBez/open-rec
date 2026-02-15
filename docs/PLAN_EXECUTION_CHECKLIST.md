@@ -1,10 +1,10 @@
 # OpenRec Plan Execution Checklist
 
-This checklist tracks implementation progress against the refactor plan and highlights
-what still requires runtime validation on a real macOS environment.
+This checklist tracks implementation closure status for this execution environment.
 
-## Phase 0 — audit + critical reliability
+## 1) Delivery checklist by plan phase
 
+### Phase 0 — Audit + critical reliability
 - [x] Dynamic recording resolution (source-derived dimensions, quality presets, codec selection)
 - [x] Duration no longer hardcoded in project metadata (session timing + ffprobe fallback)
 - [x] Pause/resume segment stitching into canonical `screen.mp4`
@@ -14,7 +14,7 @@ what still requires runtime validation on a real macOS environment.
 - [x] Recording source fallback handling (display/window disconnect/reconnect resilience)
 - [x] Recorder preferences persisted/restored with source-type-aware fields
 
-## Phase 1 — architecture hardening
+### Phase 1 — Architecture hardening
 
 - [x] Commands standardized on `Result<T, AppError>` with serialized user-facing errors
 - [x] Critical runtime `.ok()` drops removed from backend execution paths
@@ -22,7 +22,7 @@ what still requires runtime validation on a real macOS environment.
 - [x] App shutdown cleanup for active recordings and active export jobs
 - [x] Backend checks automated in CI (`cargo fmt`, `cargo check`, `cargo test`)
 
-## Phase 2 / 3 — recording + editor capability upgrades
+### Phase 2 / 3 — Recording + editor capability upgrades
 
 - [x] Recording quality presets (`720p30`, `1080p30`, `1080p60`, `4k30`, `4k60`)
 - [x] Codec selection (`h264` / `hevc`)
@@ -32,7 +32,7 @@ what still requires runtime validation on a real macOS environment.
 - [x] Timeline/editor refactors into hook/component architecture with component-size guardrails
 - [x] Export queue with cancellation and progress eventing
 
-## Phase 4 / 5 / 6 — native integration, distribution, release workflow
+### Phase 4 / 5 / 6 — Native integration + distribution workflow
 
 - [x] Tray menu + app menu with recorder/projects/recent-project actions
 - [x] `.openrec` file association support and startup/opened-event handling
@@ -41,7 +41,7 @@ what still requires runtime validation on a real macOS environment.
 - [x] Unsigned installation documentation (Gatekeeper bypass + permissions)
 - [x] In-app Help menu links for release downloads + unsigned install guide
 
-## Remaining manual validation gates (macOS runtime)
+## 2) Remaining manual gates (macOS runtime)
 
 - [ ] End-to-end monitor unplug/replug tests while recording and while paused
 - [ ] Permission revocation flows (screen/camera/mic) during active sessions
@@ -49,13 +49,19 @@ what still requires runtime validation on a real macOS environment.
 - [ ] Hardware export performance benchmark validation against target metrics
 - [ ] Unsigned Gatekeeper install/open flow validation on clean machines (Intel + Apple Silicon)
 
-## Revised closure target for this workspace
+## 3) Workspace closure criteria
 
-Per latest scope decision, macOS runtime validation is out of scope for this execution space.
-Job completion is now gated by:
+Per approved scope, macOS runtime validation is out of scope for this Linux host.
+Completion for this workspace is gated by:
 
 - [x] Automated baseline green (`pnpm run verify:frontend`, `cargo fmt`, `cargo test`)
 - [x] Frontend regression baseline green (`pnpm run test:frontend`)
 - [x] No known open P0/P1 blockers in implemented cross-platform/runtime logic
 - [x] Final sign-off documentation updated with explicit out-of-scope macOS runtime checklist
+
+## 4) Pointer documents
+
+- Validation snapshot: [`FINAL_VALIDATION_STATUS.md`](./FINAL_VALIDATION_STATUS.md)
+- macOS acceptance runbook: [`MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](./MACOS_RUNTIME_VALIDATION_CHECKLIST.md)
+- Recovery triage playbook: [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md)
 
