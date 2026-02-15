@@ -57,3 +57,6 @@ Completion for this execution therefore requires:
 Automated reliability/architecture hardening is continuously validated and currently green in this environment.
 macOS runtime gates remain to be executed externally using the dedicated checklist artifact.
 
+For non-blocking future polish opportunities, see:
+[`docs/NICE_TO_HAVE_BACKLOG.md`](./NICE_TO_HAVE_BACKLOG.md).
+
