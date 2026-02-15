@@ -903,6 +903,7 @@ pub fn cleanup_active_recordings(_state: &SharedRecorderState) -> Result<(), App
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn resolves_display_fallback_index_from_preferred_ordinal() {
