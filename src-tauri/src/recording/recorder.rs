@@ -613,7 +613,10 @@ pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<
 
 /// Resume recording (starts a new segment)
 #[cfg(target_os = "macos")]
-pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), AppError> {
+pub fn resume_recording(
+    state: &SharedRecorderState,
+    project_id: &str,
+) -> Result<Option<String>, AppError> {
     let mut state_guard = state
         .lock()
         .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
@@ -649,6 +652,8 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
     let content = SCShareableContent::get()
         .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
+    let mut fallback_display_id: Option<String> = None;
+
     // Recreate filter
     let filter = match session.options.source_type {
         SourceType::Display => {
@@ -668,6 +673,7 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
                     display.display_id()
                 );
                 session.options.source_id = display.display_id().to_string();
+                fallback_display_id = Some(session.options.source_id.clone());
             }
             SCContentFilter::create()
                 .with_display(&display)
@@ -716,7 +722,7 @@ pub fn resume_recording(state: &SharedRecorderState, project_id: &str) -> Result
     session.screen_segments.push(segment_path);
     session.last_resume_instant = Some(Instant::now());
 
-    Ok(())
+    Ok(fallback_display_id)
 }
 
 /// Update media offsets for camera/microphone recordings
@@ -861,7 +867,10 @@ pub fn pause_recording(_state: &SharedRecorderState, _project_id: &str) -> Resul
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn resume_recording(_state: &SharedRecorderState, _project_id: &str) -> Result<(), AppError> {
+pub fn resume_recording(
+    _state: &SharedRecorderState,
+    _project_id: &str,
+) -> Result<Option<String>, AppError> {
     Err(AppError::Message(
         "Screen capture is only supported on macOS".to_string(),
     ))

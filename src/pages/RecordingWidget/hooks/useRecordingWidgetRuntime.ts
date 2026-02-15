@@ -126,10 +126,23 @@ export function useRecordingWidgetRuntime() {
       resetRecording();
       setPermissionError(null);
     });
+    const unlistenSourceFallback = listen<{
+      projectId: string;
+      sourceType: "display" | "window";
+      sourceId: string;
+    }>("recording-source-fallback", (event) => {
+      const activeProjectId = resolveActiveProjectId();
+      if (!activeProjectId || event.payload.projectId !== activeProjectId) return;
+      if (event.payload.sourceType !== "display") return;
+      setPermissionError(
+        `The selected display became unavailable. Recording continued on display source ${event.payload.sourceId}.`
+      );
+    });
 
     return () => {
       unlistenFinalizing.then((fn) => fn());
       unlistenStopped.then((fn) => fn());
+      unlistenSourceFallback.then((fn) => fn());
     };
   }, [projectId, resetRecording, setRecordingState]);
 

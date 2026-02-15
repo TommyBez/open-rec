@@ -886,7 +886,7 @@ fn resume_recording(
         ));
     }
 
-    do_resume_recording(&state, &project_id)?;
+    let fallback_source_id = do_resume_recording(&state, &project_id)?;
 
     emit_with_log(
         &app,
@@ -896,6 +896,17 @@ fn resume_recording(
             "projectId": project_id
         }),
     );
+    if let Some(source_id) = fallback_source_id {
+        emit_with_log(
+            &app,
+            "recording-source-fallback",
+            serde_json::json!({
+                "projectId": project_id,
+                "sourceType": "display",
+                "sourceId": source_id
+            }),
+        );
+    }
 
     Ok(())
 }
