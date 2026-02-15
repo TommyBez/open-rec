@@ -33,7 +33,10 @@ import {
   getRecordingFinalizingMessage,
   RecordingFinalizingStatus,
 } from "../../../lib/recordingFinalizingStatus";
-import { loadRuntimeTimeoutSettings } from "../../../lib/runtimeTimeoutSettings";
+import {
+  hasCustomRuntimeTimeoutSettings,
+  loadRuntimeTimeoutSettings,
+} from "../../../lib/runtimeTimeoutSettings";
 import { withTimeout } from "../../../lib/withTimeout";
 import { useRecordingCountdown } from "./useRecordingCountdown";
 
@@ -271,6 +274,18 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       projectId: options?.projectId,
     });
   }
+
+  useEffect(() => {
+    if (!hasCustomRuntimeTimeoutSettings(runtimeTimeoutSettings)) {
+      return;
+    }
+    appendLifecycleEvent({
+      source: "recorder",
+      event: "runtime-timeout-overrides",
+      summary: "Using custom runtime timeout overrides.",
+      level: "warning",
+    });
+  }, [appendLifecycleEvent, runtimeTimeoutSettings]);
 
   const isRecording = ["starting", "recording", "paused", "stopping"].includes(
     recordingState

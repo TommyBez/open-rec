@@ -41,6 +41,21 @@ export function getDefaultRuntimeTimeoutSettings(): RuntimeTimeoutSettings {
   return { ...DEFAULT_RUNTIME_TIMEOUT_SETTINGS };
 }
 
+export function hasCustomRuntimeTimeoutSettings(
+  settings: RuntimeTimeoutSettings
+): boolean {
+  const defaults = getDefaultRuntimeTimeoutSettings();
+  return (
+    settings.recorderStartRecordingTimeoutMs !== defaults.recorderStartRecordingTimeoutMs ||
+    settings.recorderStopFinalizationTimeoutMs !== defaults.recorderStopFinalizationTimeoutMs ||
+    settings.recorderOpenWidgetTimeoutMs !== defaults.recorderOpenWidgetTimeoutMs ||
+    settings.recorderHideWindowTimeoutMs !== defaults.recorderHideWindowTimeoutMs ||
+    settings.widgetStopRecordingTimeoutMs !== defaults.widgetStopRecordingTimeoutMs ||
+    settings.widgetPauseResumeTimeoutMs !== defaults.widgetPauseResumeTimeoutMs ||
+    settings.widgetStoppingRecoveryTimeoutMs !== defaults.widgetStoppingRecoveryTimeoutMs
+  );
+}
+
 export function loadRuntimeTimeoutSettings(): RuntimeTimeoutSettings {
   const defaults = getDefaultRuntimeTimeoutSettings();
   try {
