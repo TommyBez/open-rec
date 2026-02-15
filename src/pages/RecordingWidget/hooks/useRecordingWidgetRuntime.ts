@@ -315,7 +315,9 @@ export function useRecordingWidgetRuntime() {
       resetRecording();
       setFinalizingStatus(null);
       setRecordingState("idle");
-      setPermissionError(toErrorMessage(error, "Failed to stop recording."));
+      setPermissionError(
+        (current) => current ?? toErrorMessage(error, "Failed to stop recording.")
+      );
       return false;
     }
   }
