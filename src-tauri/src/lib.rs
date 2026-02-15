@@ -1225,7 +1225,18 @@ fn resolve_project_dir_from_payload(project_dir: &str, association_path: &Path) 
 }
 
 async fn project_id_from_opened_path_async(path: &Path) -> Option<String> {
-    let metadata = tokio::fs::metadata(path).await.ok();
+    let metadata = match tokio::fs::metadata(path).await {
+        Ok(metadata) => Some(metadata),
+        Err(error) if error.kind() == ErrorKind::NotFound => None,
+        Err(error) => {
+            eprintln!(
+                "Failed to inspect opened path metadata ({}): {}",
+                path.display(),
+                error
+            );
+            None
+        }
+    };
 
     if metadata.as_ref().is_some_and(|value| value.is_dir()) {
         if let Err(error) = resolve_project_json_path_async(path).await {
