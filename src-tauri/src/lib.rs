@@ -1263,6 +1263,14 @@ async fn retry_recording_finalization(
 
     emit_with_log(
         &app,
+        "recording-finalization-retry-status",
+        serde_json::json!({
+            "projectId": &project_id,
+            "status": "started"
+        }),
+    );
+    emit_with_log(
+        &app,
         "recording-state-changed",
         serde_json::json!({
             "state": "stopping",
@@ -1285,6 +1293,15 @@ async fn retry_recording_finalization(
     if let Err(error) = retry_result {
         emit_with_log(
             &app,
+            "recording-finalization-retry-status",
+            serde_json::json!({
+                "projectId": &project_id,
+                "status": "failed",
+                "message": error.to_string()
+            }),
+        );
+        emit_with_log(
+            &app,
             "recording-stop-failed",
             serde_json::json!({
                 "projectId": &project_id,
@@ -1305,6 +1322,14 @@ async fn retry_recording_finalization(
     }
 
     let _ = clear_pending_finalization(pending_finalizations.inner(), &project_id);
+    emit_with_log(
+        &app,
+        "recording-finalization-retry-status",
+        serde_json::json!({
+            "projectId": &project_id,
+            "status": "succeeded"
+        }),
+    );
 
     emit_with_log(
         &app,

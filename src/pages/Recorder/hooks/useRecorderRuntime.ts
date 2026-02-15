@@ -738,6 +738,61 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setRecordingStartTimeMs,
   ]);
 
+  useEffect(() => {
+    const unlisten = listen<{
+      projectId: string;
+      status: "started" | "succeeded" | "failed";
+      message?: string;
+    }>("recording-finalization-retry-status", (event) => {
+      const activeProjectId = resolveActiveProjectId();
+      const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+      if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) {
+        return;
+      }
+
+      if (event.payload.status === "started") {
+        recordLifecycleEvent(
+          "recording-finalization-retry-status",
+          "Retrying recording finalization.",
+          {
+            state: "stopping",
+            status: event.payload.status,
+            projectId: eventProjectId ?? activeProjectId ?? undefined,
+          }
+        );
+        return;
+      }
+
+      if (event.payload.status === "succeeded") {
+        recordLifecycleEvent(
+          "recording-finalization-retry-status",
+          "Recording finalization retry succeeded.",
+          {
+            state: "idle",
+            status: event.payload.status,
+            projectId: eventProjectId ?? activeProjectId ?? undefined,
+          }
+        );
+        return;
+      }
+
+      const message =
+        event.payload.message?.trim() ||
+        "Recording finalization retry failed. Verify output artifacts before retrying again.";
+      recordLifecycleEvent("recording-finalization-retry-status", message, {
+        level: "error",
+        state: "idle",
+        status: event.payload.status,
+        projectId: eventProjectId ?? activeProjectId ?? undefined,
+      });
+      recordDiagnostic("error", message);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [appendDiagnostic, appendLifecycleEvent, projectId, retryFinalizationProjectId]);
+
   const finalizingMessage =
     recordingState === "stopping"
       ? getRecordingFinalizingMessage(finalizingStatus)
