@@ -935,9 +935,9 @@ async fn stop_screen_recording(
         stop_result.camera_offset_ms,
         stop_result.microphone_offset_ms,
     );
+    emit_finalizing_status("saving");
     project::save_project(&recordings_dir, &project).await?;
     refresh_tray_menu(&app, &recordings_dir);
-    emit_finalizing_status("saving");
     emit_with_log(
         &app,
         "recording-state-changed",
