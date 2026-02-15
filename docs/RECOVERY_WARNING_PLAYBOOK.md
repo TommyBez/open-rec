@@ -89,6 +89,7 @@ and export/finalization recovery flows.
 - **Meaning:** Capture stopped, but one or more finalization steps failed (merge, probe, save).
 - **What OpenRec already did:** Forced UI/session recovery and emitted failure event.
 - **Recommended user action:** Click **Retry Finalization** in the recorder first; if retry still fails, open recordings list and verify artifacts manually.
+- **Note:** Pending retry context is persisted locally so the retry action remains available after route changes.
 
 ### `Recording finalization timed out in the widget...`
 - **Surface:** Recording widget warning text

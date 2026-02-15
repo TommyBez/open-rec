@@ -8,6 +8,10 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 import type { NavigateFunction } from "react-router-dom";
+import {
+  clearPendingFinalizationRetryProjectId,
+  setPendingFinalizationRetryProjectId,
+} from "../lib/pendingFinalizationRetryStore";
 import { requestTrayQuickRecord } from "../lib/trayQuickRecord";
 import { useExportStore, useRuntimeDiagnosticsStore } from "../stores";
 
@@ -29,6 +33,7 @@ interface ExportLifecycleEvent {
 }
 
 interface RecordingStopFailedEvent {
+  projectId?: string;
   message: string;
 }
 
@@ -149,6 +154,9 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     const unlistenStopFailedPromise = listen<RecordingStopFailedEvent>(
       "recording-stop-failed",
       (event) => {
+        if (event.payload.projectId) {
+          setPendingFinalizationRetryProjectId(event.payload.projectId);
+        }
         appendLifecycleEvent({
           source: "system",
           event: "recording-stop-failed",
@@ -170,6 +178,12 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
         );
       }
     );
+    const unlistenRecordingStoppedPromise = listen<string>("recording-stopped", (event) => {
+      if (!event.payload) {
+        return;
+      }
+      clearPendingFinalizationRetryProjectId();
+    });
     const unlistenTrayRecorderPromise = isMainWindow
       ? listen("tray-open-recorder", () => navigate("/recorder"))
       : Promise.resolve(() => undefined);
@@ -193,6 +207,7 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
       unlistenStartedPromise.then((unlisten) => unlisten());
       unlistenCancelledPromise.then((unlisten) => unlisten());
       unlistenStopFailedPromise.then((unlisten) => unlisten());
+      unlistenRecordingStoppedPromise.then((unlisten) => unlisten());
       unlistenTrayRecorderPromise.then((unlisten) => unlisten());
       unlistenTrayProjectsPromise.then((unlisten) => unlisten());
       unlistenTrayQuickRecordPromise.then((unlisten) => unlisten());

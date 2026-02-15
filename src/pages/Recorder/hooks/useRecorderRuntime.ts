@@ -27,6 +27,11 @@ import {
   getStoredCurrentProjectId,
   setStoredCurrentProjectId,
 } from "../../../lib/currentProjectStorage";
+import {
+  clearPendingFinalizationRetryProjectId,
+  getPendingFinalizationRetryProjectId,
+  setPendingFinalizationRetryProjectId,
+} from "../../../lib/pendingFinalizationRetryStore";
 import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpace";
 import { toErrorMessage } from "../../../lib/errorMessage";
 import {
@@ -196,7 +201,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   const [finalizingStatus, setFinalizingStatus] =
     useState<RecordingFinalizingStatus | null>(null);
   const [retryFinalizationProjectId, setRetryFinalizationProjectId] = useState<string | null>(
-    null
+    () => getPendingFinalizationRetryProjectId()
   );
   const [preferredDisplaySourceId, setPreferredDisplaySourceId] = useState<string | null>(null);
   const [preferredDisplaySourceOrdinal, setPreferredDisplaySourceOrdinal] = useState<number | null>(null);
@@ -527,7 +532,6 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           setProjectId(null);
           setRecordingStartTimeMs(null);
           setFinalizingStatus(null);
-          setRetryFinalizationProjectId(null);
           clearStoredCurrentProjectId();
           clearPendingRecordingSourceFallbackNotice();
           return;
@@ -584,11 +588,15 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       return;
     }
     const timeoutId = window.setTimeout(() => {
+      const activeProjectId = resolveActiveProjectId();
       setRecordingState("idle");
       setProjectId(null);
       setRecordingStartTimeMs(null);
       setFinalizingStatus(null);
-      setRetryFinalizationProjectId(null);
+      if (activeProjectId) {
+        setRetryFinalizationProjectId(activeProjectId);
+        setPendingFinalizationRetryProjectId(activeProjectId);
+      }
       clearStoredCurrentProjectId();
       clearPendingRecordingSourceFallbackNotice();
       setErrorMessage((current) =>
@@ -625,6 +633,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setProjectId(null);
       setRecordingStartTimeMs(null);
       setFinalizingStatus(null);
+      setRetryFinalizationProjectId(null);
+      clearPendingFinalizationRetryProjectId();
       clearStoredCurrentProjectId();
       clearPendingRecordingSourceFallbackNotice();
       if (stoppedProjectId.length > 0) {
@@ -662,7 +672,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         clearStoredCurrentProjectId();
         clearPendingRecordingSourceFallbackNotice();
         setFinalizingStatus(null);
-        setRetryFinalizationProjectId(eventProjectId || activeProjectId);
+        const pendingRetryProjectId = eventProjectId || activeProjectId;
+        setRetryFinalizationProjectId(pendingRetryProjectId);
+        setPendingFinalizationRetryProjectId(pendingRetryProjectId);
         const message =
           event.payload.message?.trim() ||
           "Recording stopped, but finalization failed. Check the recordings list and retry.";
@@ -970,6 +982,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     startRecording(result.projectId);
     setStoredCurrentProjectId(result.projectId);
     setRetryFinalizationProjectId(null);
+    clearPendingFinalizationRetryProjectId();
     recordLifecycleEvent("recording-started", "Recording session started.", {
       state: "recording",
       projectId: result.projectId,
