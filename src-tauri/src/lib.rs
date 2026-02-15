@@ -1845,10 +1845,38 @@ async fn project_id_from_opened_path_async(path: &Path) -> Option<String> {
                             let stem = path.file_stem()?.to_string_lossy();
                             return normalize_opened_project_id(&stem);
                         };
-                        if project_dir_path
-                            .file_name()
-                            .and_then(|value| value.to_str())
-                            .is_some_and(|value| value.eq_ignore_ascii_case("project.json"))
+                        let project_dir_metadata =
+                            match tokio::fs::metadata(&project_dir_path).await {
+                                Ok(metadata) => Some(metadata),
+                                Err(error) if error.kind() == ErrorKind::NotFound => None,
+                                Err(error) => {
+                                    eprintln!(
+                                    "Failed to inspect .openrec projectDir payload path ({}): {}",
+                                    project_dir_path.display(),
+                                    error
+                                );
+                                    None
+                                }
+                            };
+                        if project_dir_metadata
+                            .as_ref()
+                            .is_some_and(|value| value.is_dir())
+                        {
+                            if let Some(dir_name) = project_dir_path
+                                .file_name()
+                                .and_then(|value| value.to_str())
+                            {
+                                if let Some(normalized) = normalize_opened_project_id(dir_name) {
+                                    return Some(normalized);
+                                }
+                            }
+                        } else if project_dir_metadata
+                            .as_ref()
+                            .is_some_and(|value| value.is_file())
+                            && project_dir_path
+                                .file_name()
+                                .and_then(|value| value.to_str())
+                                .is_some_and(|value| value.eq_ignore_ascii_case("project.json"))
                         {
                             if let Some(parent_name) = project_dir_path
                                 .parent()
@@ -1858,13 +1886,6 @@ async fn project_id_from_opened_path_async(path: &Path) -> Option<String> {
                                 if let Some(normalized) = normalize_opened_project_id(parent_name) {
                                     return Some(normalized);
                                 }
-                            }
-                        } else if let Some(dir_name) = project_dir_path
-                            .file_name()
-                            .and_then(|value| value.to_str())
-                        {
-                            if let Some(normalized) = normalize_opened_project_id(dir_name) {
-                                return Some(normalized);
                             }
                         }
                     }
@@ -3157,6 +3178,40 @@ mod tests {
 
         let resolved = project_id_from_opened_path(&association_path);
         assert_eq!(resolved.as_deref(), Some("relative-json-project"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn falls_back_to_stem_when_openrec_project_dir_path_is_missing() {
+        let root = create_test_dir("openrec-missing-project-dir-payload");
+        let association_path = root.join("missing-dir-association.openrec");
+        let missing_project_dir = root.join("does-not-exist-project");
+        let payload = serde_json::json!({
+            "projectDir": missing_project_dir.to_string_lossy().to_string()
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("missing-dir-association"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn falls_back_to_stem_when_openrec_project_json_path_is_missing() {
+        let root = create_test_dir("openrec-missing-project-json-payload");
+        let association_path = root.join("missing-json-association.openrec");
+        let missing_project_json_path = root.join("missing-json-project").join("project.json");
+        let payload = serde_json::json!({
+            "projectDir": missing_project_json_path.to_string_lossy().to_string()
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("missing-json-association"));
 
         let _ = std::fs::remove_dir_all(root);
     }

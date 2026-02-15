@@ -35,6 +35,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Startup/opened-path parsing coverage now validates `file://localhost` acceptance and rejects non-local `file://host` URIs
 - Project persistence coverage now validates `.openrec` association sidecar creation on save and cleanup on delete
 - `.openrec` payload `projectDir` resolution coverage now includes localhost file URLs, percent-decoded paths, and non-local host rejection
+- `.openrec` payload handling now falls back to association stem when referenced `projectDir` / `project.json` paths are missing
 - Project save/delete now surface association sidecar write/remove I/O failures instead of silently logging them
 - Retry UI now auto-clears persisted retry affordance when backend reports missing finalization context errors
 - Advanced runtime timeout presets for recorder/widget flows (localStorage-backed overrides with guarded defaults)
