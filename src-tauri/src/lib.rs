@@ -1258,21 +1258,24 @@ fn strip_wrapping_quotes(value: &str) -> &str {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
+fn parse_startup_opened_arg(arg: &str) -> Option<PathBuf> {
+    let normalized_arg = strip_wrapping_quotes(arg);
+    if normalized_arg.is_empty() || normalized_arg.starts_with('-') {
+        return None;
+    }
+    if let Ok(url) = url::Url::parse(normalized_arg) {
+        if let Ok(path) = url.to_file_path() {
+            return Some(path);
+        }
+    }
+    Some(PathBuf::from(normalized_arg))
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn collect_startup_opened_paths() -> Vec<PathBuf> {
     std::env::args()
         .skip(1)
-        .filter_map(|arg| {
-            let normalized_arg = strip_wrapping_quotes(&arg);
-            if normalized_arg.is_empty() || normalized_arg.starts_with('-') {
-                return None;
-            }
-            if let Ok(url) = url::Url::parse(normalized_arg) {
-                if let Ok(path) = url.to_file_path() {
-                    return Some(path);
-                }
-            }
-            Some(PathBuf::from(normalized_arg))
-        })
+        .filter_map(|arg| parse_startup_opened_arg(&arg))
         .collect()
 }
 
@@ -1573,12 +1576,12 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    use super::strip_wrapping_quotes;
     use super::{
         normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
         project_id_from_opened_path, resolve_project_dir_from_payload,
     };
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    use super::{parse_startup_opened_arg, strip_wrapping_quotes};
     use std::path::PathBuf;
     use uuid::Uuid;
 
@@ -1707,6 +1710,22 @@ mod tests {
             "/tmp/spaced.openrec"
         );
         assert_eq!(strip_wrapping_quotes("   "), "");
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn parses_startup_opened_arguments() {
+        assert_eq!(parse_startup_opened_arg(""), None);
+        assert_eq!(parse_startup_opened_arg("--flag"), None);
+        assert_eq!(parse_startup_opened_arg("\"--flag\""), None);
+
+        let parsed_path =
+            parse_startup_opened_arg("\"/tmp/sample.openrec\"").expect("quoted path should parse");
+        assert_eq!(parsed_path, PathBuf::from("/tmp/sample.openrec"));
+
+        let parsed_url = parse_startup_opened_arg("file:///tmp/url-sample.openrec")
+            .expect("file url should parse");
+        assert_eq!(parsed_url, PathBuf::from("/tmp/url-sample.openrec"));
     }
 
     #[test]
