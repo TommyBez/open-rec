@@ -1847,16 +1847,20 @@ fn cancel_export(
     Ok(())
 }
 
-#[tauri::command]
-fn list_active_export_jobs(
-    export_jobs: tauri::State<'_, SharedExportJobs>,
-) -> Result<Vec<String>, AppError> {
+fn active_export_job_ids(export_jobs: &SharedExportJobs) -> Result<Vec<String>, AppError> {
     let jobs = export_jobs
         .lock()
         .map_err(|e| AppError::Lock(format!("Failed to lock export jobs state: {}", e)))?;
     let mut job_ids = jobs.keys().cloned().collect::<Vec<_>>();
     job_ids.sort();
     Ok(job_ids)
+}
+
+#[tauri::command]
+fn list_active_export_jobs(
+    export_jobs: tauri::State<'_, SharedExportJobs>,
+) -> Result<Vec<String>, AppError> {
+    active_export_job_ids(export_jobs.inner())
 }
 
 /// Parse ffmpeg progress from stderr line
@@ -1926,14 +1930,17 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_editor_route, is_missing_process_error, normalize_opened_project_id,
-        normalize_project_id_input, parse_ffmpeg_progress, parse_ffprobe_dimensions_output,
-        parse_ffprobe_duration_output, project_id_from_opened_path,
-        resolve_project_dir_from_payload, OPENREC_RELEASES_URL, OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
+        active_export_job_ids, build_editor_route, is_missing_process_error,
+        normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
+        parse_ffprobe_dimensions_output, parse_ffprobe_duration_output,
+        project_id_from_opened_path, resolve_project_dir_from_payload, OPENREC_RELEASES_URL,
+        OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
     };
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use super::{parse_startup_opened_arg, strip_wrapping_quotes};
+    use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
     use uuid::Uuid;
 
     fn create_test_dir(name: &str) -> PathBuf {
@@ -2020,6 +2027,25 @@ mod tests {
         assert!(parse_ffprobe_duration_output("NaN").is_err());
         assert!(parse_ffprobe_duration_output("N/A").is_err());
         assert!(parse_ffprobe_duration_output("").is_err());
+    }
+
+    #[test]
+    fn active_export_job_ids_returns_sorted_ids() {
+        let export_jobs = Arc::new(Mutex::new(HashMap::from([
+            ("job-c".to_string(), 3_u32),
+            ("job-a".to_string(), 1_u32),
+            ("job-b".to_string(), 2_u32),
+        ])));
+        let job_ids =
+            active_export_job_ids(&export_jobs).expect("active export ids should resolve");
+        assert_eq!(
+            job_ids,
+            vec![
+                "job-a".to_string(),
+                "job-b".to_string(),
+                "job-c".to_string()
+            ]
+        );
     }
 
     #[test]
