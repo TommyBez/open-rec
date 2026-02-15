@@ -91,10 +91,14 @@ export function useRecordingWidgetRuntime() {
         if (event.payload.state === "idle") {
           clearStoredCurrentProjectId();
           setProjectId(null);
+          setElapsedTime(0);
           return;
         }
         const nextProjectId = event.payload.projectId?.trim();
         if (nextProjectId) {
+          if (resolveActiveProjectId() !== nextProjectId) {
+            setElapsedTime(0);
+          }
           setStoredCurrentProjectId(nextProjectId);
           setProjectId(nextProjectId);
         }
@@ -104,7 +108,7 @@ export function useRecordingWidgetRuntime() {
     return () => {
       unlistenState.then((fn) => fn());
     };
-  }, [setRecordingState, setProjectId]);
+  }, [setElapsedTime, setProjectId, setRecordingState]);
 
   useEffect(() => {
     const unlistenFinalizing = listen<{ projectId: string }>(
