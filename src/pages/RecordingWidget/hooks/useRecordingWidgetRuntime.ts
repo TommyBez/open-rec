@@ -20,6 +20,7 @@ import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpac
 import { toErrorMessage } from "../../../lib/errorMessage";
 import {
   normalizeScopedProjectId,
+  resolveScopedActiveProjectId,
   shouldHandleProjectScopedEvent,
 } from "../../../lib/recordingEventScope";
 import {
@@ -63,7 +64,8 @@ export function useRecordingWidgetRuntime() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [finalizingStatus, setFinalizingStatus] =
     useState<RecordingFinalizingStatus | null>(null);
-  const resolveActiveProjectId = () => projectId ?? getStoredCurrentProjectId();
+  const resolveActiveProjectId = () =>
+    resolveScopedActiveProjectId(projectId, getStoredCurrentProjectId());
 
   function applySourceUnavailableWarning(message: string) {
     const previousNotice = sourceUnavailableNoticeRef.current;
@@ -236,7 +238,8 @@ export function useRecordingWidgetRuntime() {
     const activeProjectId = resolveActiveProjectId();
     if (!activeProjectId) return;
     const pendingNotice = getPendingRecordingSourceFallbackNotice();
-    if (!pendingNotice || pendingNotice.projectId !== activeProjectId) return;
+    if (!pendingNotice) return;
+    if (!shouldHandleProjectScopedEvent(activeProjectId, pendingNotice.projectId)) return;
     const warningMessage =
       pendingNotice.sourceType === "display"
         ? `The selected display became unavailable. Recording continued on ${fallbackDisplayLabel(
