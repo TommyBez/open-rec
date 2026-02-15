@@ -43,6 +43,9 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
   const { registerExportJob, unregisterExportJob, replaceActiveExportJobs } =
     useExportStore();
   const appendDiagnostic = useRuntimeDiagnosticsStore((state) => state.appendEntry);
+  const appendLifecycleEvent = useRuntimeDiagnosticsStore(
+    (state) => state.appendLifecycleEvent
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +93,12 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     }, EXPORT_JOB_SYNC_INTERVAL_MS);
     const unlistenCompletePromise = listen<ExportCompleteEvent>("export-complete", (event) => {
       unregisterExportJob(event.payload.jobId);
+      appendLifecycleEvent({
+        source: "export",
+        event: "export-complete",
+        summary: `Export completed (${event.payload.jobId}).`,
+        jobId: event.payload.jobId,
+      });
       appendDiagnostic({
         source: "export",
         level: "info",
@@ -103,6 +112,13 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     });
     const unlistenErrorPromise = listen<ExportErrorEvent>("export-error", (event) => {
       unregisterExportJob(event.payload.jobId);
+      appendLifecycleEvent({
+        source: "export",
+        event: "export-error",
+        summary: `Export failed (${event.payload.jobId}).`,
+        level: "error",
+        jobId: event.payload.jobId,
+      });
       appendDiagnostic({
         source: "export",
         level: "error",
@@ -113,13 +129,32 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     });
     const unlistenStartedPromise = listen<ExportLifecycleEvent>("export-started", (event) => {
       registerExportJob(event.payload.jobId, event.payload.startedAtMs);
+      appendLifecycleEvent({
+        source: "export",
+        event: "export-started",
+        summary: `Export started (${event.payload.jobId}).`,
+        jobId: event.payload.jobId,
+      });
     });
     const unlistenCancelledPromise = listen<ExportLifecycleEvent>("export-cancelled", (event) => {
       unregisterExportJob(event.payload.jobId);
+      appendLifecycleEvent({
+        source: "export",
+        event: "export-cancelled",
+        summary: `Export cancelled (${event.payload.jobId}).`,
+        level: "warning",
+        jobId: event.payload.jobId,
+      });
     });
     const unlistenStopFailedPromise = listen<RecordingStopFailedEvent>(
       "recording-stop-failed",
       (event) => {
+        appendLifecycleEvent({
+          source: "system",
+          event: "recording-stop-failed",
+          summary: "Recording finalization failed.",
+          level: "error",
+        });
         appendDiagnostic({
           source: "system",
           level: "error",
@@ -166,6 +201,7 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     isMainWindow,
     navigate,
     appendDiagnostic,
+    appendLifecycleEvent,
     registerExportJob,
     replaceActiveExportJobs,
     unregisterExportJob,

@@ -202,6 +202,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   const loadSourcesInFlightRef = useRef(false);
   const { countdown, startCountdown } = useRecordingCountdown();
   const appendDiagnostic = useRuntimeDiagnosticsStore((state) => state.appendEntry);
+  const appendLifecycleEvent = useRuntimeDiagnosticsStore(
+    (state) => state.appendLifecycleEvent
+  );
 
   const {
     state: recordingState,
@@ -244,6 +247,27 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       source: "recorder",
       level,
       message,
+    });
+  }
+
+  function recordLifecycleEvent(
+    event: string,
+    summary: string,
+    options?: {
+      level?: "info" | "warning" | "error";
+      state?: string;
+      status?: string;
+      projectId?: string;
+    }
+  ) {
+    appendLifecycleEvent({
+      source: "recorder",
+      event,
+      summary,
+      level: options?.level,
+      state: options?.state,
+      status: options?.status,
+      projectId: options?.projectId,
     });
   }
 
@@ -467,6 +491,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           return;
         }
 
+        recordLifecycleEvent(
+          "recording-state-changed",
+          `Recorder state updated to ${event.payload.state}.`,
+          {
+            state: event.payload.state,
+            projectId: eventProjectId || activeProjectId,
+          }
+        );
         setRecordingState(event.payload.state);
         if (event.payload.state !== "stopping") {
           setFinalizingStatus(null);
@@ -490,7 +522,13 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [projectId, setProjectId, setRecordingState, setRecordingStartTimeMs]);
+  }, [
+    appendLifecycleEvent,
+    projectId,
+    setProjectId,
+    setRecordingState,
+    setRecordingStartTimeMs,
+  ]);
 
   useEffect(() => {
     const unlisten = listen<{
@@ -501,14 +539,24 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       if (!activeProjectId || event.payload.projectId !== activeProjectId) {
         return;
       }
-      setFinalizingStatus(event.payload.status ?? "stopping-capture");
+      const status = event.payload.status ?? "stopping-capture";
+      recordLifecycleEvent(
+        "recording-finalizing",
+        `Finalization phase: ${status}.`,
+        {
+          state: "stopping",
+          status,
+          projectId: event.payload.projectId,
+        }
+      );
+      setFinalizingStatus(status);
       setRecordingState("stopping");
     });
 
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [projectId, setRecordingState]);
+  }, [appendLifecycleEvent, projectId, setRecordingState]);
 
   useEffect(() => {
     if (recordingState !== "stopping") {
@@ -541,6 +589,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       if (stoppedProjectId.length > 0 && stoppedProjectId !== activeProjectId) {
         return;
       }
+      recordLifecycleEvent("recording-stopped", "Recording finalized and stopped.", {
+        state: "idle",
+        projectId: stoppedProjectId || activeProjectId,
+      });
       setRecordingState("idle");
       setProjectId(null);
       setRecordingStartTimeMs(null);
@@ -556,6 +608,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       unlisten.then((fn) => fn());
     };
   }, [
+    appendLifecycleEvent,
     projectId,
     onRecordingStoppedNavigate,
     setProjectId,
@@ -585,6 +638,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           event.payload.message?.trim() ||
           "Recording stopped, but finalization failed. Check the recordings list and retry.";
         setErrorMessage(message);
+        recordLifecycleEvent("recording-stop-failed", message, {
+          level: "error",
+          state: "idle",
+          projectId: eventProjectId || activeProjectId,
+        });
         recordDiagnostic("error", message);
       }
     );
@@ -592,7 +650,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [appendDiagnostic, projectId, setProjectId, setRecordingState, setRecordingStartTimeMs]);
+  }, [
+    appendDiagnostic,
+    appendLifecycleEvent,
+    projectId,
+    setProjectId,
+    setRecordingState,
+    setRecordingStartTimeMs,
+  ]);
 
   const finalizingMessage =
     recordingState === "stopping"
@@ -816,6 +881,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     }
     const resolvedSource = await resolveAvailableSourceForRecording();
     if (!resolvedSource) return;
+    recordLifecycleEvent("recording-start-requested", "Starting recording session.", {
+      state: "starting",
+    });
 
     beginRecordingStart();
     let result: StartRecordingResult;
@@ -872,6 +940,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setRecordingStartTimeMs(result.recordingStartTimeMs);
     startRecording(result.projectId);
     setStoredCurrentProjectId(result.projectId);
+    recordLifecycleEvent("recording-started", "Recording session started.", {
+      state: "recording",
+      projectId: result.projectId,
+    });
     if (result.fallbackSource?.sourceId) {
       setPendingRecordingSourceFallbackNotice({
         projectId: result.projectId,
@@ -889,6 +961,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
               result.fallbackSource.sourceId
             )}.`;
       setErrorMessage(message);
+      recordLifecycleEvent("recording-source-fallback", message, {
+        level: "warning",
+        state: "recording",
+        projectId: result.projectId,
+      });
       recordDiagnostic("warning", message);
     } else {
       clearPendingRecordingSourceFallbackNotice();
@@ -908,6 +985,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         "Hiding recorder window timed out."
       );
       setErrorMessage((current) => clearWidgetHandoffWarning(current));
+      recordLifecycleEvent(
+        "recording-widget-handoff",
+        "Floating controls opened and recorder window hidden.",
+        {
+          state: "recording",
+          projectId: result.projectId,
+        }
+      );
     } catch (error) {
       console.error("Recording started but widget handoff failed:", error);
       const message = toErrorMessage(
@@ -915,6 +1000,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         "Recording started, but floating controls failed to open. Use global shortcuts to pause or stop."
       );
       setErrorMessage(message);
+      recordLifecycleEvent("recording-widget-handoff-failed", message, {
+        level: "warning",
+        state: "recording",
+        projectId: result.projectId,
+      });
       recordDiagnostic("warning", message);
     }
   }
@@ -954,6 +1044,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         "Opening recording widget timed out."
       );
       setErrorMessage((current) => clearWidgetHandoffWarning(current));
+      recordLifecycleEvent("recording-widget-opened", "Floating controls opened manually.", {
+        state: recordingState,
+        projectId: activeProjectId,
+      });
     } catch (error) {
       console.error("Failed to open recording widget:", error);
       const message = toErrorMessage(
@@ -961,6 +1055,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         "Unable to open floating controls. Use global shortcuts to pause or stop."
       );
       setErrorMessage(message);
+      recordLifecycleEvent("recording-widget-open-failed", message, {
+        level: "warning",
+        state: recordingState,
+        projectId: activeProjectId,
+      });
       recordDiagnostic("warning", message);
     }
   }
