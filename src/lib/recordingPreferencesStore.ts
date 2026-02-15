@@ -4,6 +4,9 @@ export interface RecordingPreferences {
   sourceType: "display" | "window";
   selectedSourceId?: string | null;
   selectedSourceOrdinal?: number | null;
+  selectedDisplaySourceId?: string | null;
+  selectedDisplaySourceOrdinal?: number | null;
+  selectedWindowSourceId?: string | null;
   captureCamera: boolean;
   captureMicrophone: boolean;
   captureSystemAudio: boolean;

@@ -139,8 +139,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [diskWarning, setDiskWarning] = useState<string | null>(null);
-  const [preferredSourceId, setPreferredSourceId] = useState<string | null>(null);
-  const [preferredSourceOrdinal, setPreferredSourceOrdinal] = useState<number | null>(null);
+  const [preferredDisplaySourceId, setPreferredDisplaySourceId] = useState<string | null>(null);
+  const [preferredDisplaySourceOrdinal, setPreferredDisplaySourceOrdinal] = useState<number | null>(null);
+  const [preferredWindowSourceId, setPreferredWindowSourceId] = useState<string | null>(null);
   const pendingTrayQuickRecordRef = useRef(false);
   const { countdown, startCountdown } = useRecordingCountdown();
 
@@ -179,6 +180,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
 
   const isRecording = ["starting", "recording", "paused"].includes(recordingState);
   const isActivelyRecording = recordingState === "recording";
+  const preferredSourceId =
+    sourceType === "display" ? preferredDisplaySourceId : preferredWindowSourceId;
+  const preferredSourceOrdinal =
+    sourceType === "display" ? preferredDisplaySourceOrdinal : null;
 
   useEffect(() => {
     async function resizeWindow() {
@@ -216,8 +221,21 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       }
 
       setSourceType(persisted.sourceType);
-      setPreferredSourceId(persisted.selectedSourceId ?? null);
-      setPreferredSourceOrdinal(persisted.selectedSourceOrdinal ?? null);
+      const fallbackSelectedSourceId = persisted.selectedSourceId ?? null;
+      setPreferredDisplaySourceId(
+        persisted.selectedDisplaySourceId ??
+          (persisted.sourceType === "display" ? fallbackSelectedSourceId : null)
+      );
+      setPreferredDisplaySourceOrdinal(
+        persisted.selectedDisplaySourceOrdinal ??
+          (persisted.sourceType === "display"
+            ? persisted.selectedSourceOrdinal ?? null
+            : null)
+      );
+      setPreferredWindowSourceId(
+        persisted.selectedWindowSourceId ??
+          (persisted.sourceType === "window" ? fallbackSelectedSourceId : null)
+      );
       setCaptureCamera(persisted.captureCamera);
       setCaptureMicrophone(persisted.captureMicrophone);
       setCaptureSystemAudio(persisted.captureSystemAudio);
@@ -240,26 +258,32 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   ]);
 
   useEffect(() => {
-    if (sourceType !== "display") {
-      setPreferredSourceOrdinal(null);
-      return;
-    }
     if (!selectedSource || selectedSource.type !== "display") {
       return;
     }
     const nextOrdinal = resolveSelectedSourceOrdinal(sourceType, selectedSource, sources);
-    setPreferredSourceOrdinal(nextOrdinal);
+    setPreferredDisplaySourceOrdinal(nextOrdinal);
   }, [selectedSource, sourceType, sources]);
 
   useEffect(() => {
     if (!selectedSource || selectedSource.type !== sourceType) {
       return;
     }
-    if (preferredSourceId === selectedSource.id) {
+    if (sourceType === "display") {
+      if (preferredDisplaySourceId !== selectedSource.id) {
+        setPreferredDisplaySourceId(selectedSource.id);
+      }
       return;
     }
-    setPreferredSourceId(selectedSource.id);
-  }, [preferredSourceId, selectedSource, sourceType]);
+    if (preferredWindowSourceId !== selectedSource.id) {
+      setPreferredWindowSourceId(selectedSource.id);
+    }
+  }, [
+    preferredDisplaySourceId,
+    preferredWindowSourceId,
+    selectedSource,
+    sourceType,
+  ]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
@@ -268,6 +292,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       selectedSourceId: selectedSource?.id ?? preferredSourceId ?? null,
       selectedSourceOrdinal:
         sourceType === "display" ? preferredSourceOrdinal : null,
+      selectedDisplaySourceId: preferredDisplaySourceId,
+      selectedDisplaySourceOrdinal: preferredDisplaySourceOrdinal,
+      selectedWindowSourceId: preferredWindowSourceId,
       captureCamera,
       captureMicrophone,
       captureSystemAudio,
@@ -278,13 +305,14 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     preferencesLoaded,
     sourceType,
     selectedSource,
-    preferredSourceId,
+    preferredDisplaySourceId,
+    preferredDisplaySourceOrdinal,
+    preferredWindowSourceId,
     captureCamera,
     captureMicrophone,
     captureSystemAudio,
     qualityPreset,
     codec,
-    preferredSourceOrdinal,
   ]);
 
   useEffect(() => {
