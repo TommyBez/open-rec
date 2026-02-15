@@ -2810,6 +2810,46 @@ mod tests {
     }
 
     #[test]
+    fn resolves_project_dir_from_localhost_file_url_payload() {
+        let root = create_test_dir("resolve-project-dir-localhost-file-url");
+        let file_url = url::Url::from_file_path(root.join("localhost-target"))
+            .expect("failed to create file url");
+        let localhost_url = format!("file://localhost{}", file_url.path());
+        let association_path = root.join("association.openrec");
+
+        let resolved = resolve_project_dir_from_payload(&localhost_url, &association_path)
+            .expect("localhost file URL should resolve");
+        assert_eq!(
+            resolved.file_name().and_then(|value| value.to_str()),
+            Some("localhost-target")
+        );
+
+        let remote_host_url = format!("file://example.com{}", file_url.path());
+        assert_eq!(
+            resolve_project_dir_from_payload(&remote_host_url, &association_path),
+            None
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_project_dir_from_percent_encoded_file_url_payload() {
+        let root = create_test_dir("resolve-project-dir-encoded-file-url");
+        let target_dir = root.join("folder with spaces");
+        let file_url = url::Url::from_file_path(&target_dir)
+            .expect("failed to create encoded file url")
+            .to_string();
+        let association_path = root.join("association.openrec");
+
+        let resolved = resolve_project_dir_from_payload(&file_url, &association_path)
+            .expect("encoded file URL should resolve");
+        assert_eq!(resolved, target_dir);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn rejects_project_dir_payload_with_unsupported_url_scheme() {
         let root = create_test_dir("resolve-project-dir-unsupported-url");
         let association_path = root.join("association.openrec");
