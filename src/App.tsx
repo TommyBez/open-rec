@@ -29,6 +29,14 @@ interface RecordingStopFailedEvent {
   message: string;
 }
 
+function notifyUser(title: string, body: string) {
+  try {
+    sendNotification({ title, body });
+  } catch (error) {
+    console.error("Failed to dispatch desktop notification:", error);
+  }
+}
+
 function App() {
   const navigate = useNavigate();
   const isMainWindow = getCurrentWindow().label === "main";
@@ -52,20 +60,17 @@ function App() {
       if (!isMainWindow) {
         return;
       }
-      sendNotification({
-        title: "Export complete",
-        body: event.payload.outputPath.split("/").pop() ?? "Your file is ready.",
-      });
+      notifyUser(
+        "Export complete",
+        event.payload.outputPath.split("/").pop() ?? "Your file is ready."
+      );
     });
     const unlistenErrorPromise = listen<ExportErrorEvent>("export-error", (event) => {
       decrementActiveExports();
       if (!isMainWindow) {
         return;
       }
-      sendNotification({
-        title: "Export failed",
-        body: event.payload.message,
-      });
+      notifyUser("Export failed", event.payload.message);
     });
     const unlistenStartedPromise = listen("export-started", () => {
       incrementActiveExports();
@@ -79,12 +84,11 @@ function App() {
         if (!isMainWindow) {
           return;
         }
-        sendNotification({
-          title: "Recording finalization failed",
-          body:
-            event.payload.message ||
-            "Recording stopped, but post-processing failed. Check your recordings list.",
-        });
+        notifyUser(
+          "Recording finalization failed",
+          event.payload.message ||
+            "Recording stopped, but post-processing failed. Check your recordings list."
+        );
       }
     );
     const unlistenTrayRecorderPromise = isMainWindow
