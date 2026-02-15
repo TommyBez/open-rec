@@ -32,6 +32,66 @@ interface UseRecorderRuntimeOptions {
 }
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
+
+function parseNumericSourceId(sourceId: string): number | null {
+  const numericId = Number.parseInt(sourceId, 10);
+  if (Number.isFinite(numericId)) {
+    return numericId;
+  }
+  return null;
+}
+
+function selectFallbackSource(
+  availableSources: CaptureSource[],
+  sourceType: "display" | "window"
+): CaptureSource | null {
+  if (availableSources.length === 0) {
+    return null;
+  }
+  if (sourceType !== "display") {
+    return availableSources[0];
+  }
+  const byNumericId = [...availableSources].sort((left, right) => {
+    const leftNumericId = parseNumericSourceId(left.id);
+    const rightNumericId = parseNumericSourceId(right.id);
+    if (leftNumericId === null && rightNumericId === null) {
+      return left.name.localeCompare(right.name);
+    }
+    if (leftNumericId === null) {
+      return 1;
+    }
+    if (rightNumericId === null) {
+      return -1;
+    }
+    return leftNumericId - rightNumericId;
+  });
+  return byNumericId[0] ?? availableSources[0];
+}
+
+function resolvePreferredSource(
+  availableSources: CaptureSource[],
+  sourceType: "display" | "window",
+  currentSourceId: string | null,
+  preferredSourceId: string | null
+): CaptureSource | null {
+  if (availableSources.length === 0) {
+    return null;
+  }
+  if (currentSourceId) {
+    const currentSource = availableSources.find((source) => source.id === currentSourceId);
+    if (currentSource) {
+      return currentSource;
+    }
+  }
+  if (preferredSourceId) {
+    const preferredSource = availableSources.find((source) => source.id === preferredSourceId);
+    if (preferredSource) {
+      return preferredSource;
+    }
+  }
+  return selectFallbackSource(availableSources, sourceType);
+}
+
 export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRuntimeOptions) {
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -227,7 +287,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
 
   useEffect(() => {
     const unlisten = listen("global-shortcut-start-stop", () => {
-      if (recordingState === "idle" && selectedSource && countdown === null) {
+      if (recordingState === "idle" && countdown === null) {
         void handleStartRecording();
       }
     });
@@ -235,7 +295,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [recordingState, selectedSource, countdown]);
+  }, [countdown, recordingState]);
 
   useEffect(() => {
     const unlisten = listen("tray-quick-record", () => {
@@ -263,10 +323,10 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setErrorMessage("Cannot quick-record because screen recording permission is not granted.");
       return;
     }
-    if (hasPermission === null || isLoadingSources || !selectedSource) return;
+    if (hasPermission === null || isLoadingSources) return;
     pendingTrayQuickRecordRef.current = false;
     void handleStartRecording();
-  }, [countdown, hasPermission, isLoadingSources, recordingState, selectedSource]);
+  }, [countdown, hasPermission, isLoadingSources, recordingState]);
 
   async function loadSources() {
     setIsLoadingSources(true);
@@ -275,20 +335,24 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         sourceType,
       });
       setSources(result);
-      const stillAvailable = selectedSource
-        ? result.find((source) => source.id === selectedSource.id)
-        : undefined;
-      const preferredSource = preferredSourceId
-        ? result.find((source) => source.id === preferredSourceId)
-        : undefined;
-      if (stillAvailable) {
-        setSelectedSource(stillAvailable);
-      } else if (preferredSource) {
-        setSelectedSource(preferredSource);
-      } else if (result.length > 0) {
-        setSelectedSource(result[0]);
-      } else {
-        setSelectedSource(null);
+      const currentSourceId =
+        selectedSource?.type === sourceType ? selectedSource.id : null;
+      const resolvedSource = resolvePreferredSource(
+        result,
+        sourceType,
+        currentSourceId,
+        preferredSourceId
+      );
+      setSelectedSource(resolvedSource);
+      if (
+        currentSourceId &&
+        resolvedSource &&
+        resolvedSource.id !== currentSourceId &&
+        sourceType === "display"
+      ) {
+        setErrorMessage(
+          `Display "${selectedSource?.name ?? currentSourceId}" is unavailable. Switched to "${resolvedSource.name}".`
+        );
       }
     } catch (error) {
       console.error("Failed to load capture sources:", error);
@@ -302,25 +366,71 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
               { id: "3", name: "Finder", type: "window" },
             ];
       setSources(mockSources);
-      if (mockSources.length > 0 && !selectedSource) {
-        const preferredMock = preferredSourceId
-          ? mockSources.find((source) => source.id === preferredSourceId)
-          : undefined;
-        setSelectedSource(preferredMock ?? mockSources[0]);
-      }
+      const currentSourceId =
+        selectedSource?.type === sourceType ? selectedSource.id : null;
+      const preferredMock = resolvePreferredSource(
+        mockSources,
+        sourceType,
+        currentSourceId,
+        preferredSourceId
+      );
+      setSelectedSource(preferredMock);
     } finally {
       setIsLoadingSources(false);
     }
   }
 
+  async function resolveAvailableSourceForRecording(): Promise<CaptureSource | null> {
+    try {
+      const availableSources = await invoke<CaptureSource[]>("list_capture_sources", {
+        sourceType,
+      });
+      setSources(availableSources);
+      const currentSourceId =
+        selectedSource?.type === sourceType ? selectedSource.id : null;
+      const resolvedSource = resolvePreferredSource(
+        availableSources,
+        sourceType,
+        currentSourceId,
+        preferredSourceId
+      );
+      setSelectedSource(resolvedSource);
+      if (!resolvedSource) {
+        setErrorMessage(
+          sourceType === "display"
+            ? "No displays are available for capture."
+            : "No windows are available for capture."
+        );
+        return null;
+      }
+      if (
+        currentSourceId &&
+        resolvedSource.id !== currentSourceId &&
+        sourceType === "display"
+      ) {
+        setErrorMessage(
+          `Display "${selectedSource?.name ?? currentSourceId}" was disconnected. Recording will use "${resolvedSource.name}".`
+        );
+      } else {
+        setErrorMessage(null);
+      }
+      return resolvedSource;
+    } catch (error) {
+      console.error("Failed to refresh capture sources before recording:", error);
+      setErrorMessage("Unable to refresh available capture sources before recording.");
+      return null;
+    }
+  }
+
   async function startRecordingSession() {
-    if (!selectedSource) return;
+    const sourceForRecording = await resolveAvailableSourceForRecording();
+    if (!sourceForRecording) return;
 
     beginRecordingStart();
     try {
       const options: RecordingOptionsType = {
-        sourceId: selectedSource.id,
-        sourceType: selectedSource.type,
+        sourceId: sourceForRecording.id,
+        sourceType: sourceForRecording.type,
         captureCamera,
         captureMicrophone,
         captureSystemAudio,
@@ -356,7 +466,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   }
 
   async function handleStartRecording() {
-    if (countdown !== null || !selectedSource) return;
+    if (countdown !== null) return;
     try {
       const status = await invoke<DiskSpaceStatus>("check_recording_disk_space");
       if (!status.sufficient) {
