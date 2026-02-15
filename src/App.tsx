@@ -46,6 +46,9 @@ function App() {
     ensureNotificationPermission().catch(console.error);
     const unlistenCompletePromise = listen<ExportCompleteEvent>("export-complete", (event) => {
       decrementActiveExports();
+      if (!isMainWindow) {
+        return;
+      }
       sendNotification({
         title: "Export complete",
         body: event.payload.outputPath.split("/").pop() ?? "Your file is ready.",
@@ -53,6 +56,9 @@ function App() {
     });
     const unlistenErrorPromise = listen<ExportErrorEvent>("export-error", (event) => {
       decrementActiveExports();
+      if (!isMainWindow) {
+        return;
+      }
       sendNotification({
         title: "Export failed",
         body: event.payload.message,
@@ -67,6 +73,9 @@ function App() {
     const unlistenRecordingStopFailedPromise = listen<RecordingStopFailedEvent>(
       "recording-stop-failed",
       (event) => {
+        if (!isMainWindow) {
+          return;
+        }
         sendNotification({
           title: "Recording finalization failed",
           body:
