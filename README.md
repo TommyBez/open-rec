@@ -82,6 +82,9 @@ Quick links:
 - Local build troubleshooting:
   [`docs/LOCAL_BUILD_TROUBLESHOOTING.md`](docs/LOCAL_BUILD_TROUBLESHOOTING.md)
 
+Contributor workflow:
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+
 ## Advanced runtime timeout overrides
 
 Recorder/widget timeout budgets can be overridden through
