@@ -814,30 +814,19 @@ pub fn get_recording_source_status(
     match source_type {
         SourceType::Display => {
             let display_id = parse_display_id(&source_id)?;
-            let (_, used_fallback, fallback_ordinal) = find_display_or_fallback_with_ordinal(
-                &content,
-                display_id,
-                preferred_display_ordinal,
-            )?;
-            if used_fallback {
-                let fallback_source = resolve_display_fallback_index(
-                    content.displays().len(),
+            let (resolved_display, used_fallback, fallback_ordinal) =
+                find_display_or_fallback_with_ordinal(
+                    &content,
+                    display_id,
                     preferred_display_ordinal,
-                );
-                let mut displays: Vec<_> = content.displays().into_iter().collect();
-                displays.sort_by_key(|display| display.display_id());
-                let fallback_display = displays
-                    .get(fallback_source)
-                    .or_else(|| displays.first())
-                    .ok_or_else(|| {
-                    AppError::Message("No displays are currently available for capture".to_string())
-                })?;
+                )?;
+            if used_fallback {
                 return Ok(Some(RecordingSourceStatus {
                     source_type,
                     source_id,
                     available: false,
                     fallback_source: Some(RecordingSourceFallback {
-                        source_id: fallback_display.display_id().to_string(),
+                        source_id: resolved_display.display_id().to_string(),
                         source_ordinal: Some(fallback_ordinal),
                     }),
                 }));
