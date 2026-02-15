@@ -722,39 +722,44 @@ pub fn stop_recording(
         .lock()
         .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
 
-    let mut session = state_guard
+    {
+        let session = state_guard.sessions.get_mut(project_id).ok_or_else(|| {
+            AppError::Message(format!("Recording session not found: {}", project_id))
+        })?;
+        let current_segment_path = session.current_segment_path.clone();
+
+        if let Some(ref stream) = session.stream {
+            // First stop the capture to signal we're done
+            stream
+                .stop_capture()
+                .map_err(|e| AppError::Message(format!("Failed to stop capture: {:?}", e)))?;
+
+            // Then remove the recording output - this should trigger file finalization
+            if let Some(ref recording_output) = session.recording_output {
+                stream
+                    .remove_recording_output(recording_output)
+                    .map_err(|e| {
+                        AppError::Message(format!("Failed to remove recording output: {:?}", e))
+                    })?;
+            }
+
+            wait_for_file_ready(&current_segment_path, Duration::from_secs(20))?;
+        }
+
+        if let Some(last_resume) = session.last_resume_instant.take() {
+            let elapsed = last_resume.elapsed().as_millis() as u64;
+            session.active_duration_ms = session.active_duration_ms.saturating_add(elapsed);
+        }
+
+        session.state = RecordingState::Stopped;
+        session.stream = None;
+        session.recording_output = None;
+    }
+
+    let session = state_guard
         .sessions
         .remove(project_id)
         .ok_or_else(|| AppError::Message(format!("Recording session not found: {}", project_id)))?;
-
-    let current_segment_path = session.current_segment_path.clone();
-
-    if let Some(ref stream) = session.stream {
-        // First stop the capture to signal we're done
-        stream
-            .stop_capture()
-            .map_err(|e| AppError::Message(format!("Failed to stop capture: {:?}", e)))?;
-
-        // Then remove the recording output - this should trigger file finalization
-        if let Some(ref recording_output) = session.recording_output {
-            stream
-                .remove_recording_output(recording_output)
-                .map_err(|e| {
-                    AppError::Message(format!("Failed to remove recording output: {:?}", e))
-                })?;
-        }
-
-        wait_for_file_ready(&current_segment_path, Duration::from_secs(20))?;
-    }
-
-    if let Some(last_resume) = session.last_resume_instant.take() {
-        let elapsed = last_resume.elapsed().as_millis() as u64;
-        session.active_duration_ms = session.active_duration_ms.saturating_add(elapsed);
-    }
-
-    session.state = RecordingState::Stopped;
-    session.stream = None;
-    session.recording_output = None;
 
     drop(state_guard);
 
