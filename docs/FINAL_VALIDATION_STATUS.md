@@ -30,6 +30,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Pending retry context now clears only for matching `recording-stopped` project events (prevents unrelated window events from dropping retry affordance)
 - Retry telemetry eventing (`recording-finalization-retry-status`) provides started/succeeded/failed visibility in recorder diagnostics
 - Backend auto-prunes stale pending-finalization contexts when required screen artifacts are missing
+- Backend stale-context cleanup coverage includes missing-segment artifact scenario in addition to missing-screen artifact scenario
 - Advanced runtime timeout presets for recorder/widget flows (localStorage-backed overrides with guarded defaults)
 - Async file I/O migration for runtime filesystem paths in backend
 - Export preflight validation for required media file existence/readability

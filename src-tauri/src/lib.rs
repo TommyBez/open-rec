@@ -2705,6 +2705,48 @@ mod tests {
     }
 
     #[test]
+    fn pending_finalization_context_is_cleared_when_segment_artifact_is_missing() {
+        let root = create_test_dir("stale-pending-finalization-segment");
+        let project_dir = root.join("project");
+        std::fs::create_dir_all(&project_dir)
+            .expect("failed to create stale segment fixture directory");
+        let screen_path = project_dir.join("screen.mp4");
+        std::fs::write(&screen_path, b"screen").expect("failed to write existing screen fixture");
+        let missing_segment_path = project_dir.join("screen_part1.mp4");
+
+        let pending_finalizations: SharedPendingFinalizations =
+            Arc::new(Mutex::new(HashMap::new()));
+        let stop_result = StopRecordingResult {
+            project_id: "stale-segment-project".to_string(),
+            screen_video_path: screen_path,
+            screen_segment_paths: vec![missing_segment_path],
+            camera_video_path: None,
+            microphone_audio_path: None,
+            duration_seconds: 1.0,
+            source_width: 1280,
+            source_height: 720,
+            camera_offset_ms: None,
+            microphone_offset_ms: None,
+        };
+
+        store_pending_finalization(&pending_finalizations, &stop_result)
+            .expect("pending finalization should store");
+        let resolved = get_pending_finalization(&pending_finalizations, &stop_result.project_id)
+            .expect("pending finalization query should succeed");
+        assert!(
+            resolved.is_none(),
+            "stale pending finalization should clear when segment is missing"
+        );
+        assert!(
+            !has_pending_finalization(&pending_finalizations, &stop_result.project_id)
+                .expect("pending finalization presence query should succeed"),
+            "presence helper should report false after stale segment cleanup"
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn normalizes_opened_project_ids() {
         assert_eq!(normalize_opened_project_id(""), None);
         assert_eq!(normalize_opened_project_id("   "), None);
