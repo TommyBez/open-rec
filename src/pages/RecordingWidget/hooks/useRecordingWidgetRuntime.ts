@@ -20,9 +20,9 @@ import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpac
 import { toErrorMessage } from "../../../lib/errorMessage";
 import { withTimeout } from "../../../lib/withTimeout";
 
-const STOP_RECORDING_TIMEOUT_MS = 30_000;
+const STOP_RECORDING_TIMEOUT_MS = 150_000;
 const PAUSE_RESUME_TIMEOUT_MS = 10_000;
-const STOPPING_RECOVERY_TIMEOUT_MS = 60_000;
+const STOPPING_RECOVERY_TIMEOUT_MS = 180_000;
 type RecordingFinalizingStatus = "merging" | "verifying" | "saving";
 
 function fallbackDisplayLabel(sourceId: string, sourceOrdinal?: number | null): string {

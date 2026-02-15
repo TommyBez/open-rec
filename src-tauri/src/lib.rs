@@ -45,6 +45,7 @@ const TRAY_MENU_RECENT_PREFIX: &str = "tray.recent.";
 const APP_MENU_NEW_WINDOW: &str = "app.new-window";
 const APP_MENU_CHECK_UPDATES: &str = "app.check-updates";
 const APP_MENU_UNSIGNED_INSTALL_GUIDE: &str = "app.unsigned-install-guide";
+const STOP_RECORDING_FINALIZATION_TIMEOUT_SECS: u64 = 120;
 const OPENREC_RELEASES_URL: &str = "https://github.com/TommyBez/open-rec/releases";
 const OPENREC_UNSIGNED_INSTALL_GUIDE_URL: &str =
     "https://github.com/TommyBez/open-rec/blob/main/docs/UNSIGNED_MAC_INSTALL.md";
@@ -904,51 +905,60 @@ async fn stop_screen_recording(
         }),
     );
 
-    let finalization_result = async {
-        concatenate_screen_segments(&app, &stop_result).await?;
-        emit_finalizing_status("verifying");
+    let finalization_result = tokio::time::timeout(
+        std::time::Duration::from_secs(STOP_RECORDING_FINALIZATION_TIMEOUT_SECS),
+        async {
+            concatenate_screen_segments(&app, &stop_result).await?;
+            emit_finalizing_status("verifying");
 
-        // Get the recordings directory from state
-        let recordings_dir = recordings_dir_from_managed_state(&state)?;
+            // Get the recordings directory from state
+            let recordings_dir = recordings_dir_from_managed_state(&state)?;
 
-        // Create project.json for the recording
-        let duration = match probe_video_duration(&stop_result.screen_video_path) {
-            Ok(value) if value.is_finite() && value > 0.0 => value,
-            Ok(_) => stop_result.duration_seconds.max(0.1),
-            Err(error) => {
-                eprintln!(
-                    "Failed to probe recording duration, falling back to session timing: {error}"
-                );
-                stop_result.duration_seconds.max(0.1)
-            }
-        };
-        let (width, height) = match probe_video_dimensions(&stop_result.screen_video_path) {
-            Ok(dimensions) => dimensions,
-            Err(error) => {
-                eprintln!(
-                    "Failed to probe recording dimensions, falling back to source size: {error}"
-                );
-                (stop_result.source_width, stop_result.source_height)
-            }
-        };
+            // Create project.json for the recording
+            let duration = match probe_video_duration(&stop_result.screen_video_path) {
+                Ok(value) if value.is_finite() && value > 0.0 => value,
+                Ok(_) => stop_result.duration_seconds.max(0.1),
+                Err(error) => {
+                    eprintln!(
+                        "Failed to probe recording duration, falling back to session timing: {error}"
+                    );
+                    stop_result.duration_seconds.max(0.1)
+                }
+            };
+            let (width, height) = match probe_video_dimensions(&stop_result.screen_video_path) {
+                Ok(dimensions) => dimensions,
+                Err(error) => {
+                    eprintln!(
+                        "Failed to probe recording dimensions, falling back to source size: {error}"
+                    );
+                    (stop_result.source_width, stop_result.source_height)
+                }
+            };
 
-        let project = Project::new(
-            stop_result.project_id.clone(),
-            stop_result.screen_video_path.clone(),
-            stop_result.camera_video_path.clone(),
-            stop_result.microphone_audio_path.clone(),
-            duration,
-            width,
-            height,
-            stop_result.camera_offset_ms,
-            stop_result.microphone_offset_ms,
-        );
-        emit_finalizing_status("saving");
-        project::save_project(&recordings_dir, &project).await?;
-        refresh_tray_menu(&app, &recordings_dir);
-        Ok::<(), AppError>(())
-    }
-    .await;
+            let project = Project::new(
+                stop_result.project_id.clone(),
+                stop_result.screen_video_path.clone(),
+                stop_result.camera_video_path.clone(),
+                stop_result.microphone_audio_path.clone(),
+                duration,
+                width,
+                height,
+                stop_result.camera_offset_ms,
+                stop_result.microphone_offset_ms,
+            );
+            emit_finalizing_status("saving");
+            project::save_project(&recordings_dir, &project).await?;
+            refresh_tray_menu(&app, &recordings_dir);
+            Ok::<(), AppError>(())
+        },
+    )
+    .await
+    .unwrap_or_else(|_| {
+        Err(AppError::Message(format!(
+            "Recording finalization timed out after {} seconds.",
+            STOP_RECORDING_FINALIZATION_TIMEOUT_SECS
+        )))
+    });
 
     if let Err(error) = finalization_result {
         emit_with_log(

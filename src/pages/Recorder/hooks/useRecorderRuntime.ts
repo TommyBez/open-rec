@@ -42,7 +42,7 @@ interface ResolvedRecordingSource {
 }
 
 const START_RECORDING_TIMEOUT_MS = 15_000;
-const STOP_FINALIZATION_TIMEOUT_MS = 60_000;
+const STOP_FINALIZATION_TIMEOUT_MS = 180_000;
 type RecordingFinalizingStatus = "merging" | "verifying" | "saving";
 const SOURCE_FALLBACK_WARNING_PREFIXES = [
   "Display \"",
