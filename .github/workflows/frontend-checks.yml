@@ -6,6 +6,10 @@ on:
       - "**"
   pull_request:
 
+concurrency:
+  group: frontend-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate-frontend:
     runs-on: ubuntu-latest
