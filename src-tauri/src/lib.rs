@@ -1042,6 +1042,32 @@ fn normalize_opened_project_id(raw: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
+fn resolve_project_dir_from_payload(project_dir: &str, association_path: &Path) -> PathBuf {
+    let mut resolved_path = match url::Url::parse(project_dir) {
+        Ok(url) if url.scheme().eq_ignore_ascii_case("file") => match url.to_file_path() {
+            Ok(file_path) => file_path,
+            Err(_) => {
+                eprintln!(
+                    "Failed to decode file URL in .openrec payload ({}): {}",
+                    association_path.display(),
+                    project_dir
+                );
+                PathBuf::from(project_dir)
+            }
+        },
+        Ok(_) => PathBuf::from(project_dir),
+        Err(_) => PathBuf::from(project_dir),
+    };
+
+    if resolved_path.is_relative() {
+        if let Some(association_parent) = association_path.parent() {
+            resolved_path = association_parent.join(resolved_path);
+        }
+    }
+
+    resolved_path
+}
+
 fn project_id_from_opened_path(path: &Path) -> Option<String> {
     if path.is_dir() {
         if let Err(error) = resolve_project_json_path(path) {
@@ -1089,12 +1115,7 @@ fn project_id_from_opened_path(path: &Path) -> Option<String> {
                     if let Some(project_dir) =
                         json.get("projectDir").and_then(|value| value.as_str())
                     {
-                        let mut project_dir_path = PathBuf::from(project_dir);
-                        if project_dir_path.is_relative() {
-                            if let Some(association_parent) = path.parent() {
-                                project_dir_path = association_parent.join(project_dir_path);
-                            }
-                        }
+                        let project_dir_path = resolve_project_dir_from_payload(project_dir, path);
                         if project_dir_path
                             .file_name()
                             .and_then(|value| value.to_str())
@@ -1616,6 +1637,27 @@ mod tests {
 
         let resolved = project_id_from_opened_path(&association_path);
         assert_eq!(resolved.as_deref(), Some("fallback-project"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_project_id_from_file_url_project_dir() {
+        let root = create_test_dir("openrec-file-url-project-dir");
+        let project_dir = root.join("file-url-project");
+        std::fs::create_dir_all(&project_dir).expect("failed to create fallback project directory");
+        let project_dir_url = url::Url::from_file_path(&project_dir)
+            .expect("failed to build file url")
+            .to_string();
+        let association_path = root.join("file-url-association.openrec");
+        let payload = serde_json::json!({
+            "projectDir": project_dir_url
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("file-url-project"));
 
         let _ = std::fs::remove_dir_all(root);
     }
