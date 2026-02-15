@@ -8,6 +8,7 @@ interface RecordButtonProps {
 export function RecordButton({ onClick, disabled }: RecordButtonProps) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       className={cn(

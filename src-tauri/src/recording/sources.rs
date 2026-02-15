@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::error::AppError;
+
 #[cfg(target_os = "macos")]
 use screencapturekit::shareable_content::SCShareableContent;
 
@@ -57,22 +59,25 @@ pub fn request_screen_recording_permission() -> bool {
 
 /// List available capture sources
 #[cfg(target_os = "macos")]
-pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, String> {
+pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, AppError> {
     // Check permission first - if not granted, return empty list without triggering prompt
     if !check_screen_recording_permission() {
         return Ok(vec![]);
     }
-    
-    let content = SCShareableContent::get().map_err(|e| format!("Failed to get shareable content: {:?}", e))?;
+
+    let content = SCShareableContent::get()
+        .map_err(|e| AppError::Message(format!("Failed to get shareable content: {:?}", e)))?;
 
     match source_type {
         SourceType::Display => {
-            let displays = content.displays();
+            let mut displays = content.displays().into_iter().collect::<Vec<_>>();
+            displays.sort_by_key(|display| display.display_id());
             Ok(displays
-                .iter()
-                .map(|d| CaptureSource {
-                    id: d.display_id().to_string(),
-                    name: format!("Display {}", d.display_id()),
+                .into_iter()
+                .enumerate()
+                .map(|(index, display)| CaptureSource {
+                    id: display.display_id().to_string(),
+                    name: format!("Display {}", index + 1),
                     source_type: SourceType::Display,
                     thumbnail: None,
                 })
@@ -87,10 +92,14 @@ pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource
                     let app_name = w
                         .owning_application()
                         .map(|app| app.application_name())
-                        .unwrap_or_default();
-                    let window_title = w.title().unwrap_or_default();
-                    let name = if window_title.is_empty() {
+                        .unwrap_or_else(|| "Unknown App".to_string());
+                    let window_title = w
+                        .title()
+                        .unwrap_or_else(|| format!("Window {}", w.window_id()));
+                    let name = if window_title.trim().is_empty() {
                         app_name.clone()
+                    } else if app_name.trim().is_empty() {
+                        window_title.clone()
                     } else {
                         format!("{} - {}", app_name, window_title)
                     };
@@ -108,6 +117,8 @@ pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource
 
 /// Fallback for non-macOS platforms
 #[cfg(not(target_os = "macos"))]
-pub fn list_capture_sources(source_type: SourceType) -> Result<Vec<CaptureSource>, String> {
-    Err("Screen capture is only supported on macOS".to_string())
+pub fn list_capture_sources(_source_type: SourceType) -> Result<Vec<CaptureSource>, AppError> {
+    Err(AppError::Message(
+        "Screen capture is only supported on macOS".to_string(),
+    ))
 }

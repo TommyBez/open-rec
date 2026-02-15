@@ -1,0 +1,45 @@
+name: Backend macOS Compile Checks
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+concurrency:
+  group: backend-macos-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-backend-macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frontend dependencies for docs verification
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify documentation links
+        run: pnpm run verify:docs
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Compile Rust backend on macOS target host
+        run: cargo check --manifest-path src-tauri/Cargo.toml

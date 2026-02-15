@@ -45,9 +45,40 @@
     "externalBin": [
       "binaries/ffmpeg"
     ],
+    "fileAssociations": [
+      {
+        "ext": ["openrec"],
+        "name": "OpenRec Project",
+        "description": "OpenRec editable recording project",
+        "role": "Editor",
+        "mimeType": "application/x-openrec-project",
+        "contentTypes": ["com.tommaso.open-rec.project"],
+        "rank": "Owner",
+        "exportedType": {
+          "identifier": "com.tommaso.open-rec.project",
+          "conformsTo": ["public.json", "public.data"]
+        }
+      }
+    ],
     "macOS": {
       "minimumSystemVersion": "15.0",
-      "entitlements": "./Entitlements.plist"
+      "entitlements": "./Entitlements.plist",
+      "signingIdentity": null,
+      "dmg": {
+        "background": "icons/icon.png",
+        "windowSize": {
+          "width": 720,
+          "height": 420
+        },
+        "appPosition": {
+          "x": 190,
+          "y": 190
+        },
+        "applicationFolderPosition": {
+          "x": 530,
+          "y": 190
+        }
+      }
     }
   },
   "plugins": {

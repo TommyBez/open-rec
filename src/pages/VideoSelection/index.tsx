@@ -1,17 +1,11 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowLeft, Video, FolderOpen } from "lucide-react";
+import { FolderOpen, Video } from "lucide-react";
 import { BrandLogo } from "../../components/BrandLogo";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Project } from "../../types/project";
 import { ProjectCard } from "./ProjectCard";
+import { useExportStore } from "../../stores";
+import { VideoSelectionHeader } from "./components/VideoSelectionHeader";
+import { BatchExportToolbar } from "./components/BatchExportToolbar";
+import { useVideoSelectionState } from "./hooks/useVideoSelectionState";
 
 function EmptyState({ onRecord }: { onRecord: () => void }) {
   return (
@@ -40,67 +34,32 @@ function EmptyState({ onRecord }: { onRecord: () => void }) {
 }
 
 export function VideoSelectionPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    projects,
+    isLoading,
+    error,
+    selectionMode,
+    selectedProjectIds,
+    cameFromEditor,
+    batchOptions,
+    setBatchOptions,
+    isBatchExporting,
+    stopBatchRequested,
+    batchStatus,
+    batchHistory,
+    startBatchExport,
+    stopBatchExport,
+    handleSelectProject,
+    handleRenameProject,
+    handleDeleteProject,
+    handleOpenProjectInNewWindow,
+    toggleProjectSelection,
+    handleBack,
+    handleGoToRecorder,
+    toggleSelectionMode,
+  } = useVideoSelectionState();
+  const activeExportCount = useExportStore((state) => state.activeExportCount);
 
-  // Determine where we came from for the back button
-  const cameFromEditor = location.state?.from === "editor";
-  const previousProjectId = location.state?.projectId;
-
-  // Resize window to full screen on mount
-  useEffect(() => {
-    async function resizeWindow() {
-      try {
-        const window = getCurrentWindow();
-        await window.setSize({ type: "Logical", width: 1200, height: 800 });
-        await window.center();
-      } catch (error) {
-        console.error("Failed to resize window:", error);
-      }
-    }
-    resizeWindow();
-  }, []);
-
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  async function loadProjects() {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await invoke<Project[]>("list_projects");
-      setProjects(result);
-    } catch (err) {
-      console.error("Failed to load projects:", err);
-      setError(String(err));
-      // Use empty array on error
-      setProjects([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  function handleSelectProject(project: Project) {
-    navigate(`/editor/${project.id}`);
-  }
-
-  function handleBack() {
-    if (cameFromEditor && previousProjectId) {
-      navigate(`/editor/${previousProjectId}`);
-    } else {
-      navigate("/recorder");
-    }
-  }
-
-  function handleGoToRecorder() {
-    navigate("/recorder");
-  }
-
-  // Loading state
   if (isLoading) {
     return (
       <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background p-5">
@@ -115,51 +74,46 @@ export function VideoSelectionPage() {
       </div>
     );
   }
-
   return (
     <div className="studio-grain relative flex h-full flex-col overflow-hidden bg-background">
-      {/* Atmospheric background */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.20_0.02_285)_0%,transparent_50%)] opacity-40" />
+      <VideoSelectionHeader
+        cameFromEditor={cameFromEditor}
+        isBatchExporting={isBatchExporting}
+        selectionMode={selectionMode}
+        activeExportCount={activeExportCount}
+        onBack={handleBack}
+        onGoToRecorder={handleGoToRecorder}
+        onToggleSelectionMode={toggleSelectionMode}
+      />
 
-      {/* Header */}
-      <header className="relative z-10 flex items-center justify-between border-b border-border/50 bg-card/30 px-4 py-3 backdrop-blur-sm animate-fade-up">
-        <div className="flex items-center gap-3">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleBack}
-                className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <ArrowLeft className="size-5" strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {cameFromEditor ? "Back to editor" : "Back to recorder"}
-            </TooltipContent>
-          </Tooltip>
-          <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
-              <FolderOpen className="size-4 text-primary" strokeWidth={1.75} />
-            </div>
-            <span className="text-sm font-medium text-foreground/80">My Recordings</span>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleGoToRecorder}
-          className="gap-2"
-        >
-          <Video className="size-4" strokeWidth={1.75} />
-          New Recording
-        </Button>
-      </header>
-
-      {/* Main content */}
       <main className="relative z-10 flex flex-1 flex-col overflow-hidden p-4">
+        {selectionMode && (
+          <BatchExportToolbar
+            selectedCount={selectedProjectIds.length}
+            isBatchExporting={isBatchExporting}
+            stopBatchRequested={stopBatchRequested}
+            batchOptions={batchOptions}
+            onBatchOptionsChange={setBatchOptions}
+            onStartBatchExport={startBatchExport}
+            onStopBatchExport={stopBatchExport}
+          />
+        )}
         {error && (
           <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive animate-fade-up">
             {error}
+          </div>
+        )}
+        {batchStatus && (
+          <div className="mb-3 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            {batchStatus}
+          </div>
+        )}
+        {batchHistory.length > 0 && (
+          <div className="mb-3 max-h-24 overflow-auto rounded-lg border border-border/50 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+            {batchHistory.map((entry, index) => (
+              <div key={`${entry}-${index}`}>{entry}</div>
+            ))}
           </div>
         )}
 
@@ -173,6 +127,12 @@ export function VideoSelectionPage() {
                   key={project.id}
                   project={project}
                   onSelect={handleSelectProject}
+                  onRename={handleRenameProject}
+                  onDelete={handleDeleteProject}
+                  onOpenInNewWindow={handleOpenProjectInNewWindow}
+                  selectionMode={selectionMode}
+                  selected={selectedProjectIds.includes(project.id)}
+                  onToggleSelect={toggleProjectSelection}
                   index={index}
                 />
               ))}

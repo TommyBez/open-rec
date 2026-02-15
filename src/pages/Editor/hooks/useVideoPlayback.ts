@@ -7,10 +7,11 @@ interface UseVideoPlaybackOptions {
   duration: number;
   enabledSegments: Array<{ startTime: number; endTime: number }>;
   currentPlaybackRate: number;
+  playbackRateMultiplier: number;
   setIsPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
-  setProject: (project: Project) => void;
+  patchProject: (updater: (project: Project) => Project) => void;
 }
 
 export function useVideoPlayback({
@@ -19,17 +20,14 @@ export function useVideoPlayback({
   duration,
   enabledSegments,
   currentPlaybackRate,
+  playbackRateMultiplier,
   setIsPlaying,
   setCurrentTime,
   setDuration,
-  setProject,
+  patchProject,
 }: UseVideoPlaybackOptions) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const currentSpeedSegmentRef = useRef<string | null>(null);
-  
-  // Ref to access latest project in event handlers without re-subscribing
-  const projectRef = useRef(project);
-  projectRef.current = project;
 
   // Extract speed effects for narrower dependency
   const speedEffects = project?.edits.speed;
@@ -59,22 +57,26 @@ export function useVideoPlayback({
     const handleLoadedMetadata = () => {
       const actualDuration = video.duration;
       setDuration(actualDuration);
-      
-      const currentProject = projectRef.current;
-      if (currentProject && Math.abs(currentProject.duration - actualDuration) > 0.1) {
-        setProject({
+
+      patchProject((currentProject) => {
+        if (Math.abs(currentProject.duration - actualDuration) <= 0.1) {
+          return currentProject;
+        }
+        return {
           ...currentProject,
           duration: actualDuration,
           edits: {
             ...currentProject.edits,
-            segments: currentProject.edits.segments.map(seg => ({
-              ...seg,
-              startTime: Math.max(0, Math.min(seg.startTime, actualDuration)),
-              endTime: Math.max(0, Math.min(seg.endTime, actualDuration)),
-            })).filter(seg => seg.endTime > seg.startTime),
+            segments: currentProject.edits.segments
+              .map((seg) => ({
+                ...seg,
+                startTime: Math.max(0, Math.min(seg.startTime, actualDuration)),
+                endTime: Math.max(0, Math.min(seg.endTime, actualDuration)),
+              }))
+              .filter((seg) => seg.endTime > seg.startTime),
           },
-        });
-      }
+        };
+      });
     };
     const handleEnded = () => setIsPlaying(false);
 
@@ -85,7 +87,7 @@ export function useVideoPlayback({
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
       video.removeEventListener("ended", handleEnded);
     };
-  }, [setDuration, setIsPlaying, setProject]);
+  }, [patchProject, setDuration, setIsPlaying]);
 
   // RAF loop for smooth time updates during playback
   useEffect(() => {
@@ -106,7 +108,7 @@ export function useVideoPlayback({
       
       if (newSegmentId !== currentSpeedSegmentRef.current) {
         currentSpeedSegmentRef.current = newSegmentId;
-        const newRate = activeSpeedSegment?.speed ?? 1;
+        const newRate = (activeSpeedSegment?.speed ?? 1) * playbackRateMultiplier;
         if (video.playbackRate !== newRate) {
           video.playbackRate = newRate;
         }
@@ -125,17 +127,18 @@ export function useVideoPlayback({
     return () => {
       cancelAnimationFrame(rafId);
     };
-  }, [isPlaying, speedEffects, setCurrentTime]);
+  }, [isPlaying, speedEffects, playbackRateMultiplier, setCurrentTime]);
 
   // Update video playback rate
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     
-    if (video.playbackRate !== currentPlaybackRate) {
-      video.playbackRate = currentPlaybackRate;
+    const effectiveRate = currentPlaybackRate * playbackRateMultiplier;
+    if (video.playbackRate !== effectiveRate) {
+      video.playbackRate = effectiveRate;
     }
-  }, [currentPlaybackRate]);
+  }, [currentPlaybackRate, playbackRateMultiplier]);
 
   // Segment-aware playback: skip gaps
   useEffect(() => {
