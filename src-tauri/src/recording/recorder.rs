@@ -812,3 +812,65 @@ pub fn get_recording_snapshot(
 pub fn cleanup_active_recordings(_state: &SharedRecorderState) -> Result<(), AppError> {
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build_test_session(
+        state: RecordingState,
+        active_duration_ms: u64,
+        last_resume_instant: Option<Instant>,
+    ) -> RecordingSession {
+        RecordingSession {
+            project_id: "test-project".to_string(),
+            options: RecordingOptions {
+                source_id: "source-1".to_string(),
+                source_type: SourceType::Display,
+                capture_camera: false,
+                capture_microphone: false,
+                capture_system_audio: false,
+                quality_preset: RecordingQualityPreset::P1080P30,
+                codec: RecordingCodec::H264,
+            },
+            state,
+            screen_video_path: PathBuf::from("/tmp/screen.mp4"),
+            camera_video_path: None,
+            microphone_audio_path: None,
+            start_time: chrono::Utc::now(),
+            recording_start_time_ms: 0,
+            segment_index: 0,
+            capture_width: 1920,
+            capture_height: 1080,
+            capture_fps: 30,
+            recording_codec: RecordingCodec::H264,
+            screen_segments: vec![],
+            current_segment_path: PathBuf::from("/tmp/screen.mp4"),
+            active_duration_ms,
+            last_resume_instant,
+            camera_offset_ms: None,
+            microphone_offset_ms: None,
+            #[cfg(target_os = "macos")]
+            stream: None,
+            #[cfg(target_os = "macos")]
+            recording_output: None,
+        }
+    }
+
+    #[test]
+    fn elapsed_duration_uses_active_total_for_paused_state() {
+        let session = build_test_session(RecordingState::Paused, 4_250, None);
+        assert_eq!(calculate_elapsed_duration_ms(&session), 4_250);
+    }
+
+    #[test]
+    fn elapsed_duration_accumulates_running_interval_for_recording_state() {
+        let session = build_test_session(
+            RecordingState::Recording,
+            2_000,
+            Some(Instant::now() - Duration::from_millis(500)),
+        );
+        let elapsed = calculate_elapsed_duration_ms(&session);
+        assert!(elapsed >= 2_500);
+    }
+}
