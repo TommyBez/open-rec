@@ -46,6 +46,7 @@ const APP_MENU_NEW_WINDOW: &str = "app.new-window";
 const APP_MENU_CHECK_UPDATES: &str = "app.check-updates";
 const APP_MENU_UNSIGNED_INSTALL_GUIDE: &str = "app.unsigned-install-guide";
 const STOP_RECORDING_FINALIZATION_TIMEOUT_SECS: u64 = 120;
+const FFMPEG_COMMAND_TIMEOUT_SECS: u64 = 120;
 const OPENREC_RELEASES_URL: &str = "https://github.com/TommyBez/open-rec/releases";
 const OPENREC_UNSIGNED_INSTALL_GUIDE_URL: &str =
     "https://github.com/TommyBez/open-rec/blob/main/docs/UNSIGNED_MAC_INSTALL.md";
@@ -628,24 +629,47 @@ async fn run_ffmpeg_command(app: &AppHandle, args: &[String]) -> Result<(), AppE
     };
     // Use the sidecar when present, fallback to system binary otherwise.
     // This keeps concat/finalization functional in development environments.
-    let (mut rx, _child) = ffmpeg_command
+    let (mut rx, child) = ffmpeg_command
         .args(args)
         .spawn()
         .map_err(|e| AppError::Message(format!("Failed to spawn ffmpeg: {}", e)))?;
+    let pid = child.pid();
+    let timeout_duration = std::time::Duration::from_secs(FFMPEG_COMMAND_TIMEOUT_SECS);
+    let timeout = tokio::time::sleep(timeout_duration);
+    tokio::pin!(timeout);
 
-    while let Some(event) = rx.recv().await {
-        if let CommandEvent::Terminated(status) = event {
-            if status.code == Some(0) {
-                return Ok(());
+    loop {
+        tokio::select! {
+            _ = &mut timeout => {
+                if let Err(error) = terminate_process_by_pid(pid) {
+                    eprintln!(
+                        "Failed to terminate timed-out ffmpeg process {}: {}",
+                        pid, error
+                    );
+                }
+                return Err(AppError::Message(format!(
+                    "ffmpeg command timed out after {} seconds",
+                    FFMPEG_COMMAND_TIMEOUT_SECS
+                )));
             }
-            let exit_code = match status.code {
-                Some(code) => code.to_string(),
-                None => "unknown (terminated by signal)".to_string(),
-            };
-            return Err(AppError::Message(format!(
-                "ffmpeg failed with exit code: {}",
-                exit_code
-            )));
+            event = rx.recv() => {
+                let Some(event) = event else {
+                    break;
+                };
+                if let CommandEvent::Terminated(status) = event {
+                    if status.code == Some(0) {
+                        return Ok(());
+                    }
+                    let exit_code = match status.code {
+                        Some(code) => code.to_string(),
+                        None => "unknown (terminated by signal)".to_string(),
+                    };
+                    return Err(AppError::Message(format!(
+                        "ffmpeg failed with exit code: {}",
+                        exit_code
+                    )));
+                }
+            }
         }
     }
 
