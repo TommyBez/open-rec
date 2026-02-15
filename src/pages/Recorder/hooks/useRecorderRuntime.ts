@@ -459,6 +459,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setSources(result);
       const currentSourceId =
         selectedSource?.type === sourceType ? selectedSource.id : null;
+      const preferredSourceStillAvailable = preferredSourceId
+        ? result.some((source) => source.id === preferredSourceId)
+        : true;
       const resolvedSource = resolvePreferredSource(
         result,
         sourceType,
@@ -475,6 +478,16 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       ) {
         setErrorMessage(
           `Display "${selectedSource?.name ?? currentSourceId}" is unavailable. Switched to "${resolvedSource.name}".`
+        );
+      } else if (
+        sourceType === "display" &&
+        resolvedSource &&
+        preferredSourceId &&
+        !preferredSourceStillAvailable &&
+        resolvedSource.id !== preferredSourceId
+      ) {
+        setErrorMessage(
+          `Saved display is unavailable. Switched to "${resolvedSource.name}".`
         );
       }
     } catch (error) {
@@ -496,6 +509,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setSources(availableSources);
       const currentSourceId =
         selectedSource?.type === sourceType ? selectedSource.id : null;
+      const preferredSourceStillAvailable = preferredSourceId
+        ? availableSources.some((source) => source.id === preferredSourceId)
+        : true;
       const resolvedSource = resolvePreferredSource(
         availableSources,
         sourceType,
@@ -519,6 +535,15 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       ) {
         setErrorMessage(
           `Display "${selectedSource?.name ?? currentSourceId}" was disconnected. Recording will use "${resolvedSource.name}".`
+        );
+      } else if (
+        sourceType === "display" &&
+        preferredSourceId &&
+        !preferredSourceStillAvailable &&
+        resolvedSource.id !== preferredSourceId
+      ) {
+        setErrorMessage(
+          `Saved display is unavailable. Recording will use "${resolvedSource.name}".`
         );
       } else {
         setErrorMessage(null);
