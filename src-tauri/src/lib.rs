@@ -2060,11 +2060,11 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_export_job_ids_without_process_check, build_editor_route, is_missing_process_error,
-        is_process_running, normalize_opened_project_id, normalize_project_id_input,
-        parse_ffmpeg_progress, parse_ffprobe_dimensions_output, parse_ffprobe_duration_output,
-        project_id_from_opened_path, resolve_project_dir_from_payload, OPENREC_RELEASES_URL,
-        OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
+        active_export_job_ids, active_export_job_ids_without_process_check, build_editor_route,
+        is_missing_process_error, is_process_running, normalize_opened_project_id,
+        normalize_project_id_input, parse_ffmpeg_progress, parse_ffprobe_dimensions_output,
+        parse_ffprobe_duration_output, project_id_from_opened_path,
+        resolve_project_dir_from_payload, OPENREC_RELEASES_URL, OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
     };
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use super::{parse_startup_opened_arg, strip_wrapping_quotes};
@@ -2185,6 +2185,35 @@ mod tests {
             is_process_running(current_pid).expect("process lookup should complete"),
             "current process id should be running"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn active_export_job_ids_prunes_stale_process_entries() {
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("exit 0")
+            .spawn()
+            .expect("failed to spawn short-lived process for stale job test");
+        let stale_pid = child.id();
+        child
+            .wait()
+            .expect("failed to wait for short-lived process exit");
+
+        let export_jobs = Arc::new(Mutex::new(HashMap::from([(
+            "stale-job".to_string(),
+            stale_pid,
+        )])));
+
+        let active_job_ids =
+            active_export_job_ids(&export_jobs).expect("active export jobs should resolve");
+
+        assert!(active_job_ids.is_empty(), "stale job should be pruned");
+        let remaining_jobs = export_jobs
+            .lock()
+            .expect("failed to lock jobs after pruning")
+            .len();
+        assert_eq!(remaining_jobs, 0, "stale job entry should be removed");
     }
 
     #[test]
