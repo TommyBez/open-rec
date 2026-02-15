@@ -1819,19 +1819,11 @@ async fn project_id_from_opened_path_async(path: &Path) -> Option<String> {
         match tokio::fs::read_to_string(path).await {
             Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
                 Ok(json) => {
-                    if let Some(project_id) = json.get("projectId").and_then(|value| value.as_str())
-                    {
-                        if let Some(normalized) = normalize_opened_project_id(project_id) {
-                            return Some(normalized);
-                        }
-                    }
-                    if let Some(project_id) =
-                        json.get("project_id").and_then(|value| value.as_str())
-                    {
-                        if let Some(normalized) = normalize_opened_project_id(project_id) {
-                            return Some(normalized);
-                        }
-                    }
+                    let fallback_project_id = json
+                        .get("projectId")
+                        .or_else(|| json.get("project_id"))
+                        .and_then(|value| value.as_str())
+                        .and_then(normalize_opened_project_id);
                     let project_dir = json
                         .get("projectDir")
                         .or_else(|| json.get("project_dir"))
@@ -1842,6 +1834,9 @@ async fn project_id_from_opened_path_async(path: &Path) -> Option<String> {
                         let Some(project_dir_path) =
                             resolve_project_dir_from_payload(project_dir, path)
                         else {
+                            if let Some(project_id) = fallback_project_id {
+                                return Some(project_id);
+                            }
                             let stem = path.file_stem()?.to_string_lossy();
                             return normalize_opened_project_id(&stem);
                         };
@@ -1903,6 +1898,9 @@ async fn project_id_from_opened_path_async(path: &Path) -> Option<String> {
                                 }
                             }
                         }
+                    }
+                    if let Some(project_id) = fallback_project_id {
+                        return Some(project_id);
                     }
                 }
                 Err(error) => {
@@ -3031,6 +3029,44 @@ mod tests {
 
         let resolved = project_id_from_opened_path(&association_path);
         assert_eq!(resolved.as_deref(), Some("payload-project"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn prefers_valid_project_dir_over_stale_project_id_payload() {
+        let root = create_test_dir("openrec-project-id-project-dir-conflict");
+        let project_dir = root.join("actual-project-id");
+        std::fs::create_dir_all(&project_dir).expect("failed to create project directory");
+        std::fs::write(project_dir.join("project.json"), "{}")
+            .expect("failed to write fallback project json");
+        let association_path = root.join("conflicting-association.openrec");
+        let payload = serde_json::json!({
+            "projectId": "stale-project-id",
+            "projectDir": project_dir.to_string_lossy().to_string()
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("actual-project-id"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn uses_project_id_payload_when_project_dir_path_is_stale() {
+        let root = create_test_dir("openrec-project-id-with-stale-project-dir");
+        let association_path = root.join("project-id-fallback-association.openrec");
+        let payload = serde_json::json!({
+            "projectId": "payload-project-id",
+            "projectDir": root.join("missing-project-dir").to_string_lossy().to_string()
+        });
+        std::fs::write(&association_path, payload.to_string())
+            .expect("failed to write association payload");
+
+        let resolved = project_id_from_opened_path(&association_path);
+        assert_eq!(resolved.as_deref(), Some("payload-project-id"));
 
         let _ = std::fs::remove_dir_all(root);
     }
