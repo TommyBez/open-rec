@@ -1044,6 +1044,16 @@ fn clear_pending_finalization(
     Ok(())
 }
 
+fn has_pending_finalization(
+    pending_finalizations: &SharedPendingFinalizations,
+    project_id: &str,
+) -> Result<bool, AppError> {
+    let guard = pending_finalizations
+        .lock()
+        .map_err(|error| AppError::Lock(format!("Lock error: {}", error)))?;
+    Ok(guard.contains_key(project_id))
+}
+
 async fn finalize_stopped_recording(
     app: &AppHandle,
     state: &tauri::State<'_, SharedRecorderState>,
@@ -1311,6 +1321,15 @@ async fn retry_recording_finalization(
     close_recording_widget_window(&app);
 
     Ok(())
+}
+
+#[tauri::command]
+fn has_pending_recording_finalization(
+    pending_finalizations: tauri::State<'_, SharedPendingFinalizations>,
+    project_id: String,
+) -> Result<bool, AppError> {
+    let project_id = normalize_project_id_input(project_id, "check pending finalization")?;
+    has_pending_finalization(pending_finalizations.inner(), &project_id)
 }
 
 /// Set media offsets gathered by frontend camera/mic recorders
@@ -2242,9 +2261,9 @@ mod tests {
     use super::{
         active_export_job_ids, active_export_job_ids_without_process_check, build_editor_route,
         clear_pending_finalization, get_pending_finalization, handle_ffmpeg_timeout,
-        has_active_recording_session, is_missing_process_error, is_process_running,
-        normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
-        parse_ffprobe_dimensions_output, parse_ffprobe_duration_output,
+        has_active_recording_session, has_pending_finalization, is_missing_process_error,
+        is_process_running, normalize_opened_project_id, normalize_project_id_input,
+        parse_ffmpeg_progress, parse_ffprobe_dimensions_output, parse_ffprobe_duration_output,
         project_id_from_opened_path, resolve_project_dir_from_payload, store_pending_finalization,
         AppError, RecorderRecordingState, RecorderState, RecordingOptions,
         SharedPendingFinalizations, SharedRecorderState, SourceType, StopRecordingResult,
@@ -2538,6 +2557,11 @@ mod tests {
 
         store_pending_finalization(&pending_finalizations, &stop_result)
             .expect("pending finalization should be storable");
+        assert!(
+            has_pending_finalization(&pending_finalizations, &stop_result.project_id)
+                .expect("pending finalization presence query should succeed"),
+            "pending finalization presence should be true after insert"
+        );
         let stored = get_pending_finalization(&pending_finalizations, &stop_result.project_id)
             .expect("pending finalization should be retrievable");
         assert!(stored.is_some(), "pending finalization should be present");
@@ -2547,6 +2571,11 @@ mod tests {
 
         clear_pending_finalization(&pending_finalizations, &stop_result.project_id)
             .expect("pending finalization should clear");
+        assert!(
+            !has_pending_finalization(&pending_finalizations, &stop_result.project_id)
+                .expect("pending finalization presence query should succeed"),
+            "pending finalization presence should be false after clear"
+        );
         let cleared = get_pending_finalization(&pending_finalizations, &stop_result.project_id)
             .expect("pending finalization query should succeed");
         assert!(cleared.is_none(), "pending finalization should be cleared");
@@ -3128,6 +3157,7 @@ pub fn run() {
             start_screen_recording,
             stop_screen_recording,
             retry_recording_finalization,
+            has_pending_recording_finalization,
             set_recording_media_offsets,
             get_recording_state,
             get_recording_snapshot,

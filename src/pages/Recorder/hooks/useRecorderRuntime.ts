@@ -305,6 +305,43 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     });
   }, [appendLifecycleEvent, runtimeTimeoutSettings]);
 
+  useEffect(() => {
+    const retryProjectId = normalizeScopedProjectId(retryFinalizationProjectId);
+    if (!retryProjectId) {
+      return;
+    }
+    let cancelled = false;
+    async function verifyPendingFinalizationRetryContext() {
+      try {
+        const hasPendingFinalization = await invoke<boolean>(
+          "has_pending_recording_finalization",
+          {
+            projectId: retryProjectId,
+          }
+        );
+        if (cancelled || hasPendingFinalization) {
+          return;
+        }
+        setRetryFinalizationProjectId(null);
+        clearPendingFinalizationRetryProjectId();
+        appendLifecycleEvent({
+          source: "recorder",
+          event: "recording-finalization-retry-context-cleared",
+          summary:
+            "Cleared stale retry context because no pending finalization exists in backend state.",
+          level: "warning",
+          projectId: retryProjectId ?? undefined,
+        });
+      } catch (error) {
+        console.error("Failed to verify pending finalization retry context:", error);
+      }
+    }
+    void verifyPendingFinalizationRetryContext();
+    return () => {
+      cancelled = true;
+    };
+  }, [appendLifecycleEvent, retryFinalizationProjectId]);
+
   const isRecording = ["starting", "recording", "paused", "stopping"].includes(
     recordingState
   );

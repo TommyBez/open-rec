@@ -90,6 +90,7 @@ and export/finalization recovery flows.
 - **What OpenRec already did:** Forced UI/session recovery and emitted failure event.
 - **Recommended user action:** Click **Retry Finalization** in the recorder first; if retry still fails, open recordings list and verify artifacts manually.
 - **Note:** Pending retry context is persisted locally so the retry action remains available after route changes.
+- **Note:** Recorder now validates pending retry context against backend state and auto-clears stale retry prompts if finalization artifacts are no longer available.
 
 ### `Recording finalization timed out in the widget...`
 - **Surface:** Recording widget warning text
