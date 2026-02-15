@@ -1242,3 +1242,123 @@ pub fn get_export_output_path(
 
     downloads_dir.join(filename)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use uuid::Uuid;
+
+    struct TestDirectory {
+        path: PathBuf,
+    }
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let path =
+                std::env::temp_dir().join(format!("openrec-export-tests-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(&path)
+                .expect("failed to create temporary export test directory");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn default_options() -> ExportOptions {
+        ExportOptions {
+            format: ExportFormat::Mp4,
+            frame_rate: 30,
+            compression: CompressionPreset::Social,
+            resolution: ResolutionPreset::P1080,
+        }
+    }
+
+    fn write_empty_file(path: &Path) {
+        std::fs::write(path, b"").expect("failed to write test fixture file");
+    }
+
+    fn build_test_project(
+        id: &str,
+        screen_path: PathBuf,
+        camera_path: Option<PathBuf>,
+        microphone_path: Option<PathBuf>,
+    ) -> Project {
+        Project::new(
+            id.to_string(),
+            screen_path,
+            camera_path,
+            microphone_path,
+            12.0,
+            1920,
+            1080,
+            None,
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn validate_export_inputs_rejects_missing_screen_file() {
+        let test_dir = TestDirectory::new();
+        let screen_path = test_dir.path.join("missing-screen.mp4");
+        let project = build_test_project("missing-screen", screen_path.clone(), None, None);
+
+        let result = validate_export_inputs(&project, &default_options()).await;
+
+        assert!(matches!(
+            result,
+            Err(AppError::Message(message))
+                if message.contains("Screen recording file does not exist")
+                    && message.contains(&screen_path.to_string_lossy().to_string())
+        ));
+    }
+
+    #[tokio::test]
+    async fn validate_export_inputs_rejects_missing_camera_file() {
+        let test_dir = TestDirectory::new();
+        let screen_path = test_dir.path.join("screen.mp4");
+        let camera_path = test_dir.path.join("missing-camera.webm");
+        write_empty_file(&screen_path);
+        let project = build_test_project(
+            "missing-camera",
+            screen_path,
+            Some(camera_path.clone()),
+            None,
+        );
+
+        let result = validate_export_inputs(&project, &default_options()).await;
+
+        assert!(matches!(
+            result,
+            Err(AppError::Message(message))
+                if message.contains("Camera recording file does not exist")
+                    && message.contains(&camera_path.to_string_lossy().to_string())
+        ));
+    }
+
+    #[tokio::test]
+    async fn validate_export_inputs_accepts_existing_screen_camera_and_microphone_files() {
+        let test_dir = TestDirectory::new();
+        let screen_path = test_dir.path.join("screen.mp4");
+        let camera_path = test_dir.path.join("camera.webm");
+        let microphone_path = test_dir.path.join("microphone.webm");
+        write_empty_file(&screen_path);
+        write_empty_file(&camera_path);
+        write_empty_file(&microphone_path);
+
+        let project = build_test_project(
+            "all-assets-present",
+            screen_path,
+            Some(camera_path),
+            Some(microphone_path),
+        );
+
+        let result = validate_export_inputs(&project, &default_options()).await;
+
+        assert!(result.is_ok());
+    }
+}
