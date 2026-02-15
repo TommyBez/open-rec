@@ -199,6 +199,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       }
     } catch (error) {
       console.error("Failed to check disk space:", error);
+      setDiskWarning("Unable to verify available disk space.");
     }
   }
 
@@ -364,6 +365,8 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       }
     } catch (error) {
       console.error("Failed to check disk space before recording:", error);
+      setErrorMessage("Unable to verify available disk space before recording.");
+      return;
     }
 
     startCountdown(startRecordingSession);
