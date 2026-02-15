@@ -11,6 +11,8 @@ import type { NavigateFunction } from "react-router-dom";
 import { requestTrayQuickRecord } from "../lib/trayQuickRecord";
 import { useExportStore } from "../stores";
 
+const EXPORT_JOB_SYNC_INTERVAL_MS = 30_000;
+
 interface ExportCompleteEvent {
   jobId: string;
   outputPath: string;
@@ -80,6 +82,12 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
     };
     window.addEventListener("focus", refreshActiveExports);
     window.addEventListener("visibilitychange", refreshActiveExports);
+    const syncIntervalId = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+      void syncActiveExportJobs();
+    }, EXPORT_JOB_SYNC_INTERVAL_MS);
     const unlistenCompletePromise = listen<ExportCompleteEvent>("export-complete", (event) => {
       unregisterExportJob(event.payload.jobId);
       if (!isMainWindow) return;
@@ -127,6 +135,7 @@ export function useAppRuntimeEvents(navigate: NavigateFunction) {
       cancelled = true;
       window.removeEventListener("focus", refreshActiveExports);
       window.removeEventListener("visibilitychange", refreshActiveExports);
+      window.clearInterval(syncIntervalId);
       unlistenCompletePromise.then((unlisten) => unlisten());
       unlistenErrorPromise.then((unlisten) => unlisten());
       unlistenStartedPromise.then((unlisten) => unlisten());
