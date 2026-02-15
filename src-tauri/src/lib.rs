@@ -904,7 +904,30 @@ async fn stop_screen_recording(
     project_id: String,
 ) -> Result<(), AppError> {
     let project_id = normalize_project_id_input(project_id, "stop recording")?;
-    let stop_result = do_stop_recording(&state, &project_id)?;
+    let stop_result = match do_stop_recording(&state, &project_id) {
+        Ok(result) => result,
+        Err(error) => {
+            emit_with_log(
+                &app,
+                "recording-stop-failed",
+                serde_json::json!({
+                    "projectId": &project_id,
+                    "message": error.to_string()
+                }),
+            );
+            emit_with_log(
+                &app,
+                "recording-state-changed",
+                serde_json::json!({
+                    "state": "idle",
+                    "projectId": &project_id
+                }),
+            );
+            prepare_main_window_for_post_recording(&app);
+            close_recording_widget_window(&app);
+            return Err(error);
+        }
+    };
     let emit_finalizing_status = |status: &str| {
         emit_with_log(
             &app,
