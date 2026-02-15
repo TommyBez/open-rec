@@ -4,6 +4,13 @@ Documentation index: [`README.md`](./README.md)
 
 This checklist tracks implementation closure status for this execution environment.
 
+## Quick navigation
+
+1. [Delivery checklist by plan phase](#1-delivery-checklist-by-plan-phase)
+2. [Remaining manual gates (macOS runtime)](#2-remaining-manual-gates-macos-runtime)
+3. [Workspace closure criteria](#3-workspace-closure-criteria)
+4. [Pointer documents](#4-pointer-documents)
+
 ## 1) Delivery checklist by plan phase
 
 ### Phase 0 — Audit + critical reliability

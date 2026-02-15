@@ -13,15 +13,23 @@ Use this index to quickly find the right document.
 | [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md) | Unsigned DMG install + Gatekeeper bypass instructions |
 | [`NICE_TO_HAVE_BACKLOG.md`](./NICE_TO_HAVE_BACKLOG.md) | Non-blocking backlog items |
 
+## Fast routing by goal
+
+| If you need to... | Start here |
+|---|---|
+| Understand current execution-scope completion | [`FINAL_VALIDATION_STATUS.md`](./FINAL_VALIDATION_STATUS.md) |
+| Track plan-phase closure items | [`PLAN_EXECUTION_CHECKLIST.md`](./PLAN_EXECUTION_CHECKLIST.md) |
+| Run manual macOS acceptance | [`MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](./MACOS_RUNTIME_VALIDATION_CHECKLIST.md) |
+| Triage runtime warnings during validation | [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md) |
+| Install unsigned builds on macOS | [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md) |
+| Review optional non-blocking follow-ups | [`NICE_TO_HAVE_BACKLOG.md`](./NICE_TO_HAVE_BACKLOG.md) |
+
 ## Suggested reading order
 
-1. Start with [`../README.md`](../README.md) for project overview and quick start.
-2. Review [`FINAL_VALIDATION_STATUS.md`](./FINAL_VALIDATION_STATUS.md) for current validation state.
-3. Use [`PLAN_EXECUTION_CHECKLIST.md`](./PLAN_EXECUTION_CHECKLIST.md) for completion tracking.
-4. Run macOS acceptance from [`MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](./MACOS_RUNTIME_VALIDATION_CHECKLIST.md).
-5. Use supporting operational docs as needed:
-   - install/run unsigned builds: [`UNSIGNED_MAC_INSTALL.md`](./UNSIGNED_MAC_INSTALL.md)
-   - triage runtime warnings: [`RECOVERY_WARNING_PLAYBOOK.md`](./RECOVERY_WARNING_PLAYBOOK.md)
+1. [`../README.md`](../README.md) — project overview + local quick start
+2. [`FINAL_VALIDATION_STATUS.md`](./FINAL_VALIDATION_STATUS.md) — what is validated here
+3. [`PLAN_EXECUTION_CHECKLIST.md`](./PLAN_EXECUTION_CHECKLIST.md) — closure checklist
+4. [`MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](./MACOS_RUNTIME_VALIDATION_CHECKLIST.md) — external runtime acceptance
 
 ## Documentation conventions
 

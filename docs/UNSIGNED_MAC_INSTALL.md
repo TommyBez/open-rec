@@ -5,6 +5,14 @@ Documentation index: [`README.md`](./README.md)
 OpenRec release artifacts can be distributed without Apple code signing/notarization.
 Unsigned builds work, but macOS Gatekeeper will warn on first launch.
 
+## Quick navigation
+
+1. [Download and install](#download-and-install)
+2. [First launch (Gatekeeper bypass)](#first-launch-gatekeeper-bypass)
+3. [Required permissions on first use](#required-permissions-on-first-use)
+4. [Updates for unsigned builds](#updates-for-unsigned-builds)
+5. [Troubleshooting quick notes](#troubleshooting-quick-notes)
+
 ## Download and install
 
 1. Download the `.dmg` for your Mac:
