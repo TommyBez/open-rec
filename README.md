@@ -75,6 +75,8 @@ See the installation and Gatekeeper instructions in
 [`docs/UNSIGNED_MAC_INSTALL.md`](docs/UNSIGNED_MAC_INSTALL.md).
 Unsigned release workflows also publish `.sha256` checksum files for each DMG.
 The app menu **Help** section links directly to both the releases page and install guide.
+Current implementation and validation status is tracked in
+[`docs/FINAL_VALIDATION_STATUS.md`](docs/FINAL_VALIDATION_STATUS.md).
 
 ### File associations
 
