@@ -11,6 +11,7 @@ A macOS screen and camera recording app with editing capabilities. Built with Ta
   - System audio capture
   - Floating recording widget with pause/resume/stop controls, plus in-recorder fallback button to reopen controls
   - Automatic display/window fallback when the selected capture target disappears mid-session
+  - One-click recorder action to retry failed stop finalization
   - Inline recovery diagnostics panel with ordered recorder/export/runtime lifecycle telemetry
 - **Editing**
   - Cut and trim segments on a timeline

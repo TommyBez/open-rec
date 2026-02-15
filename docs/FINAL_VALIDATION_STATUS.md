@@ -21,6 +21,7 @@ The following checks are run repeatedly after reliability and architecture commi
 - Frontend recovery when stop/finalization fails (recorder + widget)
 - Main-window restoration and widget closure on stop failure paths
 - Expanded finalization phase status progression (`stopping-capture` → `concatenating-segments` → `verifying-duration` → `verifying-dimensions` → `saving-project` → `refreshing-ui`) in backend and UI
+- Manual retry command for failed finalization (`retry_recording_finalization`) exposed through recorder UI recovery action
 - Async file I/O migration for runtime filesystem paths in backend
 - Export preflight validation for required media file existence/readability
 - Export speed-audio regression coverage (`atempo` chain)

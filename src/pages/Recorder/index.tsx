@@ -33,7 +33,9 @@ export function RecorderPage() {
     setCameraReady,
     requestPermission,
     showOpenRecordingWidgetButton,
+    showRetryFinalizationButton,
     handleOpenRecordingWidget,
+    handleRetryFinalization,
     handleStartRecording,
   } = useRecorderRuntime({
     onRecordingStoppedNavigate: (nextProjectId) => navigate(`/editor/${nextProjectId}`),
@@ -79,7 +81,9 @@ export function RecorderPage() {
       onQualityPresetChange={setQualityPreset}
       onCodecChange={setCodec}
       showOpenRecordingWidgetButton={showOpenRecordingWidgetButton}
+      showRetryFinalizationButton={showRetryFinalizationButton}
       onOpenRecordingWidget={handleOpenRecordingWidget}
+      onRetryFinalization={handleRetryFinalization}
       onStartRecording={handleStartRecording}
     />
   );

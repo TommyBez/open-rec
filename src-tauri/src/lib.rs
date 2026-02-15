@@ -32,6 +32,7 @@ use recording::{
 use uuid::Uuid;
 
 type SharedExportJobs = Arc<Mutex<HashMap<String, u32>>>;
+type SharedPendingFinalizations = Arc<Mutex<HashMap<String, StopRecordingResult>>>;
 const START_STOP_SHORTCUT: &str = "CmdOrCtrl+Shift+2";
 const PAUSE_RESUME_SHORTCUT: &str = "CmdOrCtrl+Shift+P";
 const MIN_RECORDING_FREE_SPACE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
@@ -1000,11 +1001,105 @@ fn start_screen_recording(
     Ok(result)
 }
 
+fn store_pending_finalization(
+    pending_finalizations: &SharedPendingFinalizations,
+    stop_result: &StopRecordingResult,
+) -> Result<(), AppError> {
+    let mut guard = pending_finalizations
+        .lock()
+        .map_err(|error| AppError::Lock(format!("Lock error: {}", error)))?;
+    guard.insert(stop_result.project_id.clone(), stop_result.clone());
+    Ok(())
+}
+
+fn get_pending_finalization(
+    pending_finalizations: &SharedPendingFinalizations,
+    project_id: &str,
+) -> Result<Option<StopRecordingResult>, AppError> {
+    let guard = pending_finalizations
+        .lock()
+        .map_err(|error| AppError::Lock(format!("Lock error: {}", error)))?;
+    Ok(guard.get(project_id).cloned())
+}
+
+fn clear_pending_finalization(
+    pending_finalizations: &SharedPendingFinalizations,
+    project_id: &str,
+) -> Result<(), AppError> {
+    let mut guard = pending_finalizations
+        .lock()
+        .map_err(|error| AppError::Lock(format!("Lock error: {}", error)))?;
+    guard.remove(project_id);
+    Ok(())
+}
+
+async fn finalize_stopped_recording(
+    app: &AppHandle,
+    state: &tauri::State<'_, SharedRecorderState>,
+    project_id: &str,
+    stop_result: &StopRecordingResult,
+) -> Result<(), AppError> {
+    let emit_finalizing_status = |status: &str| {
+        emit_with_log(
+            app,
+            "recording-finalizing",
+            serde_json::json!({
+                "projectId": project_id,
+                "status": status
+            }),
+        );
+    };
+
+    emit_finalizing_status("concatenating-segments");
+    concatenate_screen_segments(app, stop_result).await?;
+    emit_finalizing_status("verifying-duration");
+
+    let recordings_dir = recordings_dir_from_managed_state(state)?;
+    let duration = match probe_video_duration(&stop_result.screen_video_path) {
+        Ok(value) if value.is_finite() && value > 0.0 => value,
+        Ok(_) => stop_result.duration_seconds.max(0.1),
+        Err(error) => {
+            eprintln!(
+                "Failed to probe recording duration, falling back to session timing: {error}"
+            );
+            stop_result.duration_seconds.max(0.1)
+        }
+    };
+
+    emit_finalizing_status("verifying-dimensions");
+    let (width, height) = match probe_video_dimensions(&stop_result.screen_video_path) {
+        Ok(dimensions) => dimensions,
+        Err(error) => {
+            eprintln!("Failed to probe recording dimensions, falling back to source size: {error}");
+            (stop_result.source_width, stop_result.source_height)
+        }
+    };
+
+    let project = Project::new(
+        stop_result.project_id.clone(),
+        stop_result.screen_video_path.clone(),
+        stop_result.camera_video_path.clone(),
+        stop_result.microphone_audio_path.clone(),
+        duration,
+        width,
+        height,
+        stop_result.camera_offset_ms,
+        stop_result.microphone_offset_ms,
+    );
+
+    emit_finalizing_status("saving-project");
+    project::save_project(&recordings_dir, &project).await?;
+    emit_finalizing_status("refreshing-ui");
+    refresh_tray_menu(app, &recordings_dir);
+    Ok(())
+}
+
 /// Stop screen recording
 #[tauri::command]
 async fn stop_screen_recording(
     app: AppHandle,
     state: tauri::State<'_, SharedRecorderState>,
+    pending_finalizations: tauri::State<'_, SharedPendingFinalizations>,
     project_id: String,
 ) -> Result<(), AppError> {
     let project_id = normalize_project_id_input(project_id, "stop recording")?;
@@ -1027,6 +1122,7 @@ async fn stop_screen_recording(
     let stop_result = match do_stop_recording(&state, &project_id) {
         Ok(result) => result,
         Err(error) => {
+            let _ = clear_pending_finalization(pending_finalizations.inner(), &project_id);
             emit_with_log(
                 &app,
                 "recording-stop-failed",
@@ -1048,66 +1144,31 @@ async fn stop_screen_recording(
             return Err(error);
         }
     };
-    let emit_finalizing_status = |status: &str| {
+    if let Err(error) = store_pending_finalization(pending_finalizations.inner(), &stop_result) {
         emit_with_log(
             &app,
-            "recording-finalizing",
+            "recording-stop-failed",
             serde_json::json!({
                 "projectId": &project_id,
-                "status": status
+                "message": error.to_string()
             }),
         );
-    };
+        emit_with_log(
+            &app,
+            "recording-state-changed",
+            serde_json::json!({
+                "state": "idle",
+                "projectId": &project_id
+            }),
+        );
+        prepare_main_window_for_post_recording(&app);
+        close_recording_widget_window(&app);
+        return Err(error);
+    }
 
     let finalization_result = tokio::time::timeout(
         std::time::Duration::from_secs(STOP_RECORDING_FINALIZATION_TIMEOUT_SECS),
-        async {
-            emit_finalizing_status("concatenating-segments");
-            concatenate_screen_segments(&app, &stop_result).await?;
-            emit_finalizing_status("verifying-duration");
-
-            // Get the recordings directory from state
-            let recordings_dir = recordings_dir_from_managed_state(&state)?;
-
-            // Create project.json for the recording
-            let duration = match probe_video_duration(&stop_result.screen_video_path) {
-                Ok(value) if value.is_finite() && value > 0.0 => value,
-                Ok(_) => stop_result.duration_seconds.max(0.1),
-                Err(error) => {
-                    eprintln!(
-                        "Failed to probe recording duration, falling back to session timing: {error}"
-                    );
-                    stop_result.duration_seconds.max(0.1)
-                }
-            };
-            emit_finalizing_status("verifying-dimensions");
-            let (width, height) = match probe_video_dimensions(&stop_result.screen_video_path) {
-                Ok(dimensions) => dimensions,
-                Err(error) => {
-                    eprintln!(
-                        "Failed to probe recording dimensions, falling back to source size: {error}"
-                    );
-                    (stop_result.source_width, stop_result.source_height)
-                }
-            };
-
-            let project = Project::new(
-                stop_result.project_id.clone(),
-                stop_result.screen_video_path.clone(),
-                stop_result.camera_video_path.clone(),
-                stop_result.microphone_audio_path.clone(),
-                duration,
-                width,
-                height,
-                stop_result.camera_offset_ms,
-                stop_result.microphone_offset_ms,
-            );
-            emit_finalizing_status("saving-project");
-            project::save_project(&recordings_dir, &project).await?;
-            emit_finalizing_status("refreshing-ui");
-            refresh_tray_menu(&app, &recordings_dir);
-            Ok::<(), AppError>(())
-        },
+        finalize_stopped_recording(&app, &state, &project_id, &stop_result),
     )
     .await
     .unwrap_or_else(|_| {
@@ -1138,6 +1199,7 @@ async fn stop_screen_recording(
         close_recording_widget_window(&app);
         return Err(error);
     }
+    let _ = clear_pending_finalization(pending_finalizations.inner(), &project_id);
 
     emit_with_log(
         &app,
@@ -1158,6 +1220,83 @@ async fn stop_screen_recording(
     emit_with_log(&app, "recording-stopped", &project_id);
 
     // Close recording widget window after main window is ready
+    close_recording_widget_window(&app);
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn retry_recording_finalization(
+    app: AppHandle,
+    state: tauri::State<'_, SharedRecorderState>,
+    pending_finalizations: tauri::State<'_, SharedPendingFinalizations>,
+    project_id: String,
+) -> Result<(), AppError> {
+    let project_id = normalize_project_id_input(project_id, "retry recording finalization")?;
+    let Some(stop_result) = get_pending_finalization(pending_finalizations.inner(), &project_id)?
+    else {
+        return Err(AppError::Message(
+            "No failed finalization context is available for retry.".to_string(),
+        ));
+    };
+
+    emit_with_log(
+        &app,
+        "recording-state-changed",
+        serde_json::json!({
+            "state": "stopping",
+            "projectId": &project_id
+        }),
+    );
+
+    let retry_result = tokio::time::timeout(
+        std::time::Duration::from_secs(STOP_RECORDING_FINALIZATION_TIMEOUT_SECS),
+        finalize_stopped_recording(&app, &state, &project_id, &stop_result),
+    )
+    .await
+    .unwrap_or_else(|_| {
+        Err(AppError::Message(format!(
+            "Recording finalization retry timed out after {} seconds.",
+            STOP_RECORDING_FINALIZATION_TIMEOUT_SECS
+        )))
+    });
+
+    if let Err(error) = retry_result {
+        emit_with_log(
+            &app,
+            "recording-stop-failed",
+            serde_json::json!({
+                "projectId": &project_id,
+                "message": error.to_string()
+            }),
+        );
+        emit_with_log(
+            &app,
+            "recording-state-changed",
+            serde_json::json!({
+                "state": "idle",
+                "projectId": &project_id
+            }),
+        );
+        prepare_main_window_for_post_recording(&app);
+        close_recording_widget_window(&app);
+        return Err(error);
+    }
+
+    let _ = clear_pending_finalization(pending_finalizations.inner(), &project_id);
+
+    emit_with_log(
+        &app,
+        "recording-state-changed",
+        serde_json::json!({
+            "state": "idle",
+            "projectId": &project_id
+        }),
+    );
+
+    prepare_main_window_for_post_recording(&app);
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    emit_with_log(&app, "recording-stopped", &project_id);
     close_recording_widget_window(&app);
 
     Ok(())
@@ -2091,12 +2230,13 @@ fn parse_ffmpeg_progress(line: &str) -> Option<f64> {
 mod tests {
     use super::{
         active_export_job_ids, active_export_job_ids_without_process_check, build_editor_route,
-        has_active_recording_session, is_missing_process_error, is_process_running,
-        normalize_opened_project_id, normalize_project_id_input, parse_ffmpeg_progress,
-        parse_ffprobe_dimensions_output, parse_ffprobe_duration_output,
-        project_id_from_opened_path, resolve_project_dir_from_payload, RecorderRecordingState,
-        RecorderState, RecordingOptions, SharedRecorderState, SourceType, OPENREC_RELEASES_URL,
-        OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
+        clear_pending_finalization, get_pending_finalization, has_active_recording_session,
+        is_missing_process_error, is_process_running, normalize_opened_project_id,
+        normalize_project_id_input, parse_ffmpeg_progress, parse_ffprobe_dimensions_output,
+        parse_ffprobe_duration_output, project_id_from_opened_path,
+        resolve_project_dir_from_payload, store_pending_finalization, RecorderRecordingState,
+        RecorderState, RecordingOptions, SharedPendingFinalizations, SharedRecorderState,
+        SourceType, StopRecordingResult, OPENREC_RELEASES_URL, OPENREC_UNSIGNED_INSTALL_GUIDE_URL,
     };
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use super::{parse_startup_opened_arg, strip_wrapping_quotes};
@@ -2303,6 +2443,42 @@ mod tests {
             has_active_recording_session(&state).expect("session query should succeed"),
             "paused session should report an active recording session"
         );
+    }
+
+    #[test]
+    fn pending_finalization_state_round_trip() {
+        let pending_finalizations: SharedPendingFinalizations =
+            Arc::new(Mutex::new(HashMap::new()));
+        let stop_result = StopRecordingResult {
+            project_id: "retry-project".to_string(),
+            screen_video_path: PathBuf::from("/tmp/retry-project/screen.mp4"),
+            screen_segment_paths: vec![
+                PathBuf::from("/tmp/retry-project/screen.mp4"),
+                PathBuf::from("/tmp/retry-project/screen_part1.mp4"),
+            ],
+            camera_video_path: Some(PathBuf::from("/tmp/retry-project/camera.webm")),
+            microphone_audio_path: Some(PathBuf::from("/tmp/retry-project/microphone.webm")),
+            duration_seconds: 12.3,
+            source_width: 1920,
+            source_height: 1080,
+            camera_offset_ms: Some(10),
+            microphone_offset_ms: Some(20),
+        };
+
+        store_pending_finalization(&pending_finalizations, &stop_result)
+            .expect("pending finalization should be storable");
+        let stored = get_pending_finalization(&pending_finalizations, &stop_result.project_id)
+            .expect("pending finalization should be retrievable");
+        assert!(stored.is_some(), "pending finalization should be present");
+        let stored = stored.expect("pending finalization should exist");
+        assert_eq!(stored.project_id, stop_result.project_id);
+        assert_eq!(stored.screen_segment_paths.len(), 2);
+
+        clear_pending_finalization(&pending_finalizations, &stop_result.project_id)
+            .expect("pending finalization should clear");
+        let cleared = get_pending_finalization(&pending_finalizations, &stop_result.project_id)
+            .expect("pending finalization query should succeed");
+        assert!(cleared.is_none(), "pending finalization should be cleared");
     }
 
     #[test]
@@ -2739,6 +2915,9 @@ pub fn run() {
             app.manage(recorder_state);
             let export_jobs: SharedExportJobs = Arc::new(Mutex::new(HashMap::new()));
             app.manage(export_jobs);
+            let pending_finalizations: SharedPendingFinalizations =
+                Arc::new(Mutex::new(HashMap::new()));
+            app.manage(pending_finalizations);
 
             let start_stop_shortcut: Shortcut = START_STOP_SHORTCUT
                 .parse()
@@ -2877,6 +3056,7 @@ pub fn run() {
             list_capture_sources,
             start_screen_recording,
             stop_screen_recording,
+            retry_recording_finalization,
             set_recording_media_offsets,
             get_recording_state,
             get_recording_snapshot,
@@ -2926,6 +3106,19 @@ pub fn run() {
                     if let Some(export_jobs) = app_handle.try_state::<SharedExportJobs>() {
                         if let Err(error) = cleanup_active_exports(&export_jobs) {
                             eprintln!("Failed to cleanup active exports: {}", error);
+                        }
+                    }
+                    if let Some(pending_finalizations) =
+                        app_handle.try_state::<SharedPendingFinalizations>()
+                    {
+                        match pending_finalizations.lock() {
+                            Ok(mut guard) => guard.clear(),
+                            Err(error) => {
+                                eprintln!(
+                                    "Failed to cleanup pending finalizations on exit: {}",
+                                    error
+                                );
+                            }
                         }
                     }
                 }

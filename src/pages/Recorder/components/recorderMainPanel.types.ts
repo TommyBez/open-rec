@@ -29,6 +29,8 @@ export interface RecorderMainPanelProps {
   onQualityPresetChange: (value: "720p30" | "1080p30" | "1080p60" | "4k30" | "4k60") => void;
   onCodecChange: (value: "h264" | "hevc") => void;
   showOpenRecordingWidgetButton: boolean;
+  showRetryFinalizationButton: boolean;
   onOpenRecordingWidget: () => void;
+  onRetryFinalization: () => void;
   onStartRecording: () => void;
 }

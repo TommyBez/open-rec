@@ -88,7 +88,7 @@ and export/finalization recovery flows.
 - **Surface:** Recorder page and/or recording widget warning text
 - **Meaning:** Capture stopped, but one or more finalization steps failed (merge, probe, save).
 - **What OpenRec already did:** Forced UI/session recovery and emitted failure event.
-- **Recommended user action:** Open recordings list, verify last project files, and retry export/finalization path if needed.
+- **Recommended user action:** Click **Retry Finalization** in the recorder first; if retry still fails, open recordings list and verify artifacts manually.
 
 ### `Recording finalization timed out in the widget...`
 - **Surface:** Recording widget warning text

@@ -5,7 +5,9 @@ interface RecorderActionButtonsProps {
   canStartRecording: boolean;
   isRecording: boolean;
   showOpenRecordingWidgetButton: boolean;
+  showRetryFinalizationButton: boolean;
   onOpenRecordingWidget: () => void;
+  onRetryFinalization: () => void;
   onStartRecording: () => void;
 }
 
@@ -13,7 +15,9 @@ export function RecorderActionButtons({
   canStartRecording,
   isRecording,
   showOpenRecordingWidgetButton,
+  showRetryFinalizationButton,
   onOpenRecordingWidget,
+  onRetryFinalization,
   onStartRecording,
 }: RecorderActionButtonsProps) {
   return (
@@ -22,6 +26,11 @@ export function RecorderActionButtons({
       {showOpenRecordingWidgetButton && (
         <Button variant="secondary" className="mt-2 w-full" onClick={onOpenRecordingWidget}>
           Open Floating Controls
+        </Button>
+      )}
+      {showRetryFinalizationButton && (
+        <Button variant="secondary" className="mt-2 w-full" onClick={onRetryFinalization}>
+          Retry Finalization
         </Button>
       )}
     </div>

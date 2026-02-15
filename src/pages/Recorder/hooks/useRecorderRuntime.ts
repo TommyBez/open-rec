@@ -195,6 +195,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   const [diskWarning, setDiskWarning] = useState<string | null>(null);
   const [finalizingStatus, setFinalizingStatus] =
     useState<RecordingFinalizingStatus | null>(null);
+  const [retryFinalizationProjectId, setRetryFinalizationProjectId] = useState<string | null>(
+    null
+  );
   const [preferredDisplaySourceId, setPreferredDisplaySourceId] = useState<string | null>(null);
   const [preferredDisplaySourceOrdinal, setPreferredDisplaySourceOrdinal] = useState<number | null>(null);
   const [preferredWindowSourceId, setPreferredWindowSourceId] = useState<string | null>(null);
@@ -507,6 +510,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
           setProjectId(null);
           setRecordingStartTimeMs(null);
           setFinalizingStatus(null);
+          setRetryFinalizationProjectId(null);
           clearStoredCurrentProjectId();
           clearPendingRecordingSourceFallbackNotice();
           return;
@@ -567,6 +571,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
       setProjectId(null);
       setRecordingStartTimeMs(null);
       setFinalizingStatus(null);
+      setRetryFinalizationProjectId(null);
       clearStoredCurrentProjectId();
       clearPendingRecordingSourceFallbackNotice();
       setErrorMessage((current) =>
@@ -634,6 +639,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         clearStoredCurrentProjectId();
         clearPendingRecordingSourceFallbackNotice();
         setFinalizingStatus(null);
+        setRetryFinalizationProjectId(eventProjectId || activeProjectId);
         const message =
           event.payload.message?.trim() ||
           "Recording stopped, but finalization failed. Check the recordings list and retry.";
@@ -940,6 +946,7 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setRecordingStartTimeMs(result.recordingStartTimeMs);
     startRecording(result.projectId);
     setStoredCurrentProjectId(result.projectId);
+    setRetryFinalizationProjectId(null);
     recordLifecycleEvent("recording-started", "Recording session started.", {
       state: "recording",
       projectId: result.projectId,
@@ -1064,12 +1071,52 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     }
   }
 
+  async function handleRetryFinalization() {
+    const retryProjectId = retryFinalizationProjectId?.trim();
+    if (!retryProjectId) {
+      return;
+    }
+
+    try {
+      setRecordingState("stopping");
+      setFinalizingStatus("concatenating-segments");
+      setErrorMessage(null);
+      recordLifecycleEvent("recording-finalization-retry-requested", "Retrying finalization.", {
+        state: "stopping",
+        projectId: retryProjectId,
+      });
+      await withTimeout(
+        invoke("retry_recording_finalization", { projectId: retryProjectId }),
+        STOP_FINALIZATION_TIMEOUT_MS,
+        "Retrying recording finalization timed out."
+      );
+      setRetryFinalizationProjectId(null);
+    } catch (error) {
+      console.error("Failed to retry recording finalization:", error);
+      setRecordingState("idle");
+      setFinalizingStatus(null);
+      const message = toErrorMessage(
+        error,
+        "Unable to retry recording finalization. Check recordings list and retry export."
+      );
+      setErrorMessage(message);
+      recordLifecycleEvent("recording-finalization-retry-failed", message, {
+        level: "error",
+        state: "idle",
+        projectId: retryProjectId,
+      });
+      recordDiagnostic("error", message);
+    }
+  }
+
   const hasActiveRecordingSession = Boolean(projectId ?? getStoredCurrentProjectId());
   const showOpenRecordingWidgetButton =
     hasActiveRecordingSession &&
     recordingState !== "idle" &&
     recordingState !== "starting" &&
     recordingState !== "stopping";
+  const showRetryFinalizationButton =
+    Boolean(retryFinalizationProjectId) && recordingState === "idle";
 
   return {
     countdown,
@@ -1102,7 +1149,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
     setCameraReady,
     requestPermission,
     showOpenRecordingWidgetButton,
+    showRetryFinalizationButton,
     handleOpenRecordingWidget,
+    handleRetryFinalization,
     handleStartRecording,
   };
 }

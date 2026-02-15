@@ -41,7 +41,9 @@ export function RecorderMainPanel({
   onQualityPresetChange,
   onCodecChange,
   showOpenRecordingWidgetButton,
+  showRetryFinalizationButton,
   onOpenRecordingWidget,
+  onRetryFinalization,
   onStartRecording,
 }: RecorderMainPanelProps) {
   const sourceControlsLocked = isRecording || countdown !== null;
@@ -129,7 +131,9 @@ export function RecorderMainPanel({
           canStartRecording={Boolean(selectedSource)}
           isRecording={isRecording}
           showOpenRecordingWidgetButton={showOpenRecordingWidgetButton}
+          showRetryFinalizationButton={showRetryFinalizationButton}
           onOpenRecordingWidget={onOpenRecordingWidget}
+          onRetryFinalization={onRetryFinalization}
           onStartRecording={onStartRecording}
         />
       </main>
