@@ -77,6 +77,8 @@ Unsigned release workflows also publish `.sha256` checksum files for each DMG.
 The app menu **Help** section links directly to both the releases page and install guide.
 Current implementation and validation status is tracked in
 [`docs/FINAL_VALIDATION_STATUS.md`](docs/FINAL_VALIDATION_STATUS.md).
+Use [`docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md)
+to execute and record final macOS acceptance runs.
 
 ### File associations
 
