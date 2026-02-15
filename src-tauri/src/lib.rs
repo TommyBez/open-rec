@@ -1246,14 +1246,15 @@ fn handle_opened_project_paths(app: &AppHandle, paths: Vec<PathBuf>) {
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn strip_wrapping_quotes(value: &str) -> &str {
-    if value.len() >= 2 {
-        let starts_with_double = value.starts_with('"') && value.ends_with('"');
-        let starts_with_single = value.starts_with('\'') && value.ends_with('\'');
+    let trimmed = value.trim();
+    if trimmed.len() >= 2 {
+        let starts_with_double = trimmed.starts_with('"') && trimmed.ends_with('"');
+        let starts_with_single = trimmed.starts_with('\'') && trimmed.ends_with('\'');
         if starts_with_double || starts_with_single {
-            return &value[1..value.len() - 1];
+            return &trimmed[1..trimmed.len() - 1];
         }
     }
-    value
+    trimmed
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -1263,6 +1264,9 @@ fn collect_startup_opened_paths() -> Vec<PathBuf> {
         .filter(|arg| !arg.starts_with('-'))
         .map(|arg| {
             let normalized_arg = strip_wrapping_quotes(&arg);
+            if normalized_arg.is_empty() {
+                return PathBuf::new();
+            }
             if let Ok(url) = url::Url::parse(normalized_arg) {
                 if let Ok(path) = url.to_file_path() {
                     return path;
@@ -1270,6 +1274,7 @@ fn collect_startup_opened_paths() -> Vec<PathBuf> {
             }
             PathBuf::from(normalized_arg)
         })
+        .filter(|path| !path.as_os_str().is_empty())
         .collect()
 }
 
@@ -1699,6 +1704,11 @@ mod tests {
             strip_wrapping_quotes("/tmp/sample.openrec"),
             "/tmp/sample.openrec"
         );
+        assert_eq!(
+            strip_wrapping_quotes("   \"/tmp/spaced.openrec\"   "),
+            "/tmp/spaced.openrec"
+        );
+        assert_eq!(strip_wrapping_quotes("   "), "");
     }
 
     #[test]
