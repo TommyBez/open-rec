@@ -1261,20 +1261,18 @@ fn strip_wrapping_quotes(value: &str) -> &str {
 fn collect_startup_opened_paths() -> Vec<PathBuf> {
     std::env::args()
         .skip(1)
-        .filter(|arg| !arg.starts_with('-'))
-        .map(|arg| {
+        .filter_map(|arg| {
             let normalized_arg = strip_wrapping_quotes(&arg);
-            if normalized_arg.is_empty() {
-                return PathBuf::new();
+            if normalized_arg.is_empty() || normalized_arg.starts_with('-') {
+                return None;
             }
             if let Ok(url) = url::Url::parse(normalized_arg) {
                 if let Ok(path) = url.to_file_path() {
-                    return path;
+                    return Some(path);
                 }
             }
-            PathBuf::from(normalized_arg)
+            Some(PathBuf::from(normalized_arg))
         })
-        .filter(|path| !path.as_os_str().is_empty())
         .collect()
 }
 
