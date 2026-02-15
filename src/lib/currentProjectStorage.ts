@@ -5,7 +5,16 @@ let hasLoggedRemoveError = false;
 
 export function getStoredCurrentProjectId(): string | null {
   try {
-    return localStorage.getItem(CURRENT_PROJECT_STORAGE_KEY);
+    const value = localStorage.getItem(CURRENT_PROJECT_STORAGE_KEY);
+    if (value === null) {
+      return null;
+    }
+    const normalized = value.trim();
+    if (normalized.length === 0) {
+      localStorage.removeItem(CURRENT_PROJECT_STORAGE_KEY);
+      return null;
+    }
+    return normalized;
   } catch (error) {
     if (!hasLoggedReadError) {
       console.warn("Unable to read current project id from storage:", error);
@@ -16,8 +25,13 @@ export function getStoredCurrentProjectId(): string | null {
 }
 
 export function setStoredCurrentProjectId(projectId: string): void {
+  const normalized = projectId.trim();
+  if (normalized.length === 0) {
+    clearStoredCurrentProjectId();
+    return;
+  }
   try {
-    localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, projectId);
+    localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, normalized);
   } catch (error) {
     if (!hasLoggedWriteError) {
       console.warn("Unable to persist current project id:", error);
