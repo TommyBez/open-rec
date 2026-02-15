@@ -49,3 +49,12 @@ what still requires runtime validation on a real macOS environment.
 - [ ] Hardware export performance benchmark validation against target metrics
 - [ ] Unsigned Gatekeeper install/open flow validation on clean machines (Intel + Apple Silicon)
 
+## Revised closure target for this workspace
+
+Per latest scope decision, macOS runtime validation is out of scope for this execution space.
+Job completion is now gated by:
+
+- [x] Automated baseline green (`pnpm run verify:frontend`, `cargo fmt`, `cargo test`)
+- [x] No known open P0/P1 blockers in implemented cross-platform/runtime logic
+- [x] Final sign-off documentation updated with explicit out-of-scope macOS runtime checklist
+

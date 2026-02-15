@@ -40,8 +40,20 @@ run on real macOS machines before declaring full plan completion:
 For execution details and pass/fail capture fields, use:
 [`docs/MACOS_RUNTIME_VALIDATION_CHECKLIST.md`](./MACOS_RUNTIME_VALIDATION_CHECKLIST.md).
 
+## Closure scope for this execution
+
+macOS runtime validation is explicitly out of scope for completion in this environment.
+Completion for this execution therefore requires:
+
+1. Automated baseline remains green:
+   - `pnpm run verify:frontend`
+   - `cargo fmt --all --manifest-path src-tauri/Cargo.toml`
+   - `cargo test --manifest-path src-tauri/Cargo.toml`
+2. No known open P0/P1 issues in the implemented reliability scope.
+3. Runtime validation checklist is prepared for external macOS execution.
+
 ## Conclusion
 
 Automated reliability/architecture hardening is continuously validated and currently green in this environment.
-Final acceptance remains gated on the macOS manual validation items above.
+macOS runtime gates remain to be executed externally using the dedicated checklist artifact.
 
