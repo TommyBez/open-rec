@@ -240,8 +240,11 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
   ]);
 
   useEffect(() => {
-    if (!selectedSource || selectedSource.type !== "display" || sourceType !== "display") {
+    if (sourceType !== "display") {
       setPreferredSourceOrdinal(null);
+      return;
+    }
+    if (!selectedSource || selectedSource.type !== "display") {
       return;
     }
     const nextOrdinal = resolveSelectedSourceOrdinal(sourceType, selectedSource, sources);
