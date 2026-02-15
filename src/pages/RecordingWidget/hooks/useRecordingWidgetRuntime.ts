@@ -138,6 +138,9 @@ export function useRecordingWidgetRuntime() {
           return;
         }
         setRecordingState(event.payload.state);
+        if (event.payload.state !== "stopping") {
+          setFinalizingStatus(null);
+        }
         if (event.payload.state === "idle") {
           clearStoredCurrentProjectId();
           setProjectId(null);

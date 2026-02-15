@@ -438,6 +438,9 @@ export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRu
         }
 
         setRecordingState(event.payload.state);
+        if (event.payload.state !== "stopping") {
+          setFinalizingStatus(null);
+        }
         if (event.payload.state === "idle") {
           setProjectId(null);
           setRecordingStartTimeMs(null);
