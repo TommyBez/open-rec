@@ -1,6 +1,7 @@
-import { Download, FolderOpen, Keyboard, Loader2, SquareArrowOutUpRight } from "lucide-react";
+import { Download, FolderOpen, Keyboard, SquareArrowOutUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ActiveExportBadge } from "@/components/ActiveExportBadge";
 
 interface HeaderActionsProps {
   onOpenVideos: () => void;
@@ -67,12 +68,7 @@ export function HeaderActions({
         <Download className="size-4" strokeWidth={1.75} />
         Export
       </Button>
-      {activeExportCount > 0 && (
-        <div className="flex items-center gap-1 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground">
-          <Loader2 className="size-3 animate-spin" />
-          {activeExportCount} exporting
-        </div>
-      )}
+      <ActiveExportBadge activeExportCount={activeExportCount} />
     </>
   );
 }
