@@ -32,6 +32,24 @@ Interpretation guidance:
 - **cancelled** + newer run exists: usually expected concurrency behavior
 - **failure**: investigate logs for a real regression
 
+## Quick CI inspection commands
+
+Use GitHub CLI from repo root:
+
+```bash
+# recent runs for current branch
+gh run list --branch <branch-name> --limit 20
+
+# inspect one run in detail (jobs + step outcomes)
+gh run view <run-id>
+
+# stream logs for a run
+gh run view <run-id> --log
+```
+
+If a run is marked `cancelled`, first verify whether a newer run for the same
+branch/commit range completed successfully before treating it as a blocker.
+
 ## Local equivalents
 
 Use these commands before pushing:
@@ -50,3 +68,8 @@ Or run the single aggregate command:
 ```bash
 pnpm run verify:ci-local
 ```
+
+## Related references
+
+- contributor workflow: [`../CONTRIBUTING.md`](../CONTRIBUTING.md)
+- local failure patterns: [`LOCAL_BUILD_TROUBLESHOOTING.md`](./LOCAL_BUILD_TROUBLESHOOTING.md)

@@ -27,6 +27,7 @@ Primary references:
 - validation snapshot: [`docs/FINAL_VALIDATION_STATUS.md`](./docs/FINAL_VALIDATION_STATUS.md)
 - execution checklist: [`docs/PLAN_EXECUTION_CHECKLIST.md`](./docs/PLAN_EXECUTION_CHECKLIST.md)
 - CI matrix: [`docs/CI_WORKFLOWS.md`](./docs/CI_WORKFLOWS.md)
+- local troubleshooting: [`docs/LOCAL_BUILD_TROUBLESHOOTING.md`](./docs/LOCAL_BUILD_TROUBLESHOOTING.md)
 
 ## 3) CI behavior note
 
