@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type EditorTool = "cut" | "zoom" | "speed" | null;
+export type EditorTool = "cut" | "zoom" | "speed" | "annotation" | null;
 
 interface EditorStore {
   // Playback state
@@ -15,6 +15,7 @@ interface EditorStore {
   selectedSegmentId: string | null;
   selectedZoomId: string | null;
   selectedSpeedId: string | null;
+  selectedAnnotationId: string | null;
   
   // Draft state for live preview
   zoomDraft: { scale: number; x: number; y: number } | null;
@@ -29,12 +30,13 @@ interface EditorStore {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setSelectedTool: (tool: EditorTool) => void;
-  toggleTool: (tool: "cut" | "zoom" | "speed") => void;
+  toggleTool: (tool: "cut" | "zoom" | "speed" | "annotation") => void;
   
   // Selection actions
   selectSegment: (id: string | null) => void;
   selectZoom: (id: string | null) => void;
   selectSpeed: (id: string | null) => void;
+  selectAnnotation: (id: string | null) => void;
   clearSelection: () => void;
   
   // Draft actions
@@ -57,6 +59,7 @@ const initialState = {
   selectedSegmentId: null,
   selectedZoomId: null,
   selectedSpeedId: null,
+  selectedAnnotationId: null,
   zoomDraft: null,
   speedDraft: null,
   showExportModal: false,
@@ -80,6 +83,7 @@ export const useEditorStore = create<EditorStore>((set) => ({
     selectedSegmentId: id,
     selectedZoomId: null,
     selectedSpeedId: null,
+    selectedAnnotationId: null,
   })),
   
   selectZoom: (id) => set(() => ({
@@ -87,6 +91,7 @@ export const useEditorStore = create<EditorStore>((set) => ({
     zoomDraft: null, // Clear draft when selection changes
     selectedSegmentId: null,
     selectedSpeedId: null,
+    selectedAnnotationId: null,
   })),
   
   selectSpeed: (id) => set(() => ({
@@ -94,12 +99,21 @@ export const useEditorStore = create<EditorStore>((set) => ({
     speedDraft: null, // Clear draft when selection changes
     selectedSegmentId: null,
     selectedZoomId: null,
+    selectedAnnotationId: null,
+  })),
+
+  selectAnnotation: (id) => set(() => ({
+    selectedAnnotationId: id,
+    selectedSegmentId: null,
+    selectedZoomId: null,
+    selectedSpeedId: null,
   })),
   
   clearSelection: () => set({
     selectedSegmentId: null,
     selectedZoomId: null,
     selectedSpeedId: null,
+    selectedAnnotationId: null,
     zoomDraft: null,
     speedDraft: null,
   }),

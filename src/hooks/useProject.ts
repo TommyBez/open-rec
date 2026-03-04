@@ -1,16 +1,18 @@
 import { useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
+import { Annotation, AudioMixSettings, CameraOverlaySettings, ColorCorrectionSettings, Project, Segment, ZoomEffect, SpeedEffect } from "../types/project";
 
 const MAX_HISTORY_SIZE = 50;
 
 export function useProject(initialProject: Project | null) {
-  const [project, setProject] = useState<Project | null>(initialProject);
+  const [project, setProjectState] = useState<Project | null>(initialProject);
   const [isDirty, setIsDirty] = useState(false);
   
   // History for undo functionality
   const historyRef = useRef<Project[]>([]);
+  const futureRef = useRef<Project[]>([]);
   const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   // Generate a unique ID for new effects
   const generateId = () => crypto.randomUUID();
@@ -21,32 +23,80 @@ export function useProject(initialProject: Project | null) {
       ...historyRef.current.slice(-(MAX_HISTORY_SIZE - 1)),
       currentProject,
     ];
+    futureRef.current = [];
     setCanUndo(true);
+    setCanRedo(false);
   }, []);
 
   // Undo: restore previous state
   const undo = useCallback(() => {
-    if (historyRef.current.length === 0) return;
-    
-    const previousState = historyRef.current.pop();
-    if (previousState) {
-      setProject(previousState);
-      setIsDirty(true);
+    setProjectState((currentState) => {
+      if (!currentState || historyRef.current.length === 0) return currentState;
+      const previousState = historyRef.current.pop();
+      if (!previousState) return currentState;
+      futureRef.current = [
+        ...futureRef.current.slice(-(MAX_HISTORY_SIZE - 1)),
+        currentState,
+      ];
       setCanUndo(historyRef.current.length > 0);
-    }
+      setCanRedo(futureRef.current.length > 0);
+      setIsDirty(true);
+      return previousState;
+    });
+  }, []);
+
+  // Redo: restore the latest undone state
+  const redo = useCallback(() => {
+    setProjectState((currentState) => {
+      if (!currentState || futureRef.current.length === 0) return currentState;
+      const nextState = futureRef.current.pop();
+      if (!nextState) return currentState;
+      historyRef.current = [
+        ...historyRef.current.slice(-(MAX_HISTORY_SIZE - 1)),
+        currentState,
+      ];
+      setCanUndo(historyRef.current.length > 0);
+      setCanRedo(futureRef.current.length > 0);
+      setIsDirty(true);
+      return nextState;
+    });
   }, []);
 
   // Update project and mark as dirty
   const updateProject = useCallback((updater: (p: Project) => Project) => {
-    setProject((prev) => {
+    setProjectState((prev) => {
       if (!prev) return prev;
+      const updated = updater(prev);
+      if (updated === prev) {
+        return prev;
+      }
       // Save current state to history before updating
       pushToHistory(prev);
-      const updated = updater(prev);
       setIsDirty(true);
       return updated;
     });
   }, [pushToHistory]);
+
+  const patchProject = useCallback((updater: (p: Project) => Project) => {
+    setProjectState((prev) => {
+      if (!prev) return prev;
+      const updated = updater(prev);
+      if (updated === prev) {
+        return prev;
+      }
+      setIsDirty(true);
+      return updated;
+    });
+  }, []);
+
+  const replaceProject = useCallback((nextProject: Project) => {
+    historyRef.current = [];
+    futureRef.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+    setIsDirty(false);
+    setProjectState(nextProject);
+  }, []);
 
   // Save project to backend
   const saveProject = useCallback(async () => {
@@ -59,6 +109,20 @@ export function useProject(initialProject: Project | null) {
       throw error;
     }
   }, [project]);
+
+  // Rename project
+  const renameProject = useCallback((name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    updateProject((p) =>
+      p.name === trimmed
+        ? p
+        : {
+            ...p,
+            name: trimmed,
+          }
+    );
+  }, [updateProject]);
 
   // Cut: Split a segment at the given time
   const cutAt = useCallback((time: number) => {
@@ -92,26 +156,34 @@ export function useProject(initialProject: Project | null) {
 
   // Toggle segment enabled/disabled (remove from final output)
   const toggleSegment = useCallback((segmentId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        segments: p.edits.segments.map((s) =>
-          s.id === segmentId ? { ...s, enabled: !s.enabled } : s
-        ),
-      },
-    }));
+    updateProject((p) => {
+      const hasSegment = p.edits.segments.some((segment) => segment.id === segmentId);
+      if (!hasSegment) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          segments: p.edits.segments.map((segment) =>
+            segment.id === segmentId ? { ...segment, enabled: !segment.enabled } : segment
+          ),
+        },
+      };
+    });
   }, [updateProject]);
 
   // Delete a segment (keeps source video time references intact)
   const deleteSegment = useCallback((segmentId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        segments: p.edits.segments.filter((s) => s.id !== segmentId),
-      },
-    }));
+    updateProject((p) => {
+      const nextSegments = p.edits.segments.filter((segment) => segment.id !== segmentId);
+      if (nextSegments.length === p.edits.segments.length) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          segments: nextSegments,
+        },
+      };
+    });
   }, [updateProject]);
 
   // Add a zoom effect (automatically adjusts end time to avoid overlapping existing zooms)
@@ -224,6 +296,22 @@ export function useProject(initialProject: Project | null) {
       if (newEndTime - newStartTime < minDuration) {
         return p; // Would result in too small segment, abort
       }
+
+      const nextZoomState = {
+        ...currentZoom,
+        ...updates,
+        startTime: newStartTime,
+        endTime: newEndTime,
+      };
+      const zoomUnchanged =
+        nextZoomState.startTime === currentZoom.startTime &&
+        nextZoomState.endTime === currentZoom.endTime &&
+        nextZoomState.scale === currentZoom.scale &&
+        nextZoomState.x === currentZoom.x &&
+        nextZoomState.y === currentZoom.y;
+      if (zoomUnchanged) {
+        return p;
+      }
       
       return {
         ...p,
@@ -239,13 +327,17 @@ export function useProject(initialProject: Project | null) {
 
   // Delete a zoom effect
   const deleteZoom = useCallback((zoomId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        zoom: p.edits.zoom.filter((z) => z.id !== zoomId),
-      },
-    }));
+    updateProject((p) => {
+      const nextZoom = p.edits.zoom.filter((zoom) => zoom.id !== zoomId);
+      if (nextZoom.length === p.edits.zoom.length) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          zoom: nextZoom,
+        },
+      };
+    });
   }, [updateProject]);
 
   // Add a speed effect (automatically adjusts end time to avoid overlapping existing speeds)
@@ -356,6 +448,20 @@ export function useProject(initialProject: Project | null) {
       if (newEndTime - newStartTime < minDuration) {
         return p; // Would result in too small segment, abort
       }
+
+      const nextSpeedState = {
+        ...currentSpeed,
+        ...updates,
+        startTime: newStartTime,
+        endTime: newEndTime,
+      };
+      const speedUnchanged =
+        nextSpeedState.startTime === currentSpeed.startTime &&
+        nextSpeedState.endTime === currentSpeed.endTime &&
+        nextSpeedState.speed === currentSpeed.speed;
+      if (speedUnchanged) {
+        return p;
+      }
       
       return {
         ...p,
@@ -371,43 +477,215 @@ export function useProject(initialProject: Project | null) {
 
   // Delete a speed effect
   const deleteSpeed = useCallback((speedId: string) => {
-    updateProject((p) => ({
-      ...p,
-      edits: {
-        ...p.edits,
-        speed: p.edits.speed.filter((s) => s.id !== speedId),
-      },
-    }));
+    updateProject((p) => {
+      const nextSpeed = p.edits.speed.filter((speedSegment) => speedSegment.id !== speedId);
+      if (nextSpeed.length === p.edits.speed.length) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          speed: nextSpeed,
+        },
+      };
+    });
   }, [updateProject]);
 
   // Set whole video speed
   const setGlobalSpeed = useCallback((speed: number) => {
     if (!project) return;
     
+    updateProject((p) => {
+      const existingGlobalSpeed =
+        p.edits.speed.length === 1
+          ? p.edits.speed[0]
+          : null;
+      if (
+        existingGlobalSpeed &&
+        existingGlobalSpeed.startTime === 0 &&
+        existingGlobalSpeed.endTime === p.duration &&
+        existingGlobalSpeed.speed === speed
+      ) {
+        return p;
+      }
+
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          speed: [
+            {
+              id: generateId(),
+              startTime: 0,
+              endTime: p.duration,
+              speed,
+            },
+          ],
+        },
+      };
+    });
+  }, [project, updateProject]);
+
+  const addAnnotation = useCallback((
+    startTime: number,
+    endTime: number,
+    mode: "outline" | "blur" | "text" | "arrow" = "outline"
+  ) => {
     updateProject((p) => ({
       ...p,
       edits: {
         ...p.edits,
-        speed: [
+        annotations: [
+          ...p.edits.annotations,
           {
             id: generateId(),
-            startTime: 0,
-            endTime: p.duration,
-            speed,
+            startTime,
+            endTime,
+            x: 0.12,
+            y: 0.12,
+            width: 0.3,
+            height: 0.2,
+            color: "#facc15",
+            opacity: 0.95,
+            thickness: 4,
+            text: "",
+            mode,
           },
         ],
       },
     }));
-  }, [project, updateProject]);
+  }, [updateProject]);
+
+  const deleteAnnotation = useCallback((annotationId: string) => {
+    updateProject((p) => {
+      const nextAnnotations = p.edits.annotations.filter((annotation) => annotation.id !== annotationId);
+      if (nextAnnotations.length === p.edits.annotations.length) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          annotations: nextAnnotations,
+        },
+      };
+    });
+  }, [updateProject]);
+
+  const updateAnnotation = useCallback((annotationId: string, updates: Partial<Annotation>) => {
+    updateProject((p) => {
+      const targetAnnotation = p.edits.annotations.find((annotation) => annotation.id === annotationId);
+      if (!targetAnnotation) return p;
+      const hasChanges = Object.entries(updates).some(
+        ([key, value]) => targetAnnotation[key as keyof Annotation] !== value
+      );
+      if (!hasChanges) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          annotations: p.edits.annotations.map((annotation) =>
+            annotation.id === annotationId ? { ...annotation, ...updates } : annotation
+          ),
+        },
+      };
+    });
+  }, [updateProject]);
+
+  const duplicateAnnotation = useCallback((annotationId: string) => {
+    updateProject((p) => {
+      const source = p.edits.annotations.find((annotation) => annotation.id === annotationId);
+      if (!source) return p;
+
+      const shift = 0.2;
+      const duration = Math.max(0.1, source.endTime - source.startTime);
+      const startTime = Math.min(Math.max(0, source.startTime + shift), Math.max(0, p.duration - duration));
+      const endTime = Math.min(p.duration, startTime + duration);
+
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          annotations: [
+            ...p.edits.annotations,
+            {
+              ...source,
+              id: generateId(),
+              startTime,
+              endTime,
+            },
+          ],
+        },
+      };
+    });
+  }, [updateProject]);
+
+  const updateCameraOverlay = useCallback((updates: Partial<CameraOverlaySettings>) => {
+    updateProject((p) => {
+      const hasChanges = Object.entries(updates).some(
+        ([key, value]) => p.edits.cameraOverlay[key as keyof CameraOverlaySettings] !== value
+      );
+      if (!hasChanges) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          cameraOverlay: {
+            ...p.edits.cameraOverlay,
+            ...updates,
+          },
+        },
+      };
+    });
+  }, [updateProject]);
+
+  const updateAudioMix = useCallback((updates: Partial<AudioMixSettings>) => {
+    updateProject((p) => {
+      const hasChanges = Object.entries(updates).some(
+        ([key, value]) => p.edits.audioMix[key as keyof AudioMixSettings] !== value
+      );
+      if (!hasChanges) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          audioMix: {
+            ...p.edits.audioMix,
+            ...updates,
+          },
+        },
+      };
+    });
+  }, [updateProject]);
+
+  const updateColorCorrection = useCallback((updates: Partial<ColorCorrectionSettings>) => {
+    updateProject((p) => {
+      const hasChanges = Object.entries(updates).some(
+        ([key, value]) => p.edits.colorCorrection[key as keyof ColorCorrectionSettings] !== value
+      );
+      if (!hasChanges) return p;
+      return {
+        ...p,
+        edits: {
+          ...p.edits,
+          colorCorrection: {
+            ...p.edits.colorCorrection,
+            ...updates,
+          },
+        },
+      };
+    });
+  }, [updateProject]);
 
   return {
     project,
-    setProject,
+    replaceProject,
+    patchProject,
     isDirty,
     saveProject,
+    renameProject,
     // History
     canUndo,
+    canRedo,
     undo,
+    redo,
     // Cutting
     cutAt,
     toggleSegment,
@@ -420,6 +698,13 @@ export function useProject(initialProject: Project | null) {
     addSpeed,
     updateSpeed,
     deleteSpeed,
+    addAnnotation,
+    updateAnnotation,
+    deleteAnnotation,
+    duplicateAnnotation,
     setGlobalSpeed,
+    updateCameraOverlay,
+    updateAudioMix,
+    updateColorCorrection,
   };
 }

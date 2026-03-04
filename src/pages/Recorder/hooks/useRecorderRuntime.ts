@@ -1,0 +1,1312 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { LogicalSize } from "@tauri-apps/api/dpi";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useRecordingStore, useRuntimeDiagnosticsStore } from "../../../stores";
+import {
+  DiskSpaceStatus,
+  CaptureSource,
+  RecordingOptions as RecordingOptionsType,
+  StartRecordingResult,
+} from "../../../types/project";
+import {
+  loadRecordingPreferences,
+  saveRecordingPreferences,
+} from "../../../lib/recordingPreferencesStore";
+import {
+  clearPendingRecordingSourceFallbackNotice,
+  setPendingRecordingSourceFallbackNotice,
+} from "../../../lib/recordingSourceFallbackNotice";
+import {
+  consumeTrayQuickRecordRequest,
+  requestTrayQuickRecord,
+} from "../../../lib/trayQuickRecord";
+import {
+  clearStoredCurrentProjectId,
+  getStoredCurrentProjectId,
+  setStoredCurrentProjectId,
+} from "../../../lib/currentProjectStorage";
+import {
+  clearPendingFinalizationRetryProjectId,
+  getPendingFinalizationRetryProjectId,
+  setPendingFinalizationRetryProjectId,
+} from "../../../lib/pendingFinalizationRetryStore";
+import { formatBytesAsGiB, resolveMinimumFreeBytes } from "../../../lib/diskSpace";
+import { toErrorMessage } from "../../../lib/errorMessage";
+import { isMissingFinalizationRetryContextMessage } from "../../../lib/finalizationRetry";
+import {
+  normalizeScopedProjectId,
+  resolveScopedActiveProjectId,
+  shouldHandleProjectScopedEvent,
+} from "../../../lib/recordingEventScope";
+import {
+  getRecordingFinalizingMessage,
+  RecordingFinalizingStatus,
+} from "../../../lib/recordingFinalizingStatus";
+import {
+  hasCustomRuntimeTimeoutSettings,
+  loadRuntimeTimeoutSettings,
+} from "../../../lib/runtimeTimeoutSettings";
+import { withTimeout } from "../../../lib/withTimeout";
+import { useRecordingCountdown } from "./useRecordingCountdown";
+
+interface UseRecorderRuntimeOptions {
+  onRecordingStoppedNavigate: (projectId: string) => void;
+}
+
+interface ResolvedRecordingSource {
+  source: CaptureSource;
+  preferredDisplayOrdinal: number | null;
+  availableSources: CaptureSource[];
+}
+
+const WIDGET_HANDOFF_WARNING_PREFIXES = [
+  "Recording started, but floating controls failed to open.",
+  "Unable to open floating controls.",
+] as const;
+const SOURCE_FALLBACK_WARNING_PREFIXES = [
+  "Display \"",
+  "Saved display is unavailable.",
+  "Selected display became unavailable.",
+  "Selected window became unavailable.",
+] as const;
+
+function clearSourceFallbackWarning(current: string | null): string | null {
+  if (!current) {
+    return null;
+  }
+  const isFallbackWarning = SOURCE_FALLBACK_WARNING_PREFIXES.some((prefix) =>
+    current.startsWith(prefix)
+  );
+  return isFallbackWarning ? null : current;
+}
+
+function clearWidgetHandoffWarning(current: string | null): string | null {
+  if (!current) {
+    return null;
+  }
+  const isHandoffWarning = WIDGET_HANDOFF_WARNING_PREFIXES.some((prefix) =>
+    current.startsWith(prefix)
+  );
+  return isHandoffWarning ? null : current;
+}
+
+function describeDisplaySource(sourceId: string, sourceOrdinal?: number | null): string {
+  if (typeof sourceOrdinal === "number" && Number.isFinite(sourceOrdinal)) {
+    return `Display ${sourceOrdinal + 1}`;
+  }
+  return `display source ${sourceId}`;
+}
+
+function describeWindowSource(sourceId: string): string {
+  return `window source ${sourceId}`;
+}
+
+function parseNumericSourceId(sourceId: string): number | null {
+  const numericId = Number.parseInt(sourceId, 10);
+  if (Number.isFinite(numericId)) {
+    return numericId;
+  }
+  return null;
+}
+
+function sortDisplaySources(sources: CaptureSource[]): CaptureSource[] {
+  return [...sources].sort((left, right) => {
+    const leftNumericId = parseNumericSourceId(left.id);
+    const rightNumericId = parseNumericSourceId(right.id);
+    if (leftNumericId === null && rightNumericId === null) {
+      return left.name.localeCompare(right.name);
+    }
+    if (leftNumericId === null) {
+      return 1;
+    }
+    if (rightNumericId === null) {
+      return -1;
+    }
+    return leftNumericId - rightNumericId;
+  });
+}
+
+function resolveSelectedSourceOrdinal(
+  sourceType: "display" | "window",
+  selectedSource: CaptureSource | null,
+  availableSources: CaptureSource[]
+): number | null {
+  if (sourceType !== "display" || !selectedSource) {
+    return null;
+  }
+  const orderedDisplays = sortDisplaySources(
+    availableSources.filter((source) => source.type === "display")
+  );
+  const sourceIndex = orderedDisplays.findIndex(
+    (source) => source.id === selectedSource.id
+  );
+  if (sourceIndex < 0) {
+    return null;
+  }
+  return sourceIndex;
+}
+
+function selectFallbackSource(
+  availableSources: CaptureSource[],
+  sourceType: "display" | "window"
+): CaptureSource | null {
+  if (availableSources.length === 0) {
+    return null;
+  }
+  if (sourceType !== "display") {
+    return availableSources[0];
+  }
+  const byNumericId = sortDisplaySources(availableSources);
+  return byNumericId[0] ?? availableSources[0];
+}
+
+function resolvePreferredSource(
+  availableSources: CaptureSource[],
+  sourceType: "display" | "window",
+  currentSourceId: string | null,
+  preferredSourceId: string | null,
+  preferredSourceOrdinal: number | null
+): CaptureSource | null {
+  if (availableSources.length === 0) {
+    return null;
+  }
+  if (currentSourceId) {
+    const currentSource = availableSources.find((source) => source.id === currentSourceId);
+    if (currentSource) {
+      return currentSource;
+    }
+  }
+  if (preferredSourceId) {
+    const preferredSource = availableSources.find((source) => source.id === preferredSourceId);
+    if (preferredSource) {
+      return preferredSource;
+    }
+  }
+  if (
+    sourceType === "display" &&
+    preferredSourceOrdinal !== null &&
+    preferredSourceOrdinal >= 0
+  ) {
+    const orderedDisplays = sortDisplaySources(
+      availableSources.filter((source) => source.type === "display")
+    );
+    const preferredByOrdinal = orderedDisplays[preferredSourceOrdinal];
+    if (preferredByOrdinal) {
+      return preferredByOrdinal;
+    }
+  }
+  return selectFallbackSource(availableSources, sourceType);
+}
+
+export function useRecorderRuntime({ onRecordingStoppedNavigate }: UseRecorderRuntimeOptions) {
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [diskWarning, setDiskWarning] = useState<string | null>(null);
+  const [finalizingStatus, setFinalizingStatus] =
+    useState<RecordingFinalizingStatus | null>(null);
+  const [retryFinalizationProjectId, setRetryFinalizationProjectId] = useState<string | null>(
+    () => getPendingFinalizationRetryProjectId()
+  );
+  const [preferredDisplaySourceId, setPreferredDisplaySourceId] = useState<string | null>(null);
+  const [preferredDisplaySourceOrdinal, setPreferredDisplaySourceOrdinal] = useState<number | null>(null);
+  const [preferredWindowSourceId, setPreferredWindowSourceId] = useState<string | null>(null);
+  const pendingTrayQuickRecordRef = useRef(false);
+  const loadSourcesInFlightRef = useRef(false);
+  const { countdown, startCountdown } = useRecordingCountdown();
+  const runtimeTimeoutSettings = useMemo(() => loadRuntimeTimeoutSettings(), []);
+  const appendDiagnostic = useRuntimeDiagnosticsStore((state) => state.appendEntry);
+  const appendLifecycleEvent = useRuntimeDiagnosticsStore(
+    (state) => state.appendLifecycleEvent
+  );
+
+  const {
+    state: recordingState,
+    projectId,
+    recordingStartTimeMs,
+    sourceType,
+    selectedSource,
+    sources,
+    isLoadingSources,
+    captureCamera,
+    captureMicrophone,
+    captureSystemAudio,
+    qualityPreset,
+    codec,
+    hasPermission,
+    cameraReady,
+    setSourceType,
+    setSelectedSource,
+    setSources,
+    setIsLoadingSources,
+    setCaptureCamera,
+    setCaptureMicrophone,
+    setCaptureSystemAudio,
+    setQualityPreset,
+    setCodec,
+    setHasPermission,
+    setCameraReady,
+    beginRecordingStart,
+    startRecording,
+    setProjectId,
+    setRecordingStartTimeMs,
+    setRecordingState,
+  } = useRecordingStore();
+
+  function recordDiagnostic(
+    level: "info" | "warning" | "error",
+    message: string
+  ) {
+    appendDiagnostic({
+      source: "recorder",
+      level,
+      message,
+    });
+  }
+
+  function recordLifecycleEvent(
+    event: string,
+    summary: string,
+    options?: {
+      level?: "info" | "warning" | "error";
+      state?: string;
+      status?: string;
+      projectId?: string;
+    }
+  ) {
+    appendLifecycleEvent({
+      source: "recorder",
+      event,
+      summary,
+      level: options?.level,
+      state: options?.state,
+      status: options?.status,
+      projectId: options?.projectId,
+    });
+  }
+
+  function resolveActiveProjectId() {
+    return resolveScopedActiveProjectId(
+      projectId,
+      getStoredCurrentProjectId(),
+      retryFinalizationProjectId
+    );
+  }
+
+  useEffect(() => {
+    if (!hasCustomRuntimeTimeoutSettings(runtimeTimeoutSettings)) {
+      return;
+    }
+    appendLifecycleEvent({
+      source: "recorder",
+      event: "runtime-timeout-overrides",
+      summary: "Using custom runtime timeout overrides.",
+      level: "warning",
+    });
+  }, [appendLifecycleEvent, runtimeTimeoutSettings]);
+
+  useEffect(() => {
+    const retryProjectId = normalizeScopedProjectId(retryFinalizationProjectId);
+    if (!retryProjectId) {
+      return;
+    }
+    let cancelled = false;
+    async function verifyPendingFinalizationRetryContext() {
+      try {
+        const hasPendingFinalization = await invoke<boolean>(
+          "has_pending_recording_finalization",
+          {
+            projectId: retryProjectId,
+          }
+        );
+        if (cancelled || hasPendingFinalization) {
+          return;
+        }
+        setRetryFinalizationProjectId(null);
+        clearPendingFinalizationRetryProjectId();
+        appendLifecycleEvent({
+          source: "recorder",
+          event: "recording-finalization-retry-context-cleared",
+          summary:
+            "Cleared stale retry context because no pending finalization exists in backend state.",
+          level: "warning",
+          projectId: retryProjectId ?? undefined,
+        });
+      } catch (error) {
+        console.error("Failed to verify pending finalization retry context:", error);
+      }
+    }
+    void verifyPendingFinalizationRetryContext();
+    return () => {
+      cancelled = true;
+    };
+  }, [appendLifecycleEvent, retryFinalizationProjectId]);
+
+  const isRecording = ["starting", "recording", "paused", "stopping"].includes(
+    recordingState
+  );
+  const isActivelyRecording = recordingState === "recording";
+  const preferredSourceId =
+    sourceType === "display" ? preferredDisplaySourceId : preferredWindowSourceId;
+  const preferredSourceOrdinal =
+    sourceType === "display" ? preferredDisplaySourceOrdinal : null;
+
+  useEffect(() => {
+    async function resizeWindow() {
+      try {
+        const window = getCurrentWindow();
+        await window.setSize(new LogicalSize(380, 580));
+        await window.center();
+      } catch (error) {
+        console.error("Failed to resize window:", error);
+      }
+    }
+    resizeWindow();
+  }, []);
+
+  useEffect(() => {
+    checkPermission();
+    void checkDiskSpace();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void checkDiskSpace();
+    }, 10000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydratePreferences() {
+      const persisted = await loadRecordingPreferences();
+      if (!persisted || cancelled) {
+        setPreferencesLoaded(true);
+        return;
+      }
+
+      setSourceType(persisted.sourceType);
+      const fallbackSelectedSourceId = persisted.selectedSourceId ?? null;
+      setPreferredDisplaySourceId(
+        persisted.selectedDisplaySourceId ??
+          (persisted.sourceType === "display" ? fallbackSelectedSourceId : null)
+      );
+      setPreferredDisplaySourceOrdinal(
+        persisted.selectedDisplaySourceOrdinal ??
+          (persisted.sourceType === "display"
+            ? persisted.selectedSourceOrdinal ?? null
+            : null)
+      );
+      setPreferredWindowSourceId(
+        persisted.selectedWindowSourceId ??
+          (persisted.sourceType === "window" ? fallbackSelectedSourceId : null)
+      );
+      setCaptureCamera(persisted.captureCamera);
+      setCaptureMicrophone(persisted.captureMicrophone);
+      setCaptureSystemAudio(persisted.captureSystemAudio);
+      setQualityPreset(persisted.qualityPreset ?? "1080p30");
+      setCodec(persisted.codec ?? "h264");
+      setPreferencesLoaded(true);
+    }
+
+    hydratePreferences();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    setCaptureCamera,
+    setCaptureMicrophone,
+    setCaptureSystemAudio,
+    setSourceType,
+    setQualityPreset,
+    setCodec,
+  ]);
+
+  useEffect(() => {
+    if (!selectedSource || selectedSource.type !== "display") {
+      return;
+    }
+    const nextOrdinal = resolveSelectedSourceOrdinal(sourceType, selectedSource, sources);
+    setPreferredDisplaySourceOrdinal(nextOrdinal);
+  }, [selectedSource, sourceType, sources]);
+
+  useEffect(() => {
+    if (!selectedSource || selectedSource.type !== sourceType) {
+      return;
+    }
+    if (sourceType === "display") {
+      if (preferredDisplaySourceId !== selectedSource.id) {
+        setPreferredDisplaySourceId(selectedSource.id);
+      }
+      return;
+    }
+    if (preferredWindowSourceId !== selectedSource.id) {
+      setPreferredWindowSourceId(selectedSource.id);
+    }
+  }, [
+    preferredDisplaySourceId,
+    preferredWindowSourceId,
+    selectedSource,
+    sourceType,
+  ]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    void saveRecordingPreferences({
+      sourceType,
+      selectedSourceId: selectedSource?.id ?? preferredSourceId ?? null,
+      selectedSourceOrdinal:
+        sourceType === "display" ? preferredSourceOrdinal : null,
+      selectedDisplaySourceId: preferredDisplaySourceId,
+      selectedDisplaySourceOrdinal: preferredDisplaySourceOrdinal,
+      selectedWindowSourceId: preferredWindowSourceId,
+      captureCamera,
+      captureMicrophone,
+      captureSystemAudio,
+      qualityPreset,
+      codec,
+    });
+  }, [
+    preferencesLoaded,
+    sourceType,
+    selectedSource,
+    preferredDisplaySourceId,
+    preferredDisplaySourceOrdinal,
+    preferredWindowSourceId,
+    captureCamera,
+    captureMicrophone,
+    captureSystemAudio,
+    qualityPreset,
+    codec,
+  ]);
+
+  useEffect(() => {
+    if (hasPermission) {
+      void loadSources();
+    }
+  }, [sourceType, hasPermission, preferredSourceId, preferredSourceOrdinal]);
+
+  useEffect(() => {
+    if (!hasPermission || recordingState !== "idle") {
+      return;
+    }
+    const refreshIntervalId = window.setInterval(() => {
+      void loadSources();
+    }, 15000);
+    return () => {
+      window.clearInterval(refreshIntervalId);
+    };
+  }, [
+    hasPermission,
+    recordingState,
+    sourceType,
+    preferredSourceId,
+    preferredSourceOrdinal,
+  ]);
+
+  async function checkPermission() {
+    try {
+      const granted = await invoke<boolean>("check_permission");
+      setHasPermission(granted);
+    } catch (error) {
+      console.error("Failed to check permission:", error);
+      setHasPermission(false);
+      setErrorMessage("Unable to check screen recording permission.");
+    }
+  }
+
+  async function requestPermission() {
+    try {
+      const granted = await invoke<boolean>("request_permission");
+      setHasPermission(granted);
+      if (granted) {
+        void loadSources();
+      }
+    } catch (error) {
+      console.error("Failed to request permission:", error);
+      setErrorMessage("Unable to request screen recording permission.");
+    }
+  }
+
+  async function checkDiskSpace() {
+    try {
+      const status = await invoke<DiskSpaceStatus>("check_recording_disk_space");
+      if (!status.sufficient) {
+        const minimumRequiredGb = formatBytesAsGiB(resolveMinimumFreeBytes(status));
+        setDiskWarning(
+          `Low disk space: ${formatBytesAsGiB(status.freeBytes)} GB available. Recording requires at least ${minimumRequiredGb} GB free.`
+        );
+      } else {
+        setDiskWarning(null);
+      }
+    } catch (error) {
+      console.error("Failed to check disk space:", error);
+      setDiskWarning("Unable to verify available disk space.");
+    }
+  }
+
+  useEffect(() => {
+    const unlisten = listen<{ state: typeof recordingState; projectId: string }>(
+      "recording-state-changed",
+      (event) => {
+        const activeProjectId = resolveActiveProjectId();
+        const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+        if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) {
+          return;
+        }
+
+        recordLifecycleEvent(
+          "recording-state-changed",
+          `Recorder state updated to ${event.payload.state}.`,
+          {
+            state: event.payload.state,
+            projectId: eventProjectId ?? activeProjectId ?? undefined,
+          }
+        );
+        setRecordingState(event.payload.state);
+        if (event.payload.state !== "stopping") {
+          setFinalizingStatus(null);
+        }
+        if (event.payload.state === "idle") {
+          setProjectId(null);
+          setRecordingStartTimeMs(null);
+          setFinalizingStatus(null);
+          clearStoredCurrentProjectId();
+          clearPendingRecordingSourceFallbackNotice();
+          return;
+        }
+
+        if (eventProjectId) {
+          setProjectId(eventProjectId);
+          setStoredCurrentProjectId(eventProjectId);
+        }
+      }
+    );
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [
+    appendLifecycleEvent,
+    projectId,
+    setProjectId,
+    setRecordingState,
+    setRecordingStartTimeMs,
+  ]);
+
+  useEffect(() => {
+    const unlisten = listen<{
+      projectId: string;
+      status?: RecordingFinalizingStatus;
+    }>("recording-finalizing", (event) => {
+      const activeProjectId = resolveActiveProjectId();
+      const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+      if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) {
+        return;
+      }
+      const status = event.payload.status ?? "stopping-capture";
+      recordLifecycleEvent(
+        "recording-finalizing",
+        `Finalization phase: ${status}.`,
+        {
+          state: "stopping",
+          status,
+          projectId: eventProjectId ?? activeProjectId ?? undefined,
+        }
+      );
+      setFinalizingStatus(status);
+      setRecordingState("stopping");
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [appendLifecycleEvent, projectId, setRecordingState]);
+
+  useEffect(() => {
+    if (recordingState !== "stopping") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      const activeProjectId = resolveActiveProjectId();
+      setRecordingState("idle");
+      setProjectId(null);
+      setRecordingStartTimeMs(null);
+      setFinalizingStatus(null);
+      if (activeProjectId) {
+        setRetryFinalizationProjectId(activeProjectId);
+        setPendingFinalizationRetryProjectId(activeProjectId);
+      }
+      clearStoredCurrentProjectId();
+      clearPendingRecordingSourceFallbackNotice();
+      setErrorMessage((current) =>
+        current ??
+        "Recording finalization is taking longer than expected. Check the recordings list for the saved project."
+      );
+    }, runtimeTimeoutSettings.recorderStopFinalizationTimeoutMs);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    recordingState,
+    runtimeTimeoutSettings.recorderStopFinalizationTimeoutMs,
+    setProjectId,
+    setRecordingState,
+    setRecordingStartTimeMs,
+  ]);
+
+  useEffect(() => {
+    const unlisten = listen<string>("recording-stopped", (event) => {
+      const stoppedProjectId = normalizeScopedProjectId(event.payload);
+      const activeProjectId = resolveActiveProjectId();
+      if (!shouldHandleProjectScopedEvent(activeProjectId, stoppedProjectId)) {
+        return;
+      }
+      recordLifecycleEvent("recording-stopped", "Recording finalized and stopped.", {
+        state: "idle",
+        projectId: stoppedProjectId ?? activeProjectId ?? undefined,
+      });
+      setRecordingState("idle");
+      setProjectId(null);
+      setRecordingStartTimeMs(null);
+      setFinalizingStatus(null);
+      setRetryFinalizationProjectId(null);
+      clearPendingFinalizationRetryProjectId();
+      clearStoredCurrentProjectId();
+      clearPendingRecordingSourceFallbackNotice();
+      if (stoppedProjectId) {
+        onRecordingStoppedNavigate(stoppedProjectId);
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [
+    appendLifecycleEvent,
+    projectId,
+    onRecordingStoppedNavigate,
+    setProjectId,
+    setRecordingState,
+    setRecordingStartTimeMs,
+  ]);
+
+  useEffect(() => {
+    const unlisten = listen<{ projectId: string; message?: string }>(
+      "recording-stop-failed",
+      (event) => {
+        const activeProjectId = resolveActiveProjectId();
+        const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+        if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) {
+          return;
+        }
+        setRecordingState("idle");
+        setProjectId(null);
+        setRecordingStartTimeMs(null);
+        clearStoredCurrentProjectId();
+        clearPendingRecordingSourceFallbackNotice();
+        setFinalizingStatus(null);
+        const pendingRetryProjectId = eventProjectId ?? activeProjectId;
+        if (!pendingRetryProjectId) {
+          return;
+        }
+        setRetryFinalizationProjectId(pendingRetryProjectId);
+        setPendingFinalizationRetryProjectId(pendingRetryProjectId);
+        const message =
+          event.payload.message?.trim() ||
+          "Recording stopped, but finalization failed. Check the recordings list and retry.";
+        setErrorMessage(message);
+        recordLifecycleEvent("recording-stop-failed", message, {
+          level: "error",
+          state: "idle",
+          projectId: eventProjectId ?? activeProjectId ?? undefined,
+        });
+        recordDiagnostic("error", message);
+      }
+    );
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [
+    appendDiagnostic,
+    appendLifecycleEvent,
+    projectId,
+    setProjectId,
+    setRecordingState,
+    setRecordingStartTimeMs,
+  ]);
+
+  useEffect(() => {
+    const unlisten = listen<{
+      projectId: string;
+      status: "started" | "succeeded" | "failed";
+      message?: string;
+    }>("recording-finalization-retry-status", (event) => {
+      const activeProjectId = resolveActiveProjectId();
+      const eventProjectId = normalizeScopedProjectId(event.payload.projectId);
+      if (!shouldHandleProjectScopedEvent(activeProjectId, eventProjectId)) {
+        return;
+      }
+
+      if (event.payload.status === "started") {
+        recordLifecycleEvent(
+          "recording-finalization-retry-status",
+          "Retrying recording finalization.",
+          {
+            state: "stopping",
+            status: event.payload.status,
+            projectId: eventProjectId ?? activeProjectId ?? undefined,
+          }
+        );
+        return;
+      }
+
+      if (event.payload.status === "succeeded") {
+        recordLifecycleEvent(
+          "recording-finalization-retry-status",
+          "Recording finalization retry succeeded.",
+          {
+            state: "idle",
+            status: event.payload.status,
+            projectId: eventProjectId ?? activeProjectId ?? undefined,
+          }
+        );
+        return;
+      }
+
+      const message =
+        event.payload.message?.trim() ||
+        "Recording finalization retry failed. Verify output artifacts before retrying again.";
+      if (isMissingFinalizationRetryContextMessage(message)) {
+        setRetryFinalizationProjectId(null);
+        clearPendingFinalizationRetryProjectId();
+      }
+      recordLifecycleEvent("recording-finalization-retry-status", message, {
+        level: "error",
+        state: "idle",
+        status: event.payload.status,
+        projectId: eventProjectId ?? activeProjectId ?? undefined,
+      });
+      recordDiagnostic("error", message);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [appendDiagnostic, appendLifecycleEvent, projectId, retryFinalizationProjectId]);
+
+  const finalizingMessage =
+    recordingState === "stopping"
+      ? getRecordingFinalizingMessage(finalizingStatus)
+      : null;
+
+  useEffect(() => {
+    const unlisten = listen("global-shortcut-start-stop", () => {
+      if (recordingState === "idle" && countdown === null) {
+        void handleStartRecording();
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [countdown, recordingState]);
+
+  useEffect(() => {
+    const unlisten = listen("tray-quick-record", () => {
+      requestTrayQuickRecord();
+      pendingTrayQuickRecordRef.current = true;
+      setErrorMessage(null);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<{
+      projectId: string;
+      sourceType: "display" | "window";
+      sourceId: string;
+      sourceOrdinal?: number | null;
+    }>("recording-source-fallback", (event) => {
+      const activeProjectId = resolveActiveProjectId();
+      if (!activeProjectId || event.payload.projectId !== activeProjectId) {
+        return;
+      }
+      if (event.payload.sourceType === "display") {
+        setPreferredDisplaySourceId(event.payload.sourceId);
+        if (typeof event.payload.sourceOrdinal === "number") {
+          setPreferredDisplaySourceOrdinal(event.payload.sourceOrdinal);
+        }
+      } else {
+        setPreferredWindowSourceId(event.payload.sourceId);
+      }
+      const message =
+        event.payload.sourceType === "display"
+          ? `Selected display became unavailable. Recorder switched to ${describeDisplaySource(
+              event.payload.sourceId,
+              event.payload.sourceOrdinal
+            )}.`
+          : `Selected window became unavailable. Recorder switched to ${describeWindowSource(
+              event.payload.sourceId
+            )}.`;
+      setErrorMessage(message);
+      recordDiagnostic("warning", message);
+      const matchingSource = sources.find(
+        (source) =>
+          source.type === event.payload.sourceType &&
+          source.id === event.payload.sourceId
+      );
+      if (matchingSource) {
+        setSelectedSource(matchingSource);
+      } else {
+        void loadSources();
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [appendDiagnostic, projectId, setSelectedSource, sources]);
+
+  useEffect(() => {
+    if (consumeTrayQuickRecordRequest()) {
+      pendingTrayQuickRecordRef.current = true;
+      setErrorMessage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pendingTrayQuickRecordRef.current) return;
+    if (recordingState !== "idle" || countdown !== null) return;
+    if (hasPermission === false) {
+      pendingTrayQuickRecordRef.current = false;
+      setErrorMessage("Cannot quick-record because screen recording permission is not granted.");
+      return;
+    }
+    if (hasPermission === null || isLoadingSources) return;
+    pendingTrayQuickRecordRef.current = false;
+    void handleStartRecording();
+  }, [countdown, hasPermission, isLoadingSources, recordingState]);
+
+  async function loadSources() {
+    if (loadSourcesInFlightRef.current) {
+      return;
+    }
+    loadSourcesInFlightRef.current = true;
+    setIsLoadingSources(true);
+    try {
+      const result = await invoke<CaptureSource[]>("list_capture_sources", {
+        sourceType,
+      });
+      setSources(result);
+      const currentSourceId =
+        selectedSource?.type === sourceType ? selectedSource.id : null;
+      const preferredSourceStillAvailable = preferredSourceId
+        ? result.some((source) => source.id === preferredSourceId)
+        : true;
+      const resolvedSource = resolvePreferredSource(
+        result,
+        sourceType,
+        currentSourceId,
+        preferredSourceId,
+        preferredSourceOrdinal
+      );
+      setSelectedSource(resolvedSource);
+      if (
+        currentSourceId &&
+        resolvedSource &&
+        resolvedSource.id !== currentSourceId &&
+        sourceType === "display"
+      ) {
+        setErrorMessage(
+          `Display "${selectedSource?.name ?? currentSourceId}" is unavailable. Switched to "${resolvedSource.name}".`
+        );
+      } else if (
+        sourceType === "display" &&
+        resolvedSource &&
+        preferredSourceId &&
+        !preferredSourceStillAvailable &&
+        resolvedSource.id !== preferredSourceId
+      ) {
+        setErrorMessage(
+          `Saved display is unavailable. Switched to "${resolvedSource.name}".`
+        );
+      } else {
+        setErrorMessage((current) => clearSourceFallbackWarning(current));
+      }
+    } catch (error) {
+      console.error("Failed to load capture sources:", error);
+      setErrorMessage("Could not load capture sources. Check permissions and retry.");
+      setSources([]);
+      setSelectedSource(null);
+    } finally {
+      loadSourcesInFlightRef.current = false;
+      setIsLoadingSources(false);
+    }
+  }
+
+  async function resolveAvailableSourceForRecording(): Promise<ResolvedRecordingSource | null> {
+    try {
+      const availableSources = await invoke<CaptureSource[]>("list_capture_sources", {
+        sourceType,
+      });
+      setSources(availableSources);
+      const currentSourceId =
+        selectedSource?.type === sourceType ? selectedSource.id : null;
+      const preferredSourceStillAvailable = preferredSourceId
+        ? availableSources.some((source) => source.id === preferredSourceId)
+        : true;
+      const resolvedSource = resolvePreferredSource(
+        availableSources,
+        sourceType,
+        currentSourceId,
+        preferredSourceId,
+        preferredSourceOrdinal
+      );
+      setSelectedSource(resolvedSource);
+      if (!resolvedSource) {
+        setErrorMessage(
+          sourceType === "display"
+            ? "No displays are available for capture."
+            : "No windows are available for capture."
+        );
+        return null;
+      }
+      if (
+        currentSourceId &&
+        resolvedSource.id !== currentSourceId &&
+        sourceType === "display"
+      ) {
+        setErrorMessage(
+          `Display "${selectedSource?.name ?? currentSourceId}" was disconnected. Recording will use "${resolvedSource.name}".`
+        );
+      } else if (
+        sourceType === "display" &&
+        preferredSourceId &&
+        !preferredSourceStillAvailable &&
+        resolvedSource.id !== preferredSourceId
+      ) {
+        setErrorMessage(
+          `Saved display is unavailable. Recording will use "${resolvedSource.name}".`
+        );
+      } else {
+        setErrorMessage((current) => clearSourceFallbackWarning(current));
+      }
+      return {
+        source: resolvedSource,
+        preferredDisplayOrdinal: resolveSelectedSourceOrdinal(
+          sourceType,
+          resolvedSource,
+          availableSources
+        ),
+        availableSources,
+      };
+    } catch (error) {
+      console.error("Failed to refresh capture sources before recording:", error);
+      const message = "Unable to refresh available capture sources before recording.";
+      setErrorMessage(message);
+      recordDiagnostic("error", message);
+      return null;
+    }
+  }
+
+  async function startRecordingSession() {
+    if (useRecordingStore.getState().state !== "idle") {
+      return;
+    }
+    const resolvedSource = await resolveAvailableSourceForRecording();
+    if (!resolvedSource) return;
+    recordLifecycleEvent("recording-start-requested", "Starting recording session.", {
+      state: "starting",
+    });
+
+    beginRecordingStart();
+    let result: StartRecordingResult;
+    try {
+      const options: RecordingOptionsType = {
+        sourceId: resolvedSource.source.id,
+        sourceType: resolvedSource.source.type,
+        preferredDisplayOrdinal:
+          resolvedSource.source.type === "display"
+            ? resolvedSource.preferredDisplayOrdinal
+            : null,
+        captureCamera,
+        captureMicrophone,
+        captureSystemAudio,
+        qualityPreset,
+        codec,
+      };
+
+      result = await withTimeout(
+        invoke<StartRecordingResult>("start_screen_recording", { options }),
+        runtimeTimeoutSettings.recorderStartRecordingTimeoutMs,
+        "Recording start timed out"
+      );
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      setProjectId(null);
+      setRecordingStartTimeMs(null);
+      setRecordingState("idle");
+      clearStoredCurrentProjectId();
+      clearPendingRecordingSourceFallbackNotice();
+      const message = toErrorMessage(error, "Failed to start recording. Please try again.");
+      setErrorMessage(message);
+      recordDiagnostic("error", message);
+      return;
+    }
+
+    const resolvedCaptureSource = sources.find(
+      (source) =>
+        source.id === result.resolvedSourceId &&
+        source.type === resolvedSource.source.type
+    );
+    const resolvedCaptureSourceFromLatest = resolvedSource.availableSources.find(
+      (source) =>
+        source.id === result.resolvedSourceId &&
+        source.type === resolvedSource.source.type
+    );
+    if (resolvedCaptureSourceFromLatest) {
+      setSelectedSource(resolvedCaptureSourceFromLatest);
+    } else if (resolvedCaptureSource) {
+      setSelectedSource(resolvedCaptureSource);
+    }
+
+    setProjectId(result.projectId);
+    setRecordingStartTimeMs(result.recordingStartTimeMs);
+    startRecording(result.projectId);
+    setStoredCurrentProjectId(result.projectId);
+    setRetryFinalizationProjectId(null);
+    clearPendingFinalizationRetryProjectId();
+    recordLifecycleEvent("recording-started", "Recording session started.", {
+      state: "recording",
+      projectId: result.projectId,
+    });
+    if (result.fallbackSource?.sourceId) {
+      setPendingRecordingSourceFallbackNotice({
+        projectId: result.projectId,
+        sourceType: resolvedSource.source.type,
+        sourceId: result.fallbackSource.sourceId,
+        sourceOrdinal: result.fallbackSource.sourceOrdinal ?? null,
+      });
+      const message =
+        resolvedSource.source.type === "display"
+          ? `Selected display became unavailable. Recorder switched to ${describeDisplaySource(
+              result.fallbackSource.sourceId,
+              result.fallbackSource.sourceOrdinal
+            )}.`
+          : `Selected window became unavailable. Recorder switched to ${describeWindowSource(
+              result.fallbackSource.sourceId
+            )}.`;
+      setErrorMessage(message);
+      recordLifecycleEvent("recording-source-fallback", message, {
+        level: "warning",
+        state: "recording",
+        projectId: result.projectId,
+      });
+      recordDiagnostic("warning", message);
+    } else {
+      clearPendingRecordingSourceFallbackNotice();
+      setErrorMessage((current) => clearSourceFallbackWarning(current));
+    }
+
+    try {
+      await withTimeout(
+        invoke("open_recording_widget"),
+        runtimeTimeoutSettings.recorderOpenWidgetTimeoutMs,
+        "Opening recording widget timed out."
+      );
+      const mainWindow = getCurrentWindow();
+      await withTimeout(
+        mainWindow.hide(),
+        runtimeTimeoutSettings.recorderHideWindowTimeoutMs,
+        "Hiding recorder window timed out."
+      );
+      setErrorMessage((current) => clearWidgetHandoffWarning(current));
+      recordLifecycleEvent(
+        "recording-widget-handoff",
+        "Floating controls opened and recorder window hidden.",
+        {
+          state: "recording",
+          projectId: result.projectId,
+        }
+      );
+    } catch (error) {
+      console.error("Recording started but widget handoff failed:", error);
+      const message = toErrorMessage(
+        error,
+        "Recording started, but floating controls failed to open. Use global shortcuts to pause or stop."
+      );
+      setErrorMessage(message);
+      recordLifecycleEvent("recording-widget-handoff-failed", message, {
+        level: "warning",
+        state: "recording",
+        projectId: result.projectId,
+      });
+      recordDiagnostic("warning", message);
+    }
+  }
+
+  async function handleStartRecording() {
+    if (countdown !== null || useRecordingStore.getState().state !== "idle") return;
+    try {
+      const status = await invoke<DiskSpaceStatus>("check_recording_disk_space");
+      if (!status.sufficient) {
+        const minimumRequiredGb = formatBytesAsGiB(resolveMinimumFreeBytes(status));
+        setErrorMessage(
+          `Insufficient disk space. ${formatBytesAsGiB(status.freeBytes)} GB available, ${minimumRequiredGb} GB required.`
+        );
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to check disk space before recording:", error);
+      const message = "Unable to verify available disk space before recording.";
+      setErrorMessage(message);
+      recordDiagnostic("error", message);
+      return;
+    }
+
+    startCountdown(startRecordingSession);
+  }
+
+  async function handleOpenRecordingWidget() {
+    const activeProjectId = resolveActiveProjectId();
+    if (!activeProjectId || recordingState === "stopping") {
+      return;
+    }
+
+    try {
+      await withTimeout(
+        invoke("open_recording_widget"),
+        runtimeTimeoutSettings.recorderOpenWidgetTimeoutMs,
+        "Opening recording widget timed out."
+      );
+      setErrorMessage((current) => clearWidgetHandoffWarning(current));
+      recordLifecycleEvent("recording-widget-opened", "Floating controls opened manually.", {
+        state: recordingState,
+        projectId: activeProjectId,
+      });
+    } catch (error) {
+      console.error("Failed to open recording widget:", error);
+      const message = toErrorMessage(
+        error,
+        "Unable to open floating controls. Use global shortcuts to pause or stop."
+      );
+      setErrorMessage(message);
+      recordLifecycleEvent("recording-widget-open-failed", message, {
+        level: "warning",
+        state: recordingState,
+        projectId: activeProjectId,
+      });
+      recordDiagnostic("warning", message);
+    }
+  }
+
+  async function handleRetryFinalization() {
+    const retryProjectId = retryFinalizationProjectId?.trim();
+    if (!retryProjectId) {
+      return;
+    }
+
+    try {
+      const hasPendingFinalization = await invoke<boolean>(
+        "has_pending_recording_finalization",
+        { projectId: retryProjectId }
+      );
+      if (!hasPendingFinalization) {
+        setRetryFinalizationProjectId(null);
+        clearPendingFinalizationRetryProjectId();
+        const message =
+          "No pending finalization context is available for retry. Start a new recording session if needed.";
+        setErrorMessage(message);
+        recordLifecycleEvent("recording-finalization-retry-skipped", message, {
+          level: "warning",
+          state: "idle",
+          projectId: retryProjectId,
+        });
+        return;
+      }
+
+      setRecordingState("stopping");
+      setFinalizingStatus("concatenating-segments");
+      setErrorMessage(null);
+      recordLifecycleEvent("recording-finalization-retry-requested", "Retrying finalization.", {
+        state: "stopping",
+        projectId: retryProjectId,
+      });
+      await withTimeout(
+        invoke("retry_recording_finalization", { projectId: retryProjectId }),
+        runtimeTimeoutSettings.recorderStopFinalizationTimeoutMs,
+        "Retrying recording finalization timed out."
+      );
+    } catch (error) {
+      console.error("Failed to retry recording finalization:", error);
+      setRecordingState("idle");
+      setFinalizingStatus(null);
+      const message = toErrorMessage(
+        error,
+        "Unable to retry recording finalization. Check recordings list and retry export."
+      );
+      setErrorMessage(message);
+      if (isMissingFinalizationRetryContextMessage(message)) {
+        setRetryFinalizationProjectId(null);
+        clearPendingFinalizationRetryProjectId();
+      }
+      recordLifecycleEvent("recording-finalization-retry-failed", message, {
+        level: "error",
+        state: "idle",
+        projectId: retryProjectId,
+      });
+      recordDiagnostic("error", message);
+    }
+  }
+
+  const hasActiveRecordingSession = Boolean(resolveActiveProjectId());
+  const showOpenRecordingWidgetButton =
+    hasActiveRecordingSession &&
+    recordingState !== "idle" &&
+    recordingState !== "starting" &&
+    recordingState !== "stopping";
+  const showRetryFinalizationButton =
+    Boolean(retryFinalizationProjectId) && recordingState === "idle";
+
+  return {
+    countdown,
+    errorMessage,
+    finalizingMessage,
+    diskWarning,
+    hasPermission,
+    recordingState,
+    isRecording,
+    isActivelyRecording,
+    projectId,
+    recordingStartTimeMs,
+    sourceType,
+    selectedSource,
+    sources,
+    isLoadingSources,
+    captureCamera,
+    captureMicrophone,
+    captureSystemAudio,
+    qualityPreset,
+    codec,
+    cameraReady,
+    setSourceType,
+    setSelectedSource,
+    setCaptureCamera,
+    setCaptureMicrophone,
+    setCaptureSystemAudio,
+    setQualityPreset,
+    setCodec,
+    setCameraReady,
+    requestPermission,
+    showOpenRecordingWidgetButton,
+    showRetryFinalizationButton,
+    handleOpenRecordingWidget,
+    handleRetryFinalization,
+    handleStartRecording,
+  };
+}
