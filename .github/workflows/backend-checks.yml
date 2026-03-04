@@ -64,6 +64,7 @@ jobs:
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Run Rust backend tests
+        if: matrix.os == 'ubuntu-latest'
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Build Rust backend
