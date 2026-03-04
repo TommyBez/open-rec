@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window and recording widget",
-  "windows": ["main", "recording-widget"],
+  "description": "Capability for recorder, editor, and library windows",
+  "windows": ["main", "recording-widget", "editor-*", "library-*"],
   "permissions": [
     "core:default",
     "core:window:allow-create",
