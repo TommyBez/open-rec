@@ -1496,7 +1496,7 @@ fn spawn_linux_ffmpeg_capture(
         output_path.to_string_lossy().to_string(),
     ]);
 
-    Command::new("ffmpeg")
+    let mut child = Command::new("ffmpeg")
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -1507,7 +1507,10 @@ fn spawn_linux_ffmpeg_capture(
                 "Failed to spawn ffmpeg for Linux capture. Ensure ffmpeg is installed and available on PATH: {}",
                 error
             ))
-        })
+        })?;
+
+    ensure_linux_ffmpeg_started(&mut child, "initializing Linux capture")?;
+    Ok(child)
 }
 
 #[cfg(target_os = "linux")]
@@ -1519,6 +1522,37 @@ fn read_child_stderr(child: &mut Child) -> String {
         }
     }
     String::new()
+}
+
+#[cfg(target_os = "linux")]
+fn ensure_linux_ffmpeg_started(child: &mut Child, context: &str) -> Result<(), AppError> {
+    let timeout = Duration::from_millis(200);
+    let poll_interval = Duration::from_millis(20);
+    let started = Instant::now();
+
+    loop {
+        if let Some(status) = child.try_wait().map_err(|error| {
+            AppError::Io(format!("Failed to poll ffmpeg startup state: {error}"))
+        })? {
+            let stderr = read_child_stderr(child);
+            let detail = if stderr.is_empty() {
+                status
+                    .code()
+                    .map(|code| format!("exit code {code}"))
+                    .unwrap_or_else(|| "terminated by signal".to_string())
+            } else {
+                stderr
+            };
+            return Err(AppError::Message(format!(
+                "ffmpeg exited immediately while {context}: {detail}"
+            )));
+        }
+
+        if started.elapsed() >= timeout {
+            return Ok(());
+        }
+        thread::sleep(poll_interval);
+    }
 }
 
 #[cfg(target_os = "linux")]
