@@ -1,7 +1,7 @@
 [package]
 name = "open-rec"
 version = "0.1.0"
-description = "A macOS screen and camera recording app with editing capabilities"
+description = "A cross-platform screen and camera recording app with editing capabilities"
 authors = ["Tommaso"]
 edition = "2021"
 
@@ -35,3 +35,6 @@ url = "2.5.8"
 # ScreenCaptureKit bindings for macOS
 [target.'cfg(target_os = "macos")'.dependencies]
 screencapturekit = { version = "1", features = ["macos_15_0", "async"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+xcap = "0.8.3"

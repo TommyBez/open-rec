@@ -35,7 +35,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 CI guard:
 
-- `backend-macos-checks.yml` compiles backend on `macos-14` to catch this class of regression early.
+- `backend-checks.yml` runs backend checks/builds on both `ubuntu-latest` and `macos-14` to catch host-specific regressions early.
 
 ## 2) `pnpm` not found in CI/setup steps
 

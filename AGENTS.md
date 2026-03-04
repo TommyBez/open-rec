@@ -10,10 +10,14 @@ All standard dev commands are in `package.json` scripts and `README.md § Develo
 
 ### Running on Linux (Cloud Agent environment)
 
-- **Recording features are macOS-only** (ScreenCaptureKit). On Linux, the Tauri app launches and renders the UI but recording/capture will not function.
-- `pnpm tauri dev` launches the native desktop window via GTK/WebKit. The app will show a "Permission Required" screen on first load — this is expected; navigate via **File → Open Projects** to reach the My Recordings page and explore the UI.
+- Linux recording is supported through an FFmpeg/X11 pipeline. Ensure `ffmpeg` is available on `PATH`.
+- Linux system-audio capture uses PulseAudio/PipeWire monitor sources. Install `pactl`/PulseAudio tooling if system-audio capture is required.
+- Wayland-only sessions without XWayland (`DISPLAY`) are not currently supported for screen capture.
+- `pnpm tauri dev` launches the native desktop window via GTK/WebKit.
 - The `libEGL` warnings about DRI3 at startup are harmless (no GPU acceleration in the VM) and can be ignored.
 - `libayatana-appindicator3-dev` must be installed or the app will panic at launch (tray icon dependency).
+- `libgbm-dev` must be installed for Linux backend test/build linking (`-lgbm` from Linux capture stack).
+- `libpipewire-0.3-dev` must be installed for backend compilation (`xcap` Linux capture dependency).
 - The standalone `pnpm dev` (Vite only) serves on `http://localhost:1420`, but the React app will error in a plain browser because it depends on Tauri runtime APIs. Always use `pnpm tauri dev` to see the working UI.
 - Port 1420 must be free before running `pnpm tauri dev`; it starts Vite internally and will fail with `strictPort: true` if the port is occupied.
 

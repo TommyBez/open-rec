@@ -8,7 +8,7 @@ recoverable stop/finalization flows, and practical export tooling.
 
 ## Highlights
 
-- Screen or window recording (ScreenCaptureKit)
+- Screen or window recording (ScreenCaptureKit on macOS, FFmpeg/X11 on Linux)
 - Optional camera + microphone tracks
 - Pause/resume with segment stitching at stop
 - Floating recording widget with shortcut-based fallback control
@@ -28,6 +28,7 @@ recoverable stop/finalization flows, and practical export tooling.
 ## Requirements
 
 - macOS 15+ for ScreenCaptureKit runtime behavior
+- Linux with X11/XWayland (`DISPLAY`) and `ffmpeg` available on `PATH`
 - Node.js + pnpm
 - Rust toolchain
 
