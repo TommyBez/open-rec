@@ -10,7 +10,7 @@ runs can appear as **cancelled** during rapid push sequences.
 | Workflow | Purpose | Host |
 |---|---|---|
 | `frontend-checks.yml` | docs links, frontend type checks, frontend tests, frontend build | `ubuntu-latest` |
-| `backend-checks.yml` | docs links + backend check/build on Linux+macOS (tests + fmt on Linux lane) | matrix: `ubuntu-latest`, `macos-14` |
+| `backend-checks.yml` | docs links + backend check/test/build on Linux+macOS (fmt on Linux lane; macOS lane configures Swift runtime paths before tests) | matrix: `ubuntu-latest`, `macos-14` |
 | `unsigned-macos-build.yml` | unsigned DMG release builds + checksums | `macos-14` |
 
 ## Why runs may show as “cancelled”
