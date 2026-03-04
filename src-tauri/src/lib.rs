@@ -2632,6 +2632,8 @@ mod tests {
                     last_resume_instant: Some(Instant::now()),
                     camera_offset_ms: None,
                     microphone_offset_ms: None,
+                    #[cfg(target_os = "linux")]
+                    ffmpeg_child: None,
                 },
             );
         }

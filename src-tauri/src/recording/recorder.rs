@@ -8,8 +8,15 @@ use std::sync::{Arc, Mutex};
 #[cfg(target_os = "macos")]
 use std::time::Duration;
 use std::time::Instant;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use uuid::Uuid;
+#[cfg(target_os = "linux")]
+use {
+    std::io::{Read, Write},
+    std::process::{Child, Command, Stdio},
+    std::thread,
+    std::time::Duration,
+};
 
 use crate::error::AppError;
 
@@ -23,6 +30,8 @@ use screencapturekit::{
     shareable_content::SCShareableContent,
 };
 
+#[cfg(target_os = "linux")]
+use super::sources::{linux_list_display_sources, linux_list_window_sources};
 use super::SourceType;
 
 /// Recording options from the frontend
@@ -108,6 +117,8 @@ pub struct RecordingSession {
     pub stream: Option<SCStream>,
     #[cfg(target_os = "macos")]
     pub recording_output: Option<SCRecordingOutput>,
+    #[cfg(target_os = "linux")]
+    pub ffmpeg_child: Option<Child>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -315,7 +326,7 @@ fn find_display_or_fallback(
     Ok((fallback_display, true, 0))
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 fn resolve_display_fallback_index(
     available_display_count: usize,
     preferred_display_ordinal: Option<u32>,
@@ -354,7 +365,7 @@ fn find_display_or_fallback_with_ordinal(
     Ok((display, used_fallback, requested_ordinal))
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 fn resolve_window_fallback_id(
     requested_window_id: u32,
     available_window_ids: &[u32],
@@ -1062,7 +1073,7 @@ pub fn get_recording_source_status(
     }
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 fn calculate_elapsed_duration_ms(session: &RecordingSession) -> u64 {
     let mut elapsed_ms = session.active_duration_ms;
     if session.state == RecordingState::Recording {
@@ -1149,45 +1160,873 @@ pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), AppE
     Ok(())
 }
 
-// Non-macOS stubs
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone)]
+struct LinuxCaptureSelection {
+    source_type: SourceType,
+    source_id: String,
+    source_width: u32,
+    source_height: u32,
+    x: i32,
+    y: i32,
+    window_id: Option<u32>,
+    preferred_display_ordinal: Option<u32>,
+    fallback_source: Option<RecordingSourceFallback>,
+}
+
+#[cfg(target_os = "linux")]
+fn make_even_dimension_linux(value: u32) -> u32 {
+    let base = value.max(2);
+    if base % 2 == 0 {
+        base
+    } else {
+        base - 1
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_max_height(preset: RecordingQualityPreset) -> u32 {
+    match preset {
+        RecordingQualityPreset::P72030 => 720,
+        RecordingQualityPreset::P1080P30 | RecordingQualityPreset::P1080P60 => 1080,
+        RecordingQualityPreset::P4k30 | RecordingQualityPreset::P4k60 => 2160,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_fps(preset: RecordingQualityPreset) -> u32 {
+    match preset {
+        RecordingQualityPreset::P72030
+        | RecordingQualityPreset::P1080P30
+        | RecordingQualityPreset::P4k30 => 30,
+        RecordingQualityPreset::P1080P60 | RecordingQualityPreset::P4k60 => 60,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_output_dimensions_linux(
+    source_width: u32,
+    source_height: u32,
+    preset: RecordingQualityPreset,
+) -> (u32, u32) {
+    if source_width == 0 || source_height == 0 {
+        return (1920, 1080);
+    }
+    let max_height = linux_max_height(preset) as f64;
+    let scale = (max_height / source_height as f64).min(1.0);
+    let scaled_width = make_even_dimension_linux((source_width as f64 * scale).round() as u32);
+    let scaled_height = make_even_dimension_linux((source_height as f64 * scale).round() as u32);
+    (scaled_width, scaled_height)
+}
+
+#[cfg(target_os = "linux")]
+fn parse_linux_source_id(source_id: &str, label: &str) -> Result<u32, AppError> {
+    source_id
+        .parse::<u32>()
+        .map_err(|_| AppError::Message(format!("Invalid {} ID: {}", label, source_id)))
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_linux_display_selection(
+    source_id: &str,
+    preferred_display_ordinal: Option<u32>,
+) -> Result<LinuxCaptureSelection, AppError> {
+    let requested_display_id = parse_linux_source_id(source_id, "display")?;
+    let mut displays = linux_list_display_sources()?;
+    if displays.is_empty() {
+        return Err(AppError::Message(
+            "No displays are currently available for capture".to_string(),
+        ));
+    }
+
+    if let Some(index) = displays
+        .iter()
+        .position(|display| display.id == requested_display_id)
+    {
+        let display = displays.remove(index);
+        return Ok(LinuxCaptureSelection {
+            source_type: SourceType::Display,
+            source_id: display.id.to_string(),
+            source_width: display.width,
+            source_height: display.height,
+            x: display.x,
+            y: display.y,
+            window_id: None,
+            preferred_display_ordinal: Some(index as u32),
+            fallback_source: None,
+        });
+    }
+
+    let fallback_index = resolve_display_fallback_index(displays.len(), preferred_display_ordinal);
+    let display = displays
+        .get(fallback_index)
+        .ok_or_else(|| AppError::Message("No display fallback is available".to_string()))?
+        .clone();
+    Ok(LinuxCaptureSelection {
+        source_type: SourceType::Display,
+        source_id: display.id.to_string(),
+        source_width: display.width,
+        source_height: display.height,
+        x: display.x,
+        y: display.y,
+        window_id: None,
+        preferred_display_ordinal: Some(fallback_index as u32),
+        fallback_source: Some(RecordingSourceFallback {
+            source_id: display.id.to_string(),
+            source_ordinal: Some(fallback_index as u32),
+        }),
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_linux_window_selection(source_id: &str) -> Result<LinuxCaptureSelection, AppError> {
+    let requested_window_id = parse_linux_source_id(source_id, "window")?;
+    let windows = linux_list_window_sources()?;
+    let available_window_ids = windows.iter().map(|window| window.id).collect::<Vec<u32>>();
+    let Some((resolved_window_id, used_fallback)) =
+        resolve_window_fallback_id(requested_window_id, &available_window_ids)
+    else {
+        return Err(AppError::Message(
+            "No windows are currently available for capture".to_string(),
+        ));
+    };
+    let window = windows
+        .into_iter()
+        .find(|candidate| candidate.id == resolved_window_id)
+        .ok_or_else(|| {
+            AppError::Message(format!(
+                "Window not found after fallback resolution: {}",
+                resolved_window_id
+            ))
+        })?;
+    Ok(LinuxCaptureSelection {
+        source_type: SourceType::Window,
+        source_id: window.id.to_string(),
+        source_width: window.width,
+        source_height: window.height,
+        x: 0,
+        y: 0,
+        window_id: Some(window.id),
+        preferred_display_ordinal: None,
+        fallback_source: if used_fallback {
+            Some(RecordingSourceFallback {
+                source_id: window.id.to_string(),
+                source_ordinal: None,
+            })
+        } else {
+            None
+        },
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_linux_capture_selection(
+    source_id: &str,
+    source_type: SourceType,
+    preferred_display_ordinal: Option<u32>,
+) -> Result<LinuxCaptureSelection, AppError> {
+    match source_type {
+        SourceType::Display => {
+            resolve_linux_display_selection(source_id, preferred_display_ordinal)
+        }
+        SourceType::Window => resolve_linux_window_selection(source_id),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_linux_display_env() -> Result<String, AppError> {
+    std::env::var("DISPLAY").map_err(|_| {
+        AppError::Message(
+            "Linux screen capture requires an active X11 display (DISPLAY is unset).".to_string(),
+        )
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_default_pulse_monitor_input() -> Option<String> {
+    let from_default_sink = Command::new("pactl")
+        .arg("get-default-sink")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| {
+            let sink = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if sink.is_empty() {
+                None
+            } else {
+                Some(format!("{}.monitor", sink))
+            }
+        });
+    if from_default_sink.is_some() {
+        return from_default_sink;
+    }
+
+    let info_output = Command::new("pactl").arg("info").output().ok()?;
+    if !info_output.status.success() {
+        return None;
+    }
+    let info = String::from_utf8_lossy(&info_output.stdout);
+    info.lines().find_map(|line| {
+        let trimmed = line.trim();
+        if let Some(sink) = trimmed.strip_prefix("Default Sink:") {
+            let sink_name = sink.trim();
+            if sink_name.is_empty() {
+                None
+            } else {
+                Some(format!("{}.monitor", sink_name))
+            }
+        } else {
+            None
+        }
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn spawn_linux_ffmpeg_capture(
+    options: &RecordingOptions,
+    selection: &LinuxCaptureSelection,
+    output_path: &PathBuf,
+) -> Result<Child, AppError> {
+    let display = resolve_linux_display_env()?;
+    let fps = linux_fps(options.quality_preset);
+    let (capture_width, capture_height) = resolve_output_dimensions_linux(
+        selection.source_width,
+        selection.source_height,
+        options.quality_preset,
+    );
+
+    let mut args = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(),
+        "error".to_string(),
+        "-thread_queue_size".to_string(),
+        "1024".to_string(),
+        "-f".to_string(),
+        "x11grab".to_string(),
+        "-framerate".to_string(),
+        fps.to_string(),
+    ];
+
+    match selection.source_type {
+        SourceType::Display => {
+            args.push("-video_size".to_string());
+            args.push(format!(
+                "{}x{}",
+                selection.source_width, selection.source_height
+            ));
+            args.push("-i".to_string());
+            args.push(format!("{}+{},{}", display, selection.x, selection.y));
+        }
+        SourceType::Window => {
+            let window_id = selection.window_id.ok_or_else(|| {
+                AppError::Message("Window capture source is missing a window id".to_string())
+            })?;
+            args.push("-window_id".to_string());
+            args.push(format!("0x{:x}", window_id));
+            args.push("-i".to_string());
+            args.push(display);
+        }
+    }
+
+    if options.capture_system_audio {
+        let pulse_input =
+            resolve_default_pulse_monitor_input().unwrap_or_else(|| "default".to_string());
+        args.extend([
+            "-thread_queue_size".to_string(),
+            "1024".to_string(),
+            "-f".to_string(),
+            "pulse".to_string(),
+            "-i".to_string(),
+            pulse_input,
+        ]);
+    }
+
+    if capture_width != selection.source_width || capture_height != selection.source_height {
+        args.push("-vf".to_string());
+        args.push(format!(
+            "scale={}x{}:flags=lanczos",
+            capture_width, capture_height
+        ));
+    }
+
+    args.push("-r".to_string());
+    args.push(fps.to_string());
+    match options.codec {
+        RecordingCodec::H264 => {
+            args.extend([
+                "-c:v".to_string(),
+                "libx264".to_string(),
+                "-preset".to_string(),
+                "veryfast".to_string(),
+                "-crf".to_string(),
+                "23".to_string(),
+            ]);
+        }
+        RecordingCodec::Hevc => {
+            args.extend([
+                "-c:v".to_string(),
+                "libx265".to_string(),
+                "-preset".to_string(),
+                "medium".to_string(),
+                "-crf".to_string(),
+                "28".to_string(),
+            ]);
+        }
+    }
+
+    if options.capture_system_audio {
+        args.extend([
+            "-c:a".to_string(),
+            "aac".to_string(),
+            "-b:a".to_string(),
+            "192k".to_string(),
+            "-ac".to_string(),
+            "2".to_string(),
+            "-ar".to_string(),
+            "48000".to_string(),
+        ]);
+    } else {
+        args.push("-an".to_string());
+    }
+
+    args.extend([
+        "-movflags".to_string(),
+        "+faststart".to_string(),
+        "-y".to_string(),
+        output_path.to_string_lossy().to_string(),
+    ]);
+
+    Command::new("ffmpeg")
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| {
+            AppError::Io(format!(
+                "Failed to spawn ffmpeg for Linux capture. Ensure ffmpeg is installed and available on PATH: {}",
+                error
+            ))
+        })
+}
+
+#[cfg(target_os = "linux")]
+fn read_child_stderr(child: &mut Child) -> String {
+    if let Some(mut stderr) = child.stderr.take() {
+        let mut buffer = String::new();
+        if stderr.read_to_string(&mut buffer).is_ok() {
+            return buffer.trim().to_string();
+        }
+    }
+    String::new()
+}
+
+#[cfg(target_os = "linux")]
+fn stop_linux_ffmpeg_capture(child: &mut Child, context: &str) -> Result<(), AppError> {
+    if let Some(stdin) = child.stdin.as_mut() {
+        let _ = stdin.write_all(b"q\n");
+        let _ = stdin.flush();
+    }
+
+    let timeout = Duration::from_secs(20);
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait().map_err(|error| {
+            AppError::Io(format!("Failed to poll ffmpeg process state: {error}"))
+        })? {
+            if status.success() {
+                return Ok(());
+            }
+            let stderr = read_child_stderr(child);
+            let detail = if stderr.is_empty() {
+                status
+                    .code()
+                    .map(|code| format!("exit code {code}"))
+                    .unwrap_or_else(|| "terminated by signal".to_string())
+            } else {
+                stderr
+            };
+            return Err(AppError::Message(format!(
+                "ffmpeg failed while {context}: {detail}"
+            )));
+        }
+
+        if started.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(AppError::Message(format!(
+                "Timed out waiting for ffmpeg while {context}"
+            )));
+        }
+        thread::sleep(Duration::from_millis(120));
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_file_ready_linux(path: &PathBuf, timeout: Duration) -> Result<(), AppError> {
+    let started = Instant::now();
+    let mut last_size = 0_u64;
+    let mut stable_checks = 0_u8;
+    while started.elapsed() < timeout {
+        match std::fs::metadata(path) {
+            Ok(metadata) => {
+                let size = metadata.len();
+                if size > 1024 && size == last_size {
+                    stable_checks = stable_checks.saturating_add(1);
+                    if stable_checks >= 3 {
+                        return Ok(());
+                    }
+                } else {
+                    stable_checks = 0;
+                    last_size = size;
+                }
+            }
+            Err(_) => {
+                stable_checks = 0;
+            }
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    Err(AppError::Message(format!(
+        "Timed out waiting for Linux capture output finalization: {}",
+        path.display()
+    )))
+}
+
+#[cfg(target_os = "linux")]
+pub fn start_recording(
+    state: &SharedRecorderState,
+    options: RecordingOptions,
+) -> Result<StartRecordingResult, AppError> {
+    let project_id = Uuid::new_v4().to_string();
+    let mut selection = resolve_linux_capture_selection(
+        &options.source_id,
+        options.source_type,
+        options.preferred_display_ordinal,
+    )?;
+
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+
+    let project_dir = state_guard.recordings_dir.join(&project_id);
+    block_on_io(tokio::fs::create_dir_all(&project_dir))?
+        .map_err(|error| AppError::Io(format!("Failed to create project dir: {}", error)))?;
+
+    let screen_video_path = project_dir.join("screen.mp4");
+    let camera_video_path = if options.capture_camera {
+        Some(project_dir.join("camera.webm"))
+    } else {
+        None
+    };
+    let microphone_audio_path = if options.capture_microphone {
+        Some(project_dir.join("microphone.webm"))
+    } else {
+        None
+    };
+
+    let child = spawn_linux_ffmpeg_capture(&options, &selection, &screen_video_path)?;
+    let recording_start_time_ms = chrono::Utc::now().timestamp_millis();
+    let (capture_width, capture_height) = resolve_output_dimensions_linux(
+        selection.source_width,
+        selection.source_height,
+        options.quality_preset,
+    );
+    let capture_fps = linux_fps(options.quality_preset);
+
+    let mut session_options = options.clone();
+    session_options.source_id = selection.source_id.clone();
+    session_options.preferred_display_ordinal = selection.preferred_display_ordinal;
+
+    let session = RecordingSession {
+        project_id: project_id.clone(),
+        options: session_options,
+        state: RecordingState::Recording,
+        screen_video_path: screen_video_path.clone(),
+        camera_video_path: camera_video_path.clone(),
+        microphone_audio_path: microphone_audio_path.clone(),
+        start_time: chrono::Utc::now(),
+        recording_start_time_ms,
+        segment_index: 0,
+        capture_width,
+        capture_height,
+        capture_fps,
+        recording_codec: options.codec,
+        screen_segments: vec![screen_video_path.clone()],
+        current_segment_path: screen_video_path.clone(),
+        active_duration_ms: 0,
+        last_resume_instant: Some(Instant::now()),
+        camera_offset_ms: None,
+        microphone_offset_ms: None,
+        ffmpeg_child: Some(child),
+    };
+    state_guard.sessions.insert(project_id.clone(), session);
+
+    Ok(StartRecordingResult {
+        project_id,
+        screen_video_path: screen_video_path.to_string_lossy().to_string(),
+        camera_video_path: camera_video_path.map(|path| path.to_string_lossy().to_string()),
+        recording_start_time_ms,
+        resolved_source_id: selection.source_id,
+        fallback_source: selection.fallback_source.take(),
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub fn stop_recording(
+    state: &SharedRecorderState,
+    project_id: &str,
+) -> Result<StopRecordingResult, AppError> {
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    {
+        let session = state_guard.sessions.get_mut(project_id).ok_or_else(|| {
+            AppError::Message(format!("Recording session not found: {}", project_id))
+        })?;
+
+        if let Some(last_resume) = session.last_resume_instant.take() {
+            let elapsed = last_resume.elapsed().as_millis() as u64;
+            session.active_duration_ms = session.active_duration_ms.saturating_add(elapsed);
+        }
+
+        if let Some(mut child) = session.ffmpeg_child.take() {
+            stop_linux_ffmpeg_capture(&mut child, "stopping recording")?;
+            wait_for_file_ready_linux(&session.current_segment_path, Duration::from_secs(20))?;
+        }
+        session.state = RecordingState::Stopped;
+    }
+
+    let session = state_guard
+        .sessions
+        .remove(project_id)
+        .ok_or_else(|| AppError::Message(format!("Recording session not found: {}", project_id)))?;
+
+    Ok(StopRecordingResult {
+        project_id: session.project_id.clone(),
+        screen_video_path: session.screen_video_path.clone(),
+        screen_segment_paths: session.screen_segments.clone(),
+        camera_video_path: session.camera_video_path.clone(),
+        microphone_audio_path: session.microphone_audio_path.clone(),
+        duration_seconds: session.active_duration_ms as f64 / 1000.0,
+        source_width: session.capture_width,
+        source_height: session.capture_height,
+        camera_offset_ms: session.camera_offset_ms,
+        microphone_offset_ms: session.microphone_offset_ms,
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub fn pause_recording(state: &SharedRecorderState, project_id: &str) -> Result<(), AppError> {
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    let session = state_guard
+        .sessions
+        .get_mut(project_id)
+        .ok_or_else(|| AppError::Message(format!("Recording session not found: {}", project_id)))?;
+
+    if session.state != RecordingState::Recording {
+        return Err(AppError::Message(format!(
+            "Recording is not active for project {}",
+            project_id
+        )));
+    }
+
+    let mut child = session.ffmpeg_child.take().ok_or_else(|| {
+        AppError::Message(format!(
+            "Recording process is unavailable for project {}",
+            project_id
+        ))
+    })?;
+    stop_linux_ffmpeg_capture(&mut child, "pausing recording")?;
+    wait_for_file_ready_linux(&session.current_segment_path, Duration::from_secs(20))?;
+
+    if let Some(last_resume) = session.last_resume_instant.take() {
+        let elapsed = last_resume.elapsed().as_millis() as u64;
+        session.active_duration_ms = session.active_duration_ms.saturating_add(elapsed);
+    }
+    session.state = RecordingState::Paused;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn resume_recording(
+    state: &SharedRecorderState,
+    project_id: &str,
+) -> Result<Option<RecordingSourceFallbackUpdate>, AppError> {
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    let session = state_guard
+        .sessions
+        .get_mut(project_id)
+        .ok_or_else(|| AppError::Message(format!("Recording session not found: {}", project_id)))?;
+
+    if session.state != RecordingState::Paused {
+        return Err(AppError::Message(format!(
+            "Recording is not paused for project {}",
+            project_id
+        )));
+    }
+
+    session.segment_index = session.segment_index.saturating_add(1);
+    let project_dir = session.screen_video_path.parent().ok_or_else(|| {
+        AppError::Message(format!(
+            "Invalid video path for project {}: {}",
+            project_id,
+            session.screen_video_path.display()
+        ))
+    })?;
+    let segment_path = project_dir.join(format!("screen_part{}.mp4", session.segment_index));
+
+    let selection = resolve_linux_capture_selection(
+        &session.options.source_id,
+        session.options.source_type,
+        session.options.preferred_display_ordinal,
+    )?;
+    let child = spawn_linux_ffmpeg_capture(&session.options, &selection, &segment_path)?;
+
+    let mut fallback_update = None;
+    session.options.source_id = selection.source_id.clone();
+    session.options.preferred_display_ordinal = selection.preferred_display_ordinal;
+    if let Some(fallback_source) = selection.fallback_source {
+        fallback_update = Some(RecordingSourceFallbackUpdate {
+            source_type: selection.source_type,
+            fallback_source,
+        });
+    }
+
+    let (capture_width, capture_height) = resolve_output_dimensions_linux(
+        selection.source_width,
+        selection.source_height,
+        session.options.quality_preset,
+    );
+    session.capture_width = capture_width;
+    session.capture_height = capture_height;
+    session.capture_fps = linux_fps(session.options.quality_preset);
+    session.ffmpeg_child = Some(child);
+    session.current_segment_path = segment_path.clone();
+    session.screen_segments.push(segment_path);
+    session.last_resume_instant = Some(Instant::now());
+    session.state = RecordingState::Recording;
+
+    Ok(fallback_update)
+}
+
+#[cfg(target_os = "linux")]
+pub fn set_media_offsets(
+    state: &SharedRecorderState,
+    project_id: &str,
+    camera_offset_ms: Option<i64>,
+    microphone_offset_ms: Option<i64>,
+) -> Result<(), AppError> {
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    let session = state_guard
+        .sessions
+        .get_mut(project_id)
+        .ok_or_else(|| AppError::Message(format!("Recording session not found: {}", project_id)))?;
+    if let Some(offset) = camera_offset_ms {
+        session.camera_offset_ms = Some(offset);
+    }
+    if let Some(offset) = microphone_offset_ms {
+        session.microphone_offset_ms = Some(offset);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn get_recording_source_status(
+    state: &SharedRecorderState,
+    project_id: &str,
+) -> Result<Option<RecordingSourceStatus>, AppError> {
+    let state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    let session = if let Some(session) = state_guard.sessions.get(project_id) {
+        session
+    } else {
+        return Ok(None);
+    };
+
+    match session.options.source_type {
+        SourceType::Display => {
+            let requested_display_id =
+                parse_linux_source_id(&session.options.source_id, "display")?;
+            let displays = linux_list_display_sources()?;
+            if displays
+                .iter()
+                .any(|display| display.id == requested_display_id)
+            {
+                return Ok(Some(RecordingSourceStatus {
+                    source_type: SourceType::Display,
+                    source_id: session.options.source_id.clone(),
+                    available: true,
+                    fallback_source: None,
+                }));
+            }
+            if displays.is_empty() {
+                return Ok(Some(RecordingSourceStatus {
+                    source_type: SourceType::Display,
+                    source_id: session.options.source_id.clone(),
+                    available: false,
+                    fallback_source: None,
+                }));
+            }
+            let fallback_index = resolve_display_fallback_index(
+                displays.len(),
+                session.options.preferred_display_ordinal,
+            );
+            let fallback = displays.get(fallback_index).ok_or_else(|| {
+                AppError::Message(
+                    "No display fallback is available for status resolution".to_string(),
+                )
+            })?;
+            Ok(Some(RecordingSourceStatus {
+                source_type: SourceType::Display,
+                source_id: session.options.source_id.clone(),
+                available: false,
+                fallback_source: Some(RecordingSourceFallback {
+                    source_id: fallback.id.to_string(),
+                    source_ordinal: Some(fallback_index as u32),
+                }),
+            }))
+        }
+        SourceType::Window => {
+            let requested_window_id = parse_linux_source_id(&session.options.source_id, "window")?;
+            let windows = linux_list_window_sources()?;
+            let available_ids = windows.iter().map(|window| window.id).collect::<Vec<u32>>();
+            let Some((fallback_id, used_fallback)) =
+                resolve_window_fallback_id(requested_window_id, &available_ids)
+            else {
+                return Ok(Some(RecordingSourceStatus {
+                    source_type: SourceType::Window,
+                    source_id: session.options.source_id.clone(),
+                    available: false,
+                    fallback_source: None,
+                }));
+            };
+            Ok(Some(RecordingSourceStatus {
+                source_type: SourceType::Window,
+                source_id: session.options.source_id.clone(),
+                available: !used_fallback,
+                fallback_source: if used_fallback {
+                    Some(RecordingSourceFallback {
+                        source_id: fallback_id.to_string(),
+                        source_ordinal: None,
+                    })
+                } else {
+                    None
+                },
+            }))
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub fn get_recording_state(
+    state: &SharedRecorderState,
+    project_id: &str,
+) -> Result<Option<RecordingState>, AppError> {
+    let state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    Ok(state_guard
+        .sessions
+        .get(project_id)
+        .map(|session| session.state))
+}
+
+#[cfg(target_os = "linux")]
+pub fn get_recording_snapshot(
+    state: &SharedRecorderState,
+    project_id: &str,
+) -> Result<Option<RecordingSessionSnapshot>, AppError> {
+    let state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+    Ok(state_guard.sessions.get(project_id).map(|session| {
+        let elapsed_seconds = calculate_elapsed_duration_ms(session) as f64 / 1000.0;
+        RecordingSessionSnapshot {
+            state: session.state,
+            elapsed_seconds,
+        }
+    }))
+}
+
+#[cfg(target_os = "linux")]
+pub fn cleanup_active_recordings(state: &SharedRecorderState) -> Result<(), AppError> {
+    let mut state_guard = state
+        .lock()
+        .map_err(|e| AppError::Lock(format!("Lock error: {}", e)))?;
+
+    for session in state_guard.sessions.values_mut() {
+        if let Some(mut child) = session.ffmpeg_child.take() {
+            if let Err(error) = stop_linux_ffmpeg_capture(&mut child, "cleaning up recording") {
+                eprintln!(
+                    "Failed to stop active ffmpeg capture during cleanup for {}: {}",
+                    session.project_id, error
+                );
+            }
+        }
+        session.state = RecordingState::Stopped;
+        if let Err(error) =
+            wait_for_file_ready_linux(&session.current_segment_path, Duration::from_secs(5))
+        {
+            eprintln!(
+                "Recording file was not finalized during Linux cleanup for {} ({}): {}",
+                session.project_id,
+                session.current_segment_path.display(),
+                error
+            );
+        }
+    }
+
+    state_guard.sessions.clear();
+    Ok(())
+}
+
+// Unsupported-platform stubs
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn start_recording(
     _state: &SharedRecorderState,
     _options: RecordingOptions,
 ) -> Result<StartRecordingResult, AppError> {
     Err(AppError::Message(
-        "Screen capture is only supported on macOS".to_string(),
+        "Screen capture is only supported on macOS and Linux".to_string(),
     ))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn stop_recording(
     _state: &SharedRecorderState,
     _project_id: &str,
 ) -> Result<StopRecordingResult, AppError> {
     Err(AppError::Message(
-        "Screen capture is only supported on macOS".to_string(),
+        "Screen capture is only supported on macOS and Linux".to_string(),
     ))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn pause_recording(_state: &SharedRecorderState, _project_id: &str) -> Result<(), AppError> {
     Err(AppError::Message(
-        "Screen capture is only supported on macOS".to_string(),
+        "Screen capture is only supported on macOS and Linux".to_string(),
     ))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn resume_recording(
     _state: &SharedRecorderState,
     _project_id: &str,
 ) -> Result<Option<RecordingSourceFallbackUpdate>, AppError> {
     Err(AppError::Message(
-        "Screen capture is only supported on macOS".to_string(),
+        "Screen capture is only supported on macOS and Linux".to_string(),
     ))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn set_media_offsets(
     _state: &SharedRecorderState,
     _project_id: &str,
@@ -1195,11 +2034,11 @@ pub fn set_media_offsets(
     _microphone_offset_ms: Option<i64>,
 ) -> Result<(), AppError> {
     Err(AppError::Message(
-        "Screen capture is only supported on macOS".to_string(),
+        "Screen capture is only supported on macOS and Linux".to_string(),
     ))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn get_recording_source_status(
     _state: &SharedRecorderState,
     _project_id: &str,
@@ -1207,7 +2046,7 @@ pub fn get_recording_source_status(
     Ok(None)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn get_recording_state(
     _state: &SharedRecorderState,
     _project_id: &str,
@@ -1215,7 +2054,7 @@ pub fn get_recording_state(
     Ok(None)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn get_recording_snapshot(
     _state: &SharedRecorderState,
     _project_id: &str,
@@ -1223,7 +2062,7 @@ pub fn get_recording_snapshot(
     Ok(None)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn cleanup_active_recordings(_state: &SharedRecorderState) -> Result<(), AppError> {
     Ok(())
 }
@@ -1292,6 +2131,8 @@ mod tests {
             stream: None,
             #[cfg(target_os = "macos")]
             recording_output: None,
+            #[cfg(target_os = "linux")]
+            ffmpeg_child: None,
         }
     }
 

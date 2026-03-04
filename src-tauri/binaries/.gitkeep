@@ -5,10 +5,12 @@
 # 1. Download a static ffmpeg build for your platform:
 #    - macOS ARM64: https://evermeet.cx/ffmpeg/ or brew install ffmpeg
 #    - macOS x64: https://evermeet.cx/ffmpeg/
+#    - Linux x64: static build from your distro/vendor
 #
 # 2. Copy/rename the ffmpeg binary with the correct target triple suffix:
 #    - macOS ARM64: ffmpeg-aarch64-apple-darwin
 #    - macOS x64: ffmpeg-x86_64-apple-darwin
+#    - Linux x64: ffmpeg-x86_64-unknown-linux-gnu
 #
 # 3. Make sure the binary is executable:
 #    chmod +x ffmpeg-*
