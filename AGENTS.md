@@ -16,6 +16,7 @@ All standard dev commands are in `package.json` scripts and `README.md § Develo
 - `pnpm tauri dev` launches the native desktop window via GTK/WebKit.
 - The `libEGL` warnings about DRI3 at startup are harmless (no GPU acceleration in the VM) and can be ignored.
 - `libayatana-appindicator3-dev` must be installed or the app will panic at launch (tray icon dependency).
+- `libgbm-dev` must be installed for Linux backend test/build linking (`-lgbm` from Linux capture stack).
 - `libpipewire-0.3-dev` must be installed for backend compilation (`xcap` Linux capture dependency).
 - The standalone `pnpm dev` (Vite only) serves on `http://localhost:1420`, but the React app will error in a plain browser because it depends on Tauri runtime APIs. Always use `pnpm tauri dev` to see the working UI.
 - Port 1420 must be free before running `pnpm tauri dev`; it starts Vite internally and will fail with `strictPort: true` if the port is occupied.
