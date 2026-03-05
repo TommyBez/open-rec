@@ -32,23 +32,35 @@ recoverable stop/finalization flows, and practical export tooling.
 - Node.js + pnpm
 - Rust toolchain
 
+## Workspace layout
+
+- `apps/desktop` - the Tauri desktop app (React + Vite frontend and Rust backend)
+- `apps/landing` - the Next.js landing page with release download links
+- `docs` - repository documentation and workflow references
+
 ## Development quick start
 
 ```bash
 # install dependencies
 pnpm install
 
-# frontend checks
-pnpm run verify:frontend
+# workspace checks
 pnpm run verify:docs
-pnpm run test:frontend
+pnpm run check
+pnpm run test
 
 # backend checks
-cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
-cargo test --manifest-path src-tauri/Cargo.toml
+pnpm --filter @openrec/desktop run cargo:fmt
+pnpm --filter @openrec/desktop run cargo:test
 
-# run app
-pnpm tauri dev
+# desktop frontend only
+pnpm run dev
+
+# landing page
+pnpm run dev:landing
+
+# native desktop app
+pnpm run tauri:dev
 ```
 
 Single-command local baseline:
@@ -60,7 +72,8 @@ pnpm run verify:ci-local
 ## Build
 
 ```bash
-pnpm tauri build
+pnpm run build
+pnpm run tauri:build
 ```
 
 ## Documentation map
