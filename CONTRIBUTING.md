@@ -13,8 +13,8 @@ pnpm run verify:ci-local
 This includes:
 
 - docs link verification
-- frontend type/component-size checks
-- frontend runtime tests
+- workspace frontend checks (`apps/desktop` + `apps/landing`)
+- desktop frontend runtime tests
 - backend fmt/check/test
 
 ## 2) Documentation update expectations

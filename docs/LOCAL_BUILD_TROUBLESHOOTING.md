@@ -29,8 +29,8 @@ references are taken from temporary collections returned by ScreenCaptureKit API
 ### Verification
 
 ```bash
-cargo check --manifest-path src-tauri/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
+pnpm --filter @openrec/desktop run cargo:check
+pnpm --filter @openrec/desktop run cargo:test
 ```
 
 CI guard:

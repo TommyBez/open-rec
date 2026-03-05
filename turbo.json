@@ -1,0 +1,50 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "check": {
+      "dependsOn": ["^check"]
+    },
+    "test": {
+      "dependsOn": ["check"],
+      "outputs": []
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "tauri:dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "tauri:build": {
+      "dependsOn": ["build"],
+      "outputs": ["src-tauri/target/**"]
+    },
+    "bundle:linux": {
+      "dependsOn": ["build"],
+      "outputs": ["src-tauri/target/**"]
+    },
+    "bundle:macos": {
+      "dependsOn": ["build"],
+      "outputs": ["src-tauri/target/**"]
+    },
+    "cargo:fmt": {
+      "outputs": []
+    },
+    "cargo:check": {
+      "outputs": []
+    },
+    "cargo:test": {
+      "dependsOn": ["cargo:check"],
+      "outputs": []
+    },
+    "cargo:build": {
+      "dependsOn": ["cargo:check"],
+      "outputs": ["src-tauri/target/**"]
+    }
+  }
+}

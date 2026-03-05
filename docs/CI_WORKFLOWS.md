@@ -9,9 +9,9 @@ runs can appear as **cancelled** during rapid push sequences.
 
 | Workflow | Purpose | Host |
 |---|---|---|
-| `frontend-checks.yml` | docs links, frontend type checks, frontend tests, frontend build | `ubuntu-latest` |
+| `frontend-checks.yml` | docs links, Turborepo frontend checks for `apps/desktop` + `apps/landing`, desktop frontend tests, frontend app builds | `ubuntu-latest` |
 | `backend-checks.yml` | docs links + backend check/test/build on Linux+macOS (fmt on Linux lane; macOS lane configures Swift runtime paths before tests) | matrix: `ubuntu-latest`, `macos-14` |
-| `unsigned-macos-build.yml` | unsigned DMG release builds + checksums | `macos-14` |
+| `release-artifacts.yml` | merged-PR-to-`main` desktop release flow: patch bump desktop version, create release tag, build Linux (`.AppImage`, `.deb`) and unsigned macOS (`.dmg`) artifacts, upload stable filenames + checksums | `ubuntu-latest`, `macos-14` |
 
 ## Why runs may show as “cancelled”
 
@@ -49,17 +49,28 @@ gh run view <run-id> --log
 If a run is marked `cancelled`, first verify whether a newer run for the same
 branch/commit range completed successfully before treating it as a blocker.
 
+## Release workflow behavior
+
+`release-artifacts.yml` only runs for PRs that are actually merged into `main`.
+
+- If the merged PR does **not** change `apps/desktop/**` (excluding the desktop version files), the workflow exits without creating a release.
+- If the merged PR **does** change desktop app files, the workflow:
+  1. bumps the desktop patch version in `apps/desktop/package.json`, `apps/desktop/src-tauri/Cargo.toml`, and `apps/desktop/src-tauri/tauri.conf.json`
+  2. commits that version bump back to `main`
+  3. creates a GitHub release tag for the bumped version
+  4. builds and uploads the desktop artifacts for macOS and Linux
+
 ## Local equivalents
 
 Use these commands before pushing:
 
 ```bash
 pnpm run verify:docs
-pnpm run verify:frontend
-pnpm run test:frontend
-cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
-cargo check --manifest-path src-tauri/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
+pnpm run check
+pnpm run test
+pnpm --filter @openrec/desktop run cargo:fmt
+pnpm --filter @openrec/desktop run cargo:check
+pnpm --filter @openrec/desktop run cargo:test
 ```
 
 Or run the single aggregate command:

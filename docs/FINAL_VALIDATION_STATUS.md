@@ -19,13 +19,13 @@ The following checks are run repeatedly and are expected green:
 
 - `pnpm run verify:docs`
   - markdown link integrity for `README.md` + `docs/*.md`
-- `pnpm run verify:frontend`
-  - component-size guard
-  - TypeScript compile (`tsc --noEmit`)
-- `pnpm run test:frontend`
-  - frontend runtime/store regression suites
-- `cargo fmt --all --manifest-path src-tauri/Cargo.toml`
-- `cargo test --manifest-path src-tauri/Cargo.toml`
+- `pnpm run check`
+  - `apps/desktop` component-size + TypeScript checks
+  - `apps/landing` lint + TypeScript checks
+- `pnpm run test`
+  - desktop frontend runtime/store regression suites
+- `pnpm --filter @openrec/desktop run cargo:fmt`
+- `pnpm --filter @openrec/desktop run cargo:test`
   - backend coverage around recording/export/project/opened-path reliability helpers
 - CI includes cross-platform backend validation (`backend-checks.yml` matrix on Linux + macOS)
   - catches host-specific compile regressions in both Linux and macOS code paths

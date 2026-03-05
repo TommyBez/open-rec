@@ -19,8 +19,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -35,11 +33,11 @@ jobs:
       - name: Verify documentation links
         run: pnpm run verify:docs
 
-      - name: Run component-size and type checks
-        run: pnpm run verify:frontend
+      - name: Run frontend checks
+        run: pnpm exec turbo run check --filter=@openrec/desktop --filter=@openrec/landing
 
-      - name: Run frontend regression tests
-        run: pnpm run test:frontend
+      - name: Run desktop frontend regression tests
+        run: pnpm exec turbo run test --filter=@openrec/desktop
 
-      - name: Build frontend bundle
-        run: pnpm run build:frontend
+      - name: Build frontend apps
+        run: pnpm exec turbo run build --filter=@openrec/desktop --filter=@openrec/landing
