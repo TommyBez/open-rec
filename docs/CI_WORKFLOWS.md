@@ -9,9 +9,9 @@ runs can appear as **cancelled** during rapid push sequences.
 
 | Workflow | Purpose | Host |
 |---|---|---|
-| `frontend-checks.yml` | docs links, frontend type checks, frontend tests, frontend build | `ubuntu-latest` |
+| `frontend-checks.yml` | docs links, Turborepo frontend checks for `apps/desktop` + `apps/landing`, desktop frontend tests, frontend app builds | `ubuntu-latest` |
 | `backend-checks.yml` | docs links + backend check/test/build on Linux+macOS (fmt on Linux lane; macOS lane configures Swift runtime paths before tests) | matrix: `ubuntu-latest`, `macos-14` |
-| `unsigned-macos-build.yml` | unsigned DMG release builds + checksums | `macos-14` |
+| `release-artifacts.yml` | release-only Linux (`.AppImage`, `.deb`) and unsigned macOS (`.dmg`) artifact builds with stable filenames + checksums | `ubuntu-latest`, `macos-14` |
 
 ## Why runs may show as “cancelled”
 
@@ -55,11 +55,11 @@ Use these commands before pushing:
 
 ```bash
 pnpm run verify:docs
-pnpm run verify:frontend
-pnpm run test:frontend
-cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
-cargo check --manifest-path src-tauri/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
+pnpm run check
+pnpm run test
+pnpm --filter @openrec/desktop run cargo:fmt
+pnpm --filter @openrec/desktop run cargo:check
+pnpm --filter @openrec/desktop run cargo:test
 ```
 
 Or run the single aggregate command:

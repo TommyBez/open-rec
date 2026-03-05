@@ -1,4 +1,4 @@
-name: Build Unsigned macOS DMGs
+name: Release Artifacts
 
 on:
   workflow_dispatch:
@@ -9,17 +9,23 @@ permissions:
   contents: write
 
 concurrency:
-  group: unsigned-macos-build-${{ github.ref }}
+  group: release-artifacts-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-unsigned-dmg:
-    name: Build ${{ matrix.target }} DMG
+  build-macos:
+    name: Build macOS artifact (${{ matrix.label }})
     runs-on: macos-14
     strategy:
       fail-fast: false
       matrix:
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+        include:
+          - target: aarch64-apple-darwin
+            label: apple-silicon
+            output_name: openrec-macos-apple-silicon.dmg
+          - target: x86_64-apple-darwin
+            label: intel
+            output_name: openrec-macos-intel.dmg
 
     steps:
       - name: Checkout repository
@@ -48,39 +54,110 @@ jobs:
       - name: Verify documentation links
         run: pnpm run verify:docs
 
-      - name: Verify frontend constraints
-        run: pnpm run verify:frontend
+      - name: Verify desktop frontend constraints
+        run: pnpm exec turbo run check --filter=@openrec/desktop
 
-      - name: Run frontend regression tests
-        run: pnpm run test:frontend
+      - name: Run desktop frontend regression tests
+        run: pnpm exec turbo run test --filter=@openrec/desktop
 
       - name: Build unsigned DMG
-        run: pnpm tauri build --bundles dmg --target ${{ matrix.target }}
+        run: pnpm --filter @openrec/desktop run bundle:macos -- --target ${{ matrix.target }}
 
-      - name: Generate SHA256 checksum
+      - name: Stage artifact with stable filename
         run: |
-          cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg
-          for dmg in *.dmg; do
-            shasum -a 256 "$dmg" > "$dmg.sha256"
-          done
+          mkdir -p release-artifacts
+          dmg_path="$(echo apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg)"
+          cp "$dmg_path" "release-artifacts/${{ matrix.output_name }}"
+          shasum -a 256 "release-artifacts/${{ matrix.output_name }}" > "release-artifacts/${{ matrix.output_name }}.sha256"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: openrec-${{ matrix.target }}-dmg
+          name: ${{ matrix.output_name }}
           path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.sha256
+            release-artifacts/${{ matrix.output_name }}
+            release-artifacts/${{ matrix.output_name }}.sha256
           if-no-files-found: error
 
-  upload-release-assets:
-    name: Upload DMGs to GitHub Release
-    if: github.event_name == 'release'
-    needs: build-unsigned-dmg
+  build-linux:
+    name: Build Linux artifacts
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download all DMG artifacts
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Tauri Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libayatana-appindicator3-dev \
+            libgbm-dev \
+            libgtk-3-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libpipewire-0.3-dev \
+            libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify documentation links
+        run: pnpm run verify:docs
+
+      - name: Verify desktop frontend constraints
+        run: pnpm exec turbo run check --filter=@openrec/desktop
+
+      - name: Run desktop frontend regression tests
+        run: pnpm exec turbo run test --filter=@openrec/desktop
+
+      - name: Build Linux bundles
+        run: pnpm --filter @openrec/desktop run bundle:linux
+
+      - name: Stage artifacts with stable filenames
+        run: |
+          mkdir -p release-artifacts
+          appimage_path="$(echo apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage)"
+          deb_path="$(echo apps/desktop/src-tauri/target/release/bundle/deb/*.deb)"
+          cp "$appimage_path" "release-artifacts/openrec-linux-x86_64.AppImage"
+          cp "$deb_path" "release-artifacts/openrec-linux-x86_64.deb"
+          shasum -a 256 "release-artifacts/openrec-linux-x86_64.AppImage" > "release-artifacts/openrec-linux-x86_64.AppImage.sha256"
+          shasum -a 256 "release-artifacts/openrec-linux-x86_64.deb" > "release-artifacts/openrec-linux-x86_64.deb.sha256"
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openrec-linux-artifacts
+          path: |
+            release-artifacts/openrec-linux-x86_64.AppImage
+            release-artifacts/openrec-linux-x86_64.AppImage.sha256
+            release-artifacts/openrec-linux-x86_64.deb
+            release-artifacts/openrec-linux-x86_64.deb.sha256
+          if-no-files-found: error
+
+  upload-release-assets:
+    name: Upload artifacts to GitHub Release
+    if: github.event_name == 'release'
+    needs: [build-macos, build-linux]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all release artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist-artifacts
@@ -90,15 +167,16 @@ jobs:
           RELEASE_BODY: ${{ github.event.release.body }}
         run: |
           cat > dist-artifacts/UNSIGNED_BUILD_NOTES.md <<'EOF'
-          # Unsigned OpenRec builds
+          # OpenRec release builds
 
-          These binaries are intentionally unsigned (`signingIdentity: null`).
+          macOS binaries are intentionally unsigned (`signingIdentity: null`).
           On first launch macOS Gatekeeper will block the app; use:
 
           1. Finder → Applications
           2. Right-click `Open Rec.app`
           3. Click **Open** and confirm
 
+          Linux bundles target x86_64 systems and expect `ffmpeg` on `PATH`.
           Also grant Screen Recording/Microphone/Camera permissions when prompted.
 
           For full instructions see `docs/UNSIGNED_MAC_INSTALL.md`.
@@ -119,7 +197,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           shopt -s globstar nullglob
-          for file in dist-artifacts/**/*.dmg dist-artifacts/**/*.sha256 dist-artifacts/UNSIGNED_BUILD_NOTES.md dist-artifacts/RELEASE_CHANGELOG.md; do
+          for file in dist-artifacts/**/*.dmg dist-artifacts/**/*.AppImage dist-artifacts/**/*.deb dist-artifacts/**/*.sha256 dist-artifacts/UNSIGNED_BUILD_NOTES.md dist-artifacts/RELEASE_CHANGELOG.md; do
             echo "Uploading $file"
             gh release upload "$RELEASE_TAG" "$file" --clobber
           done

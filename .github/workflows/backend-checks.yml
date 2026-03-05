@@ -66,16 +66,16 @@ jobs:
 
       - name: Enforce Rust formatting
         if: matrix.os == 'ubuntu-latest'
-        run: cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
+        run: pnpm exec turbo run cargo:fmt --filter=@openrec/desktop
 
       - name: Compile Rust backend
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: pnpm exec turbo run cargo:check --filter=@openrec/desktop
 
       - name: Run Rust backend tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: pnpm exec turbo run cargo:test --filter=@openrec/desktop
 
       - name: Build Rust backend
-        run: cargo build --manifest-path src-tauri/Cargo.toml
+        run: pnpm exec turbo run cargo:build --filter=@openrec/desktop
 
       - name: Verify documentation links
         run: pnpm run verify:docs
