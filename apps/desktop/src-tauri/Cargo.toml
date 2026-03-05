@@ -1,6 +1,6 @@
 [package]
 name = "open-rec"
-version = "0.1.0"
+version = "0.1.1"
 description = "A cross-platform screen and camera recording app with editing capabilities"
 authors = ["Tommaso"]
 edition = "2021"
