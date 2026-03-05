@@ -12,7 +12,7 @@ interface ExportDialogActionsProps {
 
 export function ExportDialogActions({
   exportStatus,
-  jobId,
+  jobId: _jobId,
   onClose,
   onRetry,
   onCancelExport,
@@ -31,7 +31,13 @@ export function ExportDialogActions({
   if (exportStatus === "exporting") {
     return (
       <div className="flex w-full justify-end">
-        <Button variant="outline" onClick={onCancelExport} disabled={!jobId}>
+        <Button
+          variant="outline"
+          onMouseDown={() => {
+            onCancelExport();
+          }}
+          onClick={onCancelExport}
+        >
           Cancel
         </Button>
       </div>

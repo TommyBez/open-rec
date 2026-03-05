@@ -52,12 +52,18 @@ export function useEditorKeyboardShortcuts({
 }: UseEditorKeyboardShortcutsOptions) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest("input,textarea,select,[contenteditable='true']")) {
+      const isModifier = e.metaKey || e.ctrlKey;
+      const keyLower = e.key.toLowerCase();
+      const isUndoShortcut = isModifier && keyLower === "z" && !e.shiftKey;
+      const isRedoShortcut = isModifier && ((keyLower === "z" && e.shiftKey) || keyLower === "y");
+      const target = e.target;
+      if (
+        target instanceof Element &&
+        target.closest("input,textarea,select,[contenteditable='true']")
+      ) {
         return;
       }
 
-      const isModifier = e.metaKey || e.ctrlKey;
       if (e.altKey && selectedAnnotationId && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
         const step = e.shiftKey ? 0.03 : 0.01;
@@ -67,13 +73,13 @@ export function useEditorKeyboardShortcuts({
         if (e.key === "ArrowDown") nudgeSelectedAnnotation(0, step);
         return;
       }
-      if (isModifier && e.key === "z" && !e.shiftKey) {
+      if (isUndoShortcut) {
         e.preventDefault();
-        if (canUndo) undo();
+        undo();
       }
-      if (isModifier && ((e.key === "z" && e.shiftKey) || e.key.toLowerCase() === "y")) {
+      if (isRedoShortcut) {
         e.preventDefault();
-        if (canRedo) redo();
+        redo();
       }
       if (isModifier && e.key.toLowerCase() === "s") {
         e.preventDefault();

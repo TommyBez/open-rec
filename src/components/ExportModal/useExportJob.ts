@@ -45,6 +45,9 @@ export function useExportJob({
   const [outputPath, setOutputPath] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
+  const cancelRequestedJobIdRef = useRef<string | null>(null);
+  const cancelledJobIdsRef = useRef<Set<string>>(new Set());
+  const pendingCancelRequestRef = useRef(false);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
 
   const cleanupListeners = useCallback(() => {
@@ -61,6 +64,22 @@ export function useExportJob({
     setOutputPath(null);
     setJobId(null);
     jobIdRef.current = null;
+    cancelRequestedJobIdRef.current = null;
+    cancelledJobIdsRef.current.clear();
+    pendingCancelRequestRef.current = false;
+  }, []);
+
+  const requestCancelForJob = useCallback(async (activeJobId: string) => {
+    if (
+      cancelRequestedJobIdRef.current === activeJobId ||
+      cancelledJobIdsRef.current.has(activeJobId)
+    ) {
+      return;
+    }
+    cancelRequestedJobIdRef.current = activeJobId;
+    cancelledJobIdsRef.current.add(activeJobId);
+    pendingCancelRequestRef.current = false;
+    await invoke("cancel_export", { jobId: activeJobId });
   }, []);
 
   useEffect(() => () => cleanupListeners(), [cleanupListeners]);
@@ -73,6 +92,9 @@ export function useExportJob({
     setOutputPath(null);
     setJobId(null);
     jobIdRef.current = null;
+    cancelRequestedJobIdRef.current = null;
+    cancelledJobIdsRef.current.clear();
+    pendingCancelRequestRef.current = false;
     cleanupListeners();
 
     try {
@@ -81,12 +103,19 @@ export function useExportJob({
       const unlistenProgress = await listen<ExportProgressEvent>("export-progress", (event) => {
         if (!jobIdRef.current || event.payload.jobId !== jobIdRef.current) return;
         const currentTimeSeconds = event.payload.progressSeconds;
+        const percent = Math.min((currentTimeSeconds / displayDuration) * 100, 99);
         setCurrentTime(currentTimeSeconds);
-        setProgress(Math.min((currentTimeSeconds / displayDuration) * 100, 99));
+        setProgress(percent);
       });
       unlistenRefs.current.push(unlistenProgress);
 
       const unlistenComplete = await listen<ExportCompleteEvent>("export-complete", (event) => {
+        if (
+          cancelRequestedJobIdRef.current === event.payload.jobId ||
+          cancelledJobIdsRef.current.has(event.payload.jobId)
+        ) {
+          return;
+        }
         if (!jobIdRef.current || event.payload.jobId !== jobIdRef.current) return;
         setProgress(100);
         setExportStatus("complete");
@@ -97,6 +126,12 @@ export function useExportJob({
       unlistenRefs.current.push(unlistenComplete);
 
       const unlistenError = await listen<ExportErrorEvent>("export-error", (event) => {
+        if (
+          cancelRequestedJobIdRef.current === event.payload.jobId ||
+          cancelledJobIdsRef.current.has(event.payload.jobId)
+        ) {
+          return;
+        }
         if (!jobIdRef.current || event.payload.jobId !== jobIdRef.current) return;
         setExportStatus("error");
         setError(event.payload.message);
@@ -107,12 +142,14 @@ export function useExportJob({
 
       const unlistenCancelled = await listen<{ jobId: string }>("export-cancelled", (event) => {
         if (!jobIdRef.current || event.payload.jobId !== jobIdRef.current) return;
+        cancelledJobIdsRef.current.add(event.payload.jobId);
         setExportStatus("idle");
         setProgress(0);
         setCurrentTime(0);
         setError("Export cancelled");
         setJobId(null);
         jobIdRef.current = null;
+        cancelRequestedJobIdRef.current = null;
       });
       unlistenRefs.current.push(unlistenCancelled);
 
@@ -127,23 +164,39 @@ export function useExportJob({
       });
       setJobId(result.jobId);
       jobIdRef.current = result.jobId;
+      if (pendingCancelRequestRef.current) {
+        try {
+          await requestCancelForJob(result.jobId);
+        } catch (error) {
+          setExportStatus("error");
+          setError(error instanceof Error ? error.message : "Failed to cancel export");
+          setJobId(null);
+          jobIdRef.current = null;
+        }
+      }
     } catch (err) {
       setExportStatus("error");
       setError(err instanceof Error ? err.message : "Export failed");
       setJobId(null);
       jobIdRef.current = null;
+      cancelRequestedJobIdRef.current = null;
+      pendingCancelRequestRef.current = false;
     }
-  }, [cleanupListeners, displayDuration, onSaveProject, options, projectId]);
+  }, [cleanupListeners, displayDuration, onSaveProject, options, projectId, requestCancelForJob]);
 
   const handleCancelExport = useCallback(async () => {
-    if (!jobId) return;
+    const activeJobId = jobIdRef.current ?? jobId;
+    if (!activeJobId) {
+      pendingCancelRequestRef.current = true;
+      return;
+    }
     try {
-      await invoke("cancel_export", { jobId });
+      await requestCancelForJob(activeJobId);
     } catch (err) {
       setExportStatus("error");
       setError(err instanceof Error ? err.message : "Failed to cancel export");
     }
-  }, [jobId]);
+  }, [jobId, requestCancelForJob]);
 
   return {
     exportStatus,
