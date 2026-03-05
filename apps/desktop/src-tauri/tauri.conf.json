@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Open Rec",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.tommaso.open-rec",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -28,7 +28,10 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**", "$APPDATA/recordings/**"]
+        "scope": [
+          "$APPDATA/**",
+          "$APPDATA/recordings/**"
+        ]
       }
     }
   },
@@ -47,16 +50,23 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["openrec"],
+        "ext": [
+          "openrec"
+        ],
         "name": "OpenRec Project",
         "description": "OpenRec editable recording project",
         "role": "Editor",
         "mimeType": "application/x-openrec-project",
-        "contentTypes": ["com.tommaso.open-rec.project"],
+        "contentTypes": [
+          "com.tommaso.open-rec.project"
+        ],
         "rank": "Owner",
         "exportedType": {
           "identifier": "com.tommaso.open-rec.project",
-          "conformsTo": ["public.json", "public.data"]
+          "conformsTo": [
+            "public.json",
+            "public.data"
+          ]
         }
       }
     ],
