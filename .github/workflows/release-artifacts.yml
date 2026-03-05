@@ -1,20 +1,156 @@
 name: Release Artifacts
 
 on:
-  workflow_dispatch:
-  release:
-    types: [published]
+  pull_request_target:
+    types: [closed]
+    branches:
+      - main
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
-  group: release-artifacts-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-artifacts-main
+  cancel-in-progress: false
 
 jobs:
+  prepare-release:
+    name: Prepare desktop release
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.desktop-changed.outputs.desktop_changed }}
+      release_tag: ${{ steps.release-metadata.outputs.release_tag }}
+      release_version: ${{ steps.release-metadata.outputs.release_version }}
+      release_sha: ${{ steps.release-metadata.outputs.release_sha }}
+    steps:
+      - name: Checkout merged main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Detect desktop app changes
+        id: desktop-changed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ignoredDesktopFiles = new Set([
+              "apps/desktop/package.json",
+              "apps/desktop/src-tauri/Cargo.toml",
+              "apps/desktop/src-tauri/tauri.conf.json",
+            ]);
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+
+            const desktopChanged = files.some(({ filename }) =>
+              filename.startsWith("apps/desktop/") && !ignoredDesktopFiles.has(filename),
+            );
+
+            core.setOutput("desktop_changed", desktopChanged ? "true" : "false");
+
+            if (!desktopChanged) {
+              core.notice("Merged PR did not change desktop app files, skipping release.");
+            }
+
+      - name: Detect existing release bump for this PR
+        id: existing-release
+        if: steps.desktop-changed.outputs.desktop_changed == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          existing_entry="$(git log --format='%H%x09%s' --grep "^chore: bump desktop version for PR #$PR_NUMBER to v" -n 1)"
+          if [ -z "$existing_entry" ]; then
+            echo "already_released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          release_sha="${existing_entry%%$'\t'*}"
+          subject="${existing_entry#*$'\t'}"
+          release_tag="${subject##* to }"
+          release_version="${release_tag#v}"
+
+          echo "already_released=true" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release_version=$release_version" >> "$GITHUB_OUTPUT"
+
+      - name: Bump desktop patch version
+        id: version
+        if: steps.desktop-changed.outputs.desktop_changed == 'true' && steps.existing-release.outputs.already_released != 'true'
+        run: |
+          result="$(node ./scripts/bump-desktop-version.mjs)"
+          echo "$result"
+          release_version="$(printf '%s' "$result" | node -e 'const data = JSON.parse(require("node:fs").readFileSync(0, "utf8")); process.stdout.write(data.nextVersion)')"
+          echo "release_version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v$release_version" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push version bump
+        id: push
+        if: steps.desktop-changed.outputs.desktop_changed == 'true' && steps.existing-release.outputs.already_released != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/package.json apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/tauri.conf.json
+          git commit -m "chore: bump desktop version for PR #${{ github.event.pull_request.number }} to ${{ steps.version.outputs.release_tag }}"
+          git push origin HEAD:main
+          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release metadata
+        id: release-metadata
+        if: steps.desktop-changed.outputs.desktop_changed == 'true'
+        run: |
+          if [ "${{ steps.existing-release.outputs.already_released }}" = "true" ]; then
+            echo "release_tag=${{ steps.existing-release.outputs.release_tag }}" >> "$GITHUB_OUTPUT"
+            echo "release_version=${{ steps.existing-release.outputs.release_version }}" >> "$GITHUB_OUTPUT"
+            echo "release_sha=${{ steps.existing-release.outputs.release_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_tag=${{ steps.version.outputs.release_tag }}" >> "$GITHUB_OUTPUT"
+            echo "release_version=${{ steps.version.outputs.release_version }}" >> "$GITHUB_OUTPUT"
+            echo "release_sha=${{ steps.push.outputs.release_sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release
+        if: steps.desktop-changed.outputs.desktop_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release-metadata.outputs.release_tag }}
+          RELEASE_VERSION: ${{ steps.release-metadata.outputs.release_version }}
+          RELEASE_SHA: ${{ steps.release-metadata.outputs.release_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+            exit 0
+          fi
+
+          cat > release-notes.md <<EOF
+          Automated desktop release for merged PR #$PR_NUMBER.
+
+          Source PR title: $PR_TITLE
+          EOF
+
+          gh release create "$RELEASE_TAG" \
+            --target "$RELEASE_SHA" \
+            --title "OpenRec $RELEASE_TAG" \
+            --notes-file release-notes.md
+
   build-macos:
     name: Build macOS artifact (${{ matrix.label }})
+    if: needs.prepare-release.outputs.should_release == 'true'
+    needs: prepare-release
     runs-on: macos-14
     strategy:
       fail-fast: false
@@ -28,8 +164,10 @@ jobs:
             output_name: openrec-macos-intel.dmg
 
     steps:
-      - name: Checkout repository
+      - name: Checkout release commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -81,11 +219,15 @@ jobs:
 
   build-linux:
     name: Build Linux artifacts
+    if: needs.prepare-release.outputs.should_release == 'true'
+    needs: prepare-release
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout release commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -107,6 +249,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libayatana-appindicator3-dev \
+            libfuse2t64 \
             libgbm-dev \
             libgtk-3-dev \
             libjavascriptcoregtk-4.1-dev \
@@ -152,8 +295,8 @@ jobs:
 
   upload-release-assets:
     name: Upload artifacts to GitHub Release
-    if: github.event_name == 'release'
-    needs: [build-macos, build-linux]
+    if: needs.prepare-release.outputs.should_release == 'true'
+    needs: [prepare-release, build-macos, build-linux]
     runs-on: ubuntu-latest
 
     steps:
@@ -162,9 +305,11 @@ jobs:
         with:
           path: dist-artifacts
 
-      - name: Build unsigned changelog note
+      - name: Build release notes attachments
         env:
-          RELEASE_BODY: ${{ github.event.release.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
         run: |
           cat > dist-artifacts/UNSIGNED_BUILD_NOTES.md <<'EOF'
           # OpenRec release builds
@@ -181,20 +326,18 @@ jobs:
 
           For full instructions see `docs/UNSIGNED_MAC_INSTALL.md`.
           EOF
-          {
-            echo "# OpenRec Release Changelog"
-            echo
-            if [ -n "$RELEASE_BODY" ]; then
-              printf '%s\n' "$RELEASE_BODY"
-            else
-              echo "_No release notes were provided._"
-            fi
-          } > dist-artifacts/RELEASE_CHANGELOG.md
+          cat > dist-artifacts/RELEASE_CHANGELOG.md <<EOF
+          # OpenRec $RELEASE_TAG
+
+          Automated desktop release for merged PR #$PR_NUMBER.
+
+          Source PR title: $PR_TITLE
+          EOF
 
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
         run: |
           shopt -s globstar nullglob
           for file in dist-artifacts/**/*.dmg dist-artifacts/**/*.AppImage dist-artifacts/**/*.deb dist-artifacts/**/*.sha256 dist-artifacts/UNSIGNED_BUILD_NOTES.md dist-artifacts/RELEASE_CHANGELOG.md; do
