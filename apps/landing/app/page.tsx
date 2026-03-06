@@ -1,23 +1,23 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { capabilityCards, downloads, releaseSignals } from "@/lib/downloads";
+import { capabilityCards, downloads, positioningPillars } from "@/lib/downloads";
 
-const operatingMetrics = [
+const pageHighlights = [
   {
-    label: "latest builds",
-    value: `${downloads.length}`,
-    detail: "download links always point at the newest GitHub release",
+    label: "workflow",
+    value: `${capabilityCards.length} parts`,
+    detail: "capture, edit, and export in one desktop app",
   },
   {
-    label: "core workflows",
-    value: `${capabilityCards.length}`,
-    detail: "capture, edit, and export live in one desktop flow",
+    label: "price",
+    value: "free",
+    detail: "no trial gate between you and a usable recorder",
   },
   {
-    label: "proof checks",
-    value: `${releaseSignals.length}`,
-    detail: "CI-produced releases with checksums beside each binary",
+    label: "source",
+    value: "open",
+    detail: "public code, issues, and downloads on GitHub",
   },
 ] as const;
 
@@ -33,13 +33,19 @@ export default function Home() {
               OpenRec / Desktop
             </Badge>
             <p className="hidden text-sm text-muted-foreground sm:block">
-              Desktop recorder and editor for teams that need proof they can share.
+              Free and open-source screen recorder and editor for clear handoffs.
             </p>
           </div>
 
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <a className="rounded-full px-3 py-1.5 transition hover:text-foreground" href="#features">
+              Features
+            </a>
+            <a className="rounded-full px-3 py-1.5 transition hover:text-foreground" href="#open-source">
+              Open source
+            </a>
             <a className="rounded-full px-3 py-1.5 transition hover:text-foreground" href="#downloads">
-              Latest builds
+              Download
             </a>
             <a
               className="rounded-full px-3 py-1.5 transition hover:text-foreground"
@@ -57,7 +63,10 @@ export default function Home() {
             <div className="eyebrow-grid absolute inset-y-0 right-0 hidden w-2/5 opacity-30 lg:block" />
             <CardHeader className="relative gap-6 px-6 pt-8 pb-0 sm:px-8 sm:pt-10">
               <div className="flex flex-wrap items-center gap-3">
-                <Badge className="rounded-full">Preview builds available</Badge>
+                <Badge className="rounded-full">Free to download</Badge>
+                <Badge variant="outline" className="rounded-full border-white/12 bg-white/4">
+                  Open source
+                </Badge>
                 <Badge variant="outline" className="rounded-full border-white/12 bg-white/4">
                   macOS + Linux
                 </Badge>
@@ -65,15 +74,14 @@ export default function Home() {
 
               <div className="max-w-4xl space-y-5">
                 <p className="font-mono text-xs uppercase tracking-[0.3em] text-primary/90">
-                  OpenRec / record the issue, trim the noise, share the proof
+                  OpenRec / record it once, share the full context
                 </p>
                 <h1 className="max-w-4xl font-display text-5xl leading-[0.9] tracking-[-0.06em] text-balance sm:text-6xl lg:text-7xl">
-                  A screen recorder and editor built for clear handoffs.
+                  The free, open-source screen recorder built for real handoffs.
                 </h1>
                 <p className="max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">
-                  OpenRec helps support, QA, and product teams capture the bug, explain the fix,
-                  or document the workflow in one place. Record screen, window, camera, and mic,
-                  clean it up on a timeline, then export a file people can actually use.
+                  Capture screen, window, camera, and mic in one desktop app. Trim the timeline,
+                  highlight the important moment, then export an MP4 or GIF people can actually use.
                 </p>
               </div>
             </CardHeader>
@@ -81,21 +89,21 @@ export default function Home() {
             <CardContent className="relative mt-8 flex flex-col gap-8 px-6 pb-8 sm:px-8 sm:pb-10">
               <div className="flex flex-wrap gap-3">
                 <Button asChild size="lg" className="rounded-full px-6">
-                  <a href="#downloads">Download the latest preview</a>
+                  <a href="#downloads">Download free builds</a>
                 </Button>
                 <Button asChild variant="outline" size="lg" className="rounded-full px-6">
                   <a
-                    href="https://github.com/TommyBez/open-rec/blob/main/docs/UNSIGNED_MAC_INSTALL.md"
+                    href="https://github.com/TommyBez/open-rec"
                     target="_blank"
                     rel="noreferrer"
                   >
-                    See install steps
+                    View on GitHub
                   </a>
                 </Button>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
-                {operatingMetrics.map((metric) => (
+                {pageHighlights.map((metric) => (
                   <div
                     key={metric.label}
                     className="rounded-[1.4rem] border border-white/10 bg-black/20 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
@@ -116,67 +124,55 @@ export default function Home() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="font-mono text-xs uppercase tracking-[0.28em] text-primary/90">
-                    Release confidence
+                    Why OpenRec
                   </p>
                   <CardTitle className="mt-3 font-display text-3xl tracking-[-0.05em]">
-                    Fresh builds, easy to verify.
+                    Keep the pitch simple.
                   </CardTitle>
                 </div>
                 <span className="signal-dot mt-1 size-3 rounded-full bg-primary" />
               </div>
               <CardDescription className="text-sm leading-7">
-                You should not have to dig through release notes to find a usable build. Every
-                download points to the latest GitHub release asset, and every binary includes a
-                checksum for verification.
+                It records, edits, and exports in one desktop app. The code is public. The
+                download is free.
               </CardDescription>
             </CardHeader>
 
             <CardContent className="mt-8 flex flex-1 flex-col gap-6 px-6 pb-8">
               <ul className="grid gap-4">
-                {releaseSignals.map((signal) => (
+                {positioningPillars.map((pillar) => (
                   <li
-                    key={signal}
+                    key={pillar.title}
                     className="rounded-[1.25rem] border border-white/10 bg-white/3 px-4 py-4 text-sm leading-7 text-foreground/92"
                   >
                     <div className="flex gap-3">
                       <span className="signal-dot mt-2 size-2.5 shrink-0 rounded-full bg-primary" />
-                      <span>{signal}</span>
+                      <div>
+                        <p className="font-medium text-foreground">{pillar.title}</p>
+                        <p className="mt-1 text-muted-foreground">{pillar.body}</p>
+                      </div>
                     </div>
                   </li>
                 ))}
               </ul>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[1.25rem] border border-white/10 bg-black/25 p-4">
-                  <p className="font-mono text-[0.68rem] uppercase tracking-[0.24em] text-primary/85">
-                    macOS previews
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    macOS builds are intentionally unsigned so new previews can go live as soon as
-                    CI publishes them.
-                  </p>
-                </div>
-                <div className="rounded-[1.25rem] border border-white/10 bg-black/25 p-4">
-                  <p className="font-mono text-[0.68rem] uppercase tracking-[0.24em] text-primary/85">
-                    Linux setup
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Linux recording expects `ffmpeg` on `PATH` before you start your first capture.
-                  </p>
-                </div>
-              </div>
+              <Button asChild variant="outline" className="mt-auto h-11 rounded-full">
+                <a href="https://github.com/TommyBez/open-rec" target="_blank" rel="noreferrer">
+                  Browse the source
+                </a>
+              </Button>
             </CardContent>
           </Card>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <section id="features" className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
           <Card className="landing-panel border-white/10">
             <CardHeader className="gap-3 px-6 pt-8 pb-0 sm:px-8">
               <Badge variant="outline" className="rounded-full border-primary/25 bg-primary/8 text-primary">
-                Why teams use it
+                Features
               </Badge>
               <CardTitle className="font-display text-4xl tracking-[-0.05em] text-balance sm:text-5xl">
-                From request to shareable file, in one workflow.
+                Everything you need to go from rough capture to clean share.
               </CardTitle>
             </CardHeader>
 
@@ -198,46 +194,51 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card className="landing-panel border-white/10">
+          <Card id="open-source" className="landing-panel border-white/10">
             <CardHeader className="gap-3 px-6 pt-8 pb-0">
-              <Badge variant="outline" className="rounded-full border-white/12 bg-white/4">
-                Before first launch
+              <Badge variant="outline" className="rounded-full border-primary/25 bg-primary/8 text-primary">
+                Open source + free
               </Badge>
               <CardTitle className="font-display text-4xl tracking-[-0.05em]">
-                Setup notes with no surprises.
+                No black box. No subscription wall.
               </CardTitle>
               <CardDescription className="text-sm leading-7">
-                The page tells you what to expect before you install, so the first recording feels
-                straightforward instead of confusing.
+                OpenRec is public on GitHub and free to use. Review the code, file issues, fork it,
+                or just download it when you need a recorder that does the job.
               </CardDescription>
             </CardHeader>
 
             <CardContent className="mt-8 flex flex-col gap-4 px-6 pb-8">
               <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
                 <p className="font-mono text-[0.68rem] uppercase tracking-[0.24em] text-primary/85">
-                  macOS
+                  Use it right away
                 </p>
                 <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                  Open the unsigned app from Finder with a right click, then approve the security
-                  dialog once so you can launch the preview normally.
+                  Download a free build for macOS or Linux and start recording in a workflow that
+                  stays focused on the capture itself.
                 </p>
               </div>
               <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
                 <p className="font-mono text-[0.68rem] uppercase tracking-[0.24em] text-primary/85">
-                  Linux
+                  Inspect how it works
                 </p>
                 <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                  Make sure `ffmpeg` is on `PATH` before recording so the capture pipeline can
-                  start cleanly.
+                  Follow the roadmap, read the code, and keep up with improvements in the open on
+                  GitHub.
+                </p>
+              </div>
+              <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
+                <p className="font-mono text-[0.68rem] uppercase tracking-[0.24em] text-primary/85">
+                  Keep control of the output
+                </p>
+                <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                  Export standard files, save projects for later edits, and reuse your work instead
+                  of locking it into a closed workflow.
                 </p>
               </div>
               <Button asChild variant="outline" className="mt-auto h-11 rounded-full">
-                <a
-                  href="https://github.com/TommyBez/open-rec/blob/main/docs/UNSIGNED_MAC_INSTALL.md"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Read the full install guide
+                <a href="https://github.com/TommyBez/open-rec" target="_blank" rel="noreferrer">
+                  Explore the GitHub repo
                 </a>
               </Button>
             </CardContent>
@@ -247,14 +248,14 @@ export default function Home() {
         <section id="downloads" className="grid gap-5 pt-2">
           <div className="max-w-3xl space-y-4 px-1">
             <Badge variant="outline" className="rounded-full border-primary/25 bg-primary/8 text-primary">
-              Artifacts
+              Free downloads
             </Badge>
             <h2 className="font-display text-4xl tracking-[-0.05em] text-balance sm:text-5xl lg:text-6xl">
-              Download the latest preview build in one place.
+              Pick your platform and start recording.
             </h2>
             <p className="text-base leading-8 text-muted-foreground">
-              Pick your platform, grab the current binary, and verify it with the published SHA256
-              file. No release-page hunting required.
+              Choose the build that matches your machine and grab OpenRec without pricing plans,
+              upgrade prompts, or extra friction.
             </p>
           </div>
 
@@ -283,10 +284,7 @@ export default function Home() {
                   <div className="h-px w-full bg-white/10" />
                   <div className="flex flex-wrap gap-3">
                     <Button asChild className="rounded-full">
-                      <a href={download.href}>Download preview</a>
-                    </Button>
-                    <Button asChild variant="outline" className="rounded-full">
-                      <a href={download.checksumHref}>Check SHA256</a>
+                      <a href={download.href}>Download free build</a>
                     </Button>
                   </div>
                 </CardContent>
