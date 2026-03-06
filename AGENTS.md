@@ -18,6 +18,7 @@ All standard dev commands are in `package.json` scripts and `README.md § Develo
 - `libayatana-appindicator3-dev` must be installed or the app will panic at launch (tray icon dependency).
 - `libgbm-dev` must be installed for Linux backend test/build linking (`-lgbm` from Linux capture stack).
 - `libpipewire-0.3-dev` must be installed for backend compilation (`xcap` Linux capture dependency).
+- `librsvg2-dev` must be installed for Linux AppImage bundling (`linuxdeploy-plugin-gtk` needs `librsvg-2.0.pc`).
 - The standalone `pnpm run dev` in the workspace runs the desktop Vite frontend only and serves on `http://localhost:1420`, but the React app will error in a plain browser because it depends on Tauri runtime APIs. Use `pnpm run tauri:dev` to exercise the working desktop UI.
 - `pnpm run dev:landing` starts the Next.js landing page.
 - Port 1420 must be free before running `pnpm run tauri:dev`; it starts Vite internally and will fail with `strictPort: true` if the port is occupied.
