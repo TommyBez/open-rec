@@ -324,6 +324,7 @@ jobs:
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
           RELEASE_SHA: ${{ needs.prepare-release.outputs.release_sha }}
         run: |
@@ -344,15 +345,17 @@ jobs:
             exit 1
           fi
 
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" \
+              --repo "$GH_REPO" \
               --title "OpenRec $RELEASE_TAG" \
               --notes-file dist-artifacts/RELEASE_CHANGELOG.md
-            gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+            gh release upload "$RELEASE_TAG" "${files[@]}" --repo "$GH_REPO" --clobber
             exit 0
           fi
 
           gh release create "$RELEASE_TAG" "${files[@]}" \
+            --repo "$GH_REPO" \
             --target "$RELEASE_SHA" \
             --title "OpenRec $RELEASE_TAG" \
             --notes-file dist-artifacts/RELEASE_CHANGELOG.md
