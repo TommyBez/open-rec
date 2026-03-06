@@ -11,7 +11,7 @@ runs can appear as **cancelled** during rapid push sequences.
 |---|---|---|
 | `frontend-checks.yml` | docs links, Turborepo frontend checks for `apps/desktop` + `apps/landing`, desktop frontend tests, frontend app builds | `ubuntu-latest` |
 | `backend-checks.yml` | docs links + backend check/test/build on Linux+macOS (fmt on Linux lane; macOS lane configures Swift runtime paths before tests) | matrix: `ubuntu-latest`, `macos-14` |
-| `release-artifacts.yml` | merged-PR-to-`main` desktop release flow: patch bump desktop version, build Linux (`.AppImage`, `.deb`) and unsigned macOS (`.dmg`) artifacts on native runners, then create/update the GitHub release with stable filenames + checksums | `ubuntu-22.04`, `macos-15-arm64`, `macos-15-intel` |
+| `release-artifacts.yml` | merged-PR-to-`main` desktop release flow: patch bump desktop version, build Linux (`.AppImage`, `.deb`) and unsigned macOS (`.dmg`) artifacts on native runners, then create/update the GitHub release with stable filenames + checksums | `ubuntu-22.04`, `macos-15-xlarge`, `macos-15-intel` |
 
 ## Why runs may show as “cancelled”
 
