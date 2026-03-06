@@ -5,50 +5,55 @@ export const downloads = [
   {
     platform: "macOS",
     artifact: "Apple Silicon DMG",
-    note: "Preview build for M-series Macs. Unsigned so fresh releases can ship faster.",
+    note: "Free desktop build for M-series Macs.",
     href: `${latestReleaseBase}/openrec-macos-apple-silicon.dmg`,
-    checksumHref: `${latestReleaseBase}/openrec-macos-apple-silicon.dmg.sha256`,
   },
   {
     platform: "macOS",
     artifact: "Intel DMG",
-    note: "Preview build for Intel Macs. Unsigned so fresh releases can ship faster.",
+    note: "Free desktop build for Intel Macs.",
     href: `${latestReleaseBase}/openrec-macos-intel.dmg`,
-    checksumHref: `${latestReleaseBase}/openrec-macos-intel.dmg.sha256`,
   },
   {
     platform: "Linux",
     artifact: "AppImage",
-    note: "Portable x86_64 build for Ubuntu, Fedora, and other major distros.",
+    note: "Portable free build for Ubuntu, Fedora, and other major distros.",
     href: `${latestReleaseBase}/openrec-linux-x86_64.AppImage`,
-    checksumHref: `${latestReleaseBase}/openrec-linux-x86_64.AppImage.sha256`,
   },
   {
     platform: "Linux",
     artifact: "Debian package",
-    note: "Native x86_64 installer for Debian and Ubuntu systems.",
+    note: "Native free installer for Debian and Ubuntu systems.",
     href: `${latestReleaseBase}/openrec-linux-x86_64.deb`,
-    checksumHref: `${latestReleaseBase}/openrec-linux-x86_64.deb.sha256`,
   },
 ] as const;
 
 export const capabilityCards = [
   {
-    title: "Capture the full story",
-    body: "Record your screen or a window, then add camera and microphone tracks so the handoff includes context instead of guesswork.",
+    title: "Capture every layer",
+    body: "Record the full screen or one window, then add camera and microphone tracks so bug reports, walkthroughs, and demos keep their context.",
   },
   {
-    title: "Clean up before you send",
-    body: "Trim dead space, cut mistakes, add zoom, adjust speed, and annotate the timeline so people land on the important moment faster.",
+    title: "Edit before you share",
+    body: "Trim mistakes, cut waiting, zoom into the important moment, adjust speed, and annotate the timeline without bouncing into another app.",
   },
   {
-    title: "Export what the next person needs",
-    body: "Send an MP4 or GIF, reopen the project later, and hand over a file your team can review, verify, and reuse.",
+    title: "Export and reuse",
+    body: "Export MP4 or GIF, save the project, and come back later when you need a cleaner version or a follow-up clip.",
   },
 ] as const;
 
-export const releaseSignals = [
-  "Every download points to the latest GitHub release asset.",
-  "macOS and Linux preview builds are produced in CI.",
-  "Each binary ships with a published SHA256 checksum.",
+export const positioningPillars = [
+  {
+    title: "Free to download",
+    body: "Install OpenRec on macOS or Linux and start recording without trials, seat limits, or upgrade gates.",
+  },
+  {
+    title: "Open source by default",
+    body: "Inspect the code, follow development on GitHub, and adapt the workflow to your own setup.",
+  },
+  {
+    title: "Built for useful captures",
+    body: "Screen, window, camera, mic, timeline edits, and clean exports all live in one desktop workflow.",
+  },
 ] as const;
