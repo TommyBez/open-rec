@@ -140,9 +140,13 @@ jobs:
           - runner: macos-15
             label: apple-silicon
             output_name: openrec-macos-apple-silicon.dmg
+            ffmpeg_arch: arm64
+            target_triple: aarch64-apple-darwin
           - runner: macos-15-intel
             label: intel
             output_name: openrec-macos-intel.dmg
+            ffmpeg_arch: amd64
+            target_triple: x86_64-apple-darwin
 
     steps:
       - name: Checkout release commit
@@ -172,6 +176,20 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Download static ffmpeg for macOS bundling
+        run: |
+          cd apps/desktop/src-tauri/binaries
+          curl -fSL -o ffmpeg.zip \
+            "https://ffmpeg.martin-riedl.de/redirect/latest/macos/${{ matrix.ffmpeg_arch }}/release/ffmpeg.zip"
+          unzip -o ffmpeg.zip
+          mv ffmpeg "ffmpeg-${{ matrix.target_triple }}"
+          chmod +x "ffmpeg-${{ matrix.target_triple }}"
+          echo "--- Sanity check ---"
+          ./ffmpeg-${{ matrix.target_triple }} -version
+          echo "--- File size ---"
+          ls -lh "ffmpeg-${{ matrix.target_triple }}"
+          rm -f ffmpeg.zip
 
       - name: Verify documentation links
         run: pnpm run verify:docs
@@ -324,6 +342,7 @@ jobs:
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
           RELEASE_SHA: ${{ needs.prepare-release.outputs.release_sha }}
         run: |
