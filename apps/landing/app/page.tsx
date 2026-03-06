@@ -5,19 +5,19 @@ import { capabilityCards, downloads, releaseSignals } from "@/lib/downloads";
 
 const operatingMetrics = [
   {
-    label: "release assets",
+    label: "latest builds",
     value: `${downloads.length}`,
-    detail: "direct links stay pinned to the latest GitHub release",
+    detail: "download links always point at the newest GitHub release",
   },
   {
-    label: "workflow blocks",
+    label: "core workflows",
     value: `${capabilityCards.length}`,
-    detail: "capture, edit, and export map to one operator flow",
+    detail: "capture, edit, and export live in one desktop flow",
   },
   {
-    label: "trust signals",
+    label: "proof checks",
     value: `${releaseSignals.length}`,
-    detail: "CI-backed builds with checksums beside each binary",
+    detail: "CI-produced releases with checksums beside each binary",
   },
 ] as const;
 
@@ -33,7 +33,7 @@ export default function Home() {
               OpenRec / Desktop
             </Badge>
             <p className="hidden text-sm text-muted-foreground sm:block">
-              Recorder and editor for teams that need a file they can trust.
+              Desktop recorder and editor for teams that need proof they can share.
             </p>
           </div>
 
@@ -57,7 +57,7 @@ export default function Home() {
             <div className="eyebrow-grid absolute inset-y-0 right-0 hidden w-2/5 opacity-30 lg:block" />
             <CardHeader className="relative gap-6 px-6 pt-8 pb-0 sm:px-8 sm:pt-10">
               <div className="flex flex-wrap items-center gap-3">
-                <Badge className="rounded-full">Release-ready previews</Badge>
+                <Badge className="rounded-full">Preview builds available</Badge>
                 <Badge variant="outline" className="rounded-full border-white/12 bg-white/4">
                   macOS + Linux
                 </Badge>
@@ -65,15 +65,15 @@ export default function Home() {
 
               <div className="max-w-4xl space-y-5">
                 <p className="font-mono text-xs uppercase tracking-[0.3em] text-primary/90">
-                  OpenRec / capture the proof, edit the mess, ship the file
+                  OpenRec / record the issue, trim the noise, share the proof
                 </p>
                 <h1 className="max-w-4xl font-display text-5xl leading-[0.9] tracking-[-0.06em] text-balance sm:text-6xl lg:text-7xl">
-                  Broadcast-grade screen capture for messy, real-world handoff.
+                  A screen recorder and editor built for clear handoffs.
                 </h1>
                 <p className="max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">
-                  OpenRec is a desktop recorder and timeline editor built for operators, support
-                  engineers, and product teams who need recoverable capture flows and verifiable
-                  release artifacts instead of another throwaway browser tab.
+                  OpenRec helps support, QA, and product teams capture the bug, explain the fix,
+                  or document the workflow in one place. Record screen, window, camera, and mic,
+                  clean it up on a timeline, then export a file people can actually use.
                 </p>
               </div>
             </CardHeader>
@@ -81,7 +81,7 @@ export default function Home() {
             <CardContent className="relative mt-8 flex flex-col gap-8 px-6 pb-8 sm:px-8 sm:pb-10">
               <div className="flex flex-wrap gap-3">
                 <Button asChild size="lg" className="rounded-full px-6">
-                  <a href="#downloads">Download preview builds</a>
+                  <a href="#downloads">Download the latest preview</a>
                 </Button>
                 <Button asChild variant="outline" size="lg" className="rounded-full px-6">
                   <a
@@ -89,7 +89,7 @@ export default function Home() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Read install notes
+                    See install steps
                   </a>
                 </Button>
               </div>
@@ -116,17 +116,18 @@ export default function Home() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="font-mono text-xs uppercase tracking-[0.28em] text-primary/90">
-                    Release signal
+                    Release confidence
                   </p>
                   <CardTitle className="mt-3 font-display text-3xl tracking-[-0.05em]">
-                    CI-backed delivery posture.
+                    Fresh builds, easy to verify.
                   </CardTitle>
                 </div>
                 <span className="signal-dot mt-1 size-3 rounded-full bg-primary" />
               </div>
               <CardDescription className="text-sm leading-7">
-                Preview builds stay current because every download points at the latest GitHub
-                release asset. Checksums ship beside each binary for verification.
+                You should not have to dig through release notes to find a usable build. Every
+                download points to the latest GitHub release asset, and every binary includes a
+                checksum for verification.
               </CardDescription>
             </CardHeader>
 
@@ -148,20 +149,19 @@ export default function Home() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[1.25rem] border border-white/10 bg-black/25 p-4">
                   <p className="font-mono text-[0.68rem] uppercase tracking-[0.24em] text-primary/85">
-                    unsigned previews
+                    macOS previews
                   </p>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    macOS builds are intentionally unsigned so the page can expose fresh preview
-                    artifacts as soon as CI publishes them.
+                    macOS builds are intentionally unsigned so new previews can go live as soon as
+                    CI publishes them.
                   </p>
                 </div>
                 <div className="rounded-[1.25rem] border border-white/10 bg-black/25 p-4">
                   <p className="font-mono text-[0.68rem] uppercase tracking-[0.24em] text-primary/85">
-                    linux-ready
+                    Linux setup
                   </p>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Linux packages assume `ffmpeg` is available on `PATH` before you start
-                    recording.
+                    Linux recording expects `ffmpeg` on `PATH` before you start your first capture.
                   </p>
                 </div>
               </div>
@@ -173,10 +173,10 @@ export default function Home() {
           <Card className="landing-panel border-white/10">
             <CardHeader className="gap-3 px-6 pt-8 pb-0 sm:px-8">
               <Badge variant="outline" className="rounded-full border-primary/25 bg-primary/8 text-primary">
-                Operating posture
+                Why teams use it
               </Badge>
               <CardTitle className="font-display text-4xl tracking-[-0.05em] text-balance sm:text-5xl">
-                Built for the moment when the recording has to survive contact with reality.
+                From request to shareable file, in one workflow.
               </CardTitle>
             </CardHeader>
 
@@ -201,14 +201,14 @@ export default function Home() {
           <Card className="landing-panel border-white/10">
             <CardHeader className="gap-3 px-6 pt-8 pb-0">
               <Badge variant="outline" className="rounded-full border-white/12 bg-white/4">
-                Installation guidance
+                Before first launch
               </Badge>
               <CardTitle className="font-display text-4xl tracking-[-0.05em]">
-                Preview build caveats, upfront.
+                Setup notes with no surprises.
               </CardTitle>
               <CardDescription className="text-sm leading-7">
-                The landing page stays honest about platform setup so the first run feels expected,
-                not mysterious.
+                The page tells you what to expect before you install, so the first recording feels
+                straightforward instead of confusing.
               </CardDescription>
             </CardHeader>
 
@@ -218,8 +218,8 @@ export default function Home() {
                   macOS
                 </p>
                 <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                  Open the unsigned app from Finder with a right click, then confirm the security
-                  dialog to whitelist the preview build.
+                  Open the unsigned app from Finder with a right click, then approve the security
+                  dialog once so you can launch the preview normally.
                 </p>
               </div>
               <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
@@ -227,8 +227,8 @@ export default function Home() {
                   Linux
                 </p>
                 <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                  Ensure `ffmpeg` is on `PATH` before recording so the capture pipeline can start
-                  cleanly.
+                  Make sure `ffmpeg` is on `PATH` before recording so the capture pipeline can
+                  start cleanly.
                 </p>
               </div>
               <Button asChild variant="outline" className="mt-auto h-11 rounded-full">
@@ -237,7 +237,7 @@ export default function Home() {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Read the install guide
+                  Read the full install guide
                 </a>
               </Button>
             </CardContent>
@@ -250,11 +250,11 @@ export default function Home() {
               Artifacts
             </Badge>
             <h2 className="font-display text-4xl tracking-[-0.05em] text-balance sm:text-5xl lg:text-6xl">
-              Download the latest release builds without hunting through release notes.
+              Download the latest preview build in one place.
             </h2>
             <p className="text-base leading-8 text-muted-foreground">
-              Every link points to the latest GitHub release asset. Grab the binary, verify the
-              published SHA256 file, and move on with the recording.
+              Pick your platform, grab the current binary, and verify it with the published SHA256
+              file. No release-page hunting required.
             </p>
           </div>
 
@@ -283,10 +283,10 @@ export default function Home() {
                   <div className="h-px w-full bg-white/10" />
                   <div className="flex flex-wrap gap-3">
                     <Button asChild className="rounded-full">
-                      <a href={download.href}>Download build</a>
+                      <a href={download.href}>Download preview</a>
                     </Button>
                     <Button asChild variant="outline" className="rounded-full">
-                      <a href={download.checksumHref}>View SHA256</a>
+                      <a href={download.checksumHref}>Check SHA256</a>
                     </Button>
                   </div>
                 </CardContent>
