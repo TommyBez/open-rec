@@ -11,7 +11,7 @@ runs can appear as **cancelled** during rapid push sequences.
 |---|---|---|
 | `frontend-checks.yml` | docs links, Turborepo frontend checks for `apps/desktop` + `apps/landing`, desktop frontend tests, frontend app builds | `ubuntu-latest` |
 | `backend-checks.yml` | docs links + backend check/test/build on Linux+macOS (fmt on Linux lane; macOS lane configures Swift runtime paths before tests) | matrix: `ubuntu-latest`, `macos-14` |
-| `release-artifacts.yml` | merged-PR-to-`main` desktop release flow: patch bump desktop version, create release tag, build Linux (`.AppImage`, `.deb`) and unsigned macOS (`.dmg`) artifacts, upload stable filenames + checksums | `ubuntu-latest`, `macos-14` |
+| `release-artifacts.yml` | merged-PR-to-`main` desktop release flow: patch bump desktop version, build Linux (`.AppImage`, `.deb`) and unsigned macOS (`.dmg`) artifacts on native runners, then create/update the GitHub release with stable filenames + checksums | `ubuntu-22.04`, `macos-15-arm64`, `macos-15-intel` |
 
 ## Why runs may show as “cancelled”
 
@@ -53,12 +53,12 @@ branch/commit range completed successfully before treating it as a blocker.
 
 `release-artifacts.yml` only runs for PRs that are actually merged into `main`.
 
-- If the merged PR does **not** change `apps/desktop/**` (excluding the desktop version files), the workflow exits without creating a release.
-- If the merged PR **does** change desktop app files, the workflow:
+- If the merged PR does **not** change `apps/desktop/**` (excluding the desktop version files), `.github/workflows/release-artifacts.yml`, or `apps/landing/lib/downloads.ts`, the workflow exits without creating a release.
+- If the merged PR **does** change desktop app files or release/download metadata, the workflow:
   1. bumps the desktop patch version in `apps/desktop/package.json`, `apps/desktop/src-tauri/Cargo.toml`, and `apps/desktop/src-tauri/tauri.conf.json`
   2. commits that version bump back to `main`
-  3. creates a GitHub release tag for the bumped version
-  4. builds and uploads the desktop artifacts for macOS and Linux
+  3. builds the desktop artifacts for Linux plus native Apple Silicon and Intel macOS runners
+  4. creates or updates the GitHub release only after those assets exist, then uploads the stable filenames + checksums
 
 ## Local equivalents
 

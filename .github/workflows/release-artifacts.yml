@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Detect desktop app changes
+      - name: Detect release-relevant changes
         id: desktop-changed
         uses: actions/github-script@v7
         with:
@@ -45,6 +45,10 @@ jobs:
               "apps/desktop/package.json",
               "apps/desktop/src-tauri/Cargo.toml",
               "apps/desktop/src-tauri/tauri.conf.json",
+            ]);
+            const releaseTriggerFiles = new Set([
+              ".github/workflows/release-artifacts.yml",
+              "apps/landing/lib/downloads.ts",
             ]);
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
@@ -55,13 +59,16 @@ jobs:
             });
 
             const desktopChanged = files.some(({ filename }) =>
-              filename.startsWith("apps/desktop/") && !ignoredDesktopFiles.has(filename),
+              releaseTriggerFiles.has(filename) ||
+              (filename.startsWith("apps/desktop/") && !ignoredDesktopFiles.has(filename)),
             );
 
             core.setOutput("desktop_changed", desktopChanged ? "true" : "false");
 
             if (!desktopChanged) {
-              core.notice("Merged PR did not change desktop app files, skipping release.");
+              core.notice(
+                "Merged PR did not change desktop app files or release/download metadata, skipping release.",
+              );
             }
 
       - name: Detect existing release bump for this PR
@@ -121,45 +128,19 @@ jobs:
             echo "release_sha=${{ steps.push.outputs.release_sha }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create GitHub release
-        if: steps.desktop-changed.outputs.desktop_changed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.release-metadata.outputs.release_tag }}
-          RELEASE_VERSION: ${{ steps.release-metadata.outputs.release_version }}
-          RELEASE_SHA: ${{ steps.release-metadata.outputs.release_sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists."
-            exit 0
-          fi
-
-          cat > release-notes.md <<EOF
-          Automated desktop release for merged PR #$PR_NUMBER.
-
-          Source PR title: $PR_TITLE
-          EOF
-
-          gh release create "$RELEASE_TAG" \
-            --target "$RELEASE_SHA" \
-            --title "OpenRec $RELEASE_TAG" \
-            --notes-file release-notes.md
-
   build-macos:
     name: Build macOS artifact (${{ matrix.label }})
     if: needs.prepare-release.outputs.should_release == 'true'
     needs: prepare-release
-    runs-on: macos-14
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-apple-darwin
+          - runner: macos-15-arm64
             label: apple-silicon
             output_name: openrec-macos-apple-silicon.dmg
-          - target: x86_64-apple-darwin
+          - runner: macos-15-intel
             label: intel
             output_name: openrec-macos-intel.dmg
 
@@ -181,8 +162,13 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+
+      - name: Configure Swift runtime paths for macOS bundling
+        run: |
+          SWIFT_RUNTIME_ROOT="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift"
+          SWIFT_RUNTIME_PATHS="${SWIFT_RUNTIME_ROOT}/macosx:${SWIFT_RUNTIME_ROOT}:/usr/lib/swift"
+          echo "DYLD_FALLBACK_LIBRARY_PATH=${SWIFT_RUNTIME_PATHS}:${DYLD_FALLBACK_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=${SWIFT_RUNTIME_PATHS}:${DYLD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -197,12 +183,12 @@ jobs:
         run: pnpm exec turbo run test --filter=@openrec/desktop
 
       - name: Build unsigned DMG
-        run: pnpm --filter @openrec/desktop run bundle:macos -- --target ${{ matrix.target }}
+        run: pnpm --filter @openrec/desktop run bundle:macos
 
       - name: Stage artifact with stable filename
         run: |
           mkdir -p release-artifacts
-          dmg_path="$(echo apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg)"
+          dmg_path="$(echo apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg)"
           cp "$dmg_path" "release-artifacts/${{ matrix.output_name }}"
           shasum -a 256 "release-artifacts/${{ matrix.output_name }}" > "release-artifacts/${{ matrix.output_name }}.sha256"
 
@@ -219,7 +205,7 @@ jobs:
     name: Build Linux artifacts
     if: needs.prepare-release.outputs.should_release == 'true'
     needs: prepare-release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout release commit
@@ -244,14 +230,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            desktop-file-utils \
             libayatana-appindicator3-dev \
-            libfuse2t64 \
+            libfuse2 \
             libgbm-dev \
             libgtk-3-dev \
             libjavascriptcoregtk-4.1-dev \
             libpipewire-0.3-dev \
             libsoup-3.0-dev \
-            libwebkit2gtk-4.1-dev
+            libwebkit2gtk-4.1-dev \
+            patchelf
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -266,6 +254,8 @@ jobs:
         run: pnpm exec turbo run test --filter=@openrec/desktop
 
       - name: Build Linux bundles
+        env:
+          NO_STRIP: "true"
         run: pnpm --filter @openrec/desktop run bundle:linux
 
       - name: Stage artifacts with stable filenames
@@ -330,13 +320,38 @@ jobs:
           Source PR title: $PR_TITLE
           EOF
 
-      - name: Upload release assets
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
+          RELEASE_SHA: ${{ needs.prepare-release.outputs.release_sha }}
         run: |
           shopt -s globstar nullglob
-          for file in dist-artifacts/**/*.dmg dist-artifacts/**/*.AppImage dist-artifacts/**/*.deb dist-artifacts/**/*.sha256 dist-artifacts/UNSIGNED_BUILD_NOTES.md dist-artifacts/RELEASE_CHANGELOG.md; do
-            echo "Uploading $file"
-            gh release upload "$RELEASE_TAG" "$file" --clobber
-          done
+          binary_files=(
+            dist-artifacts/**/*.dmg
+            dist-artifacts/**/*.AppImage
+            dist-artifacts/**/*.deb
+          )
+          files=(
+            "${binary_files[@]}"
+            dist-artifacts/**/*.sha256
+            dist-artifacts/UNSIGNED_BUILD_NOTES.md
+          )
+
+          if [ "${#binary_files[@]}" -eq 0 ]; then
+            echo "No desktop binaries were produced."
+            exit 1
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "OpenRec $RELEASE_TAG" \
+              --notes-file dist-artifacts/RELEASE_CHANGELOG.md
+            gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+            exit 0
+          fi
+
+          gh release create "$RELEASE_TAG" "${files[@]}" \
+            --target "$RELEASE_SHA" \
+            --title "OpenRec $RELEASE_TAG" \
+            --notes-file dist-artifacts/RELEASE_CHANGELOG.md
