@@ -21,9 +21,9 @@ const monoFont = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OpenRec | Broadcast-grade screen capture, ready to download",
+  title: "OpenRec | Record, edit, and share screen captures",
   description:
-    "OpenRec is a desktop recorder and editor with recoverable capture flows, timeline editing, and downloadable macOS and Linux preview builds.",
+    "OpenRec is a desktop screen recorder and editor for support, QA, and product teams. Capture screen, window, camera, and mic, edit on a timeline, and export MP4 or GIF on macOS and Linux.",
 };
 
 export default function RootLayout({
