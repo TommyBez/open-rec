@@ -66,3 +66,27 @@ pnpm run verify:docs
 ```
 
 This validates internal markdown file links for `README.md` and `docs/*.md`.
+
+## 4) Linux AppImage bundling fails with `failed to run linuxdeploy`
+
+### Symptom
+
+`pnpm --filter @openrec/desktop run bundle:linux` fails during the AppImage step with:
+
+- `failed to bundle project 'failed to run linuxdeploy'`
+- verbose logs from `linuxdeploy-plugin-gtk` mentioning `librsvg-2.0.pc`
+
+### Cause
+
+The GTK linuxdeploy plugin needs the `librsvg-2.0` pkg-config metadata during
+AppImage creation. On Ubuntu runners this is provided by `librsvg2-dev`.
+
+### Fix / check
+
+Install the missing package, then retry the Linux bundle:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y librsvg2-dev
+NO_STRIP=true pnpm --filter @openrec/desktop run bundle:linux
+```
