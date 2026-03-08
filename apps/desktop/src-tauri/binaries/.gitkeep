@@ -1,18 +1,20 @@
 # This directory contains external binaries bundled with the app
-# 
-# To set up ffmpeg for development:
 #
-# 1. Download a static ffmpeg build for your platform:
-#    - macOS ARM64: https://evermeet.cx/ffmpeg/ or brew install ffmpeg
-#    - macOS x64: https://evermeet.cx/ffmpeg/
-#    - Linux x64: static build from your distro/vendor
+# macOS ffmpeg binaries
+# --------------------
+# macOS static ffmpeg binaries are NOT committed to the repository.
+# They are downloaded automatically during CI from:
+#   https://ffmpeg.martin-riedl.de/redirect/latest/macos/{arch}/release/ffmpeg.zip
 #
-# 2. Copy/rename the ffmpeg binary with the correct target triple suffix:
-#    - macOS ARM64: ffmpeg-aarch64-apple-darwin
-#    - macOS x64: ffmpeg-x86_64-apple-darwin
-#    - Linux x64: ffmpeg-x86_64-unknown-linux-gnu
+# For local development, the app falls back to system ffmpeg (see lib.rs
+# run_ffmpeg_command). If you need a bundled sidecar locally:
+#   1. Download a static ffmpeg build for your platform
+#   2. Name it ffmpeg-aarch64-apple-darwin (ARM) or ffmpeg-x86_64-apple-darwin (Intel)
+#   3. Place it here and chmod +x
+#   4. The .gitignore prevents accidental commits of these binaries
 #
-# 3. Make sure the binary is executable:
-#    chmod +x ffmpeg-*
-#
-# Note: Static builds are preferred to avoid dynamic library issues.
+# Linux ffmpeg wrappers
+# --------------------
+# The Linux files (ffmpeg-*-unknown-linux-gnu) are thin shell scripts that
+# delegate to system ffmpeg. They ARE tracked in git intentionally.
+# Linux bundles expect ffmpeg to be installed on the host system.

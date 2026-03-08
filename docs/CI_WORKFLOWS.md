@@ -58,6 +58,7 @@ branch/commit range completed successfully before treating it as a blocker.
   1. bumps the desktop patch version in `apps/desktop/package.json`, `apps/desktop/src-tauri/Cargo.toml`, and `apps/desktop/src-tauri/tauri.conf.json`
   2. commits that version bump back to `main`
   3. builds the desktop artifacts for Linux plus native Apple Silicon and Intel macOS runners
+     - macOS builds download a static ffmpeg binary from `ffmpeg.martin-riedl.de` during CI (the binaries are not committed to the repo) so the DMG contains a self-contained ffmpeg sidecar
   4. creates or updates the GitHub release only after those assets exist, then uploads the stable filenames + checksums
 
 ## Local equivalents

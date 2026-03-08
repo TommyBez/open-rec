@@ -62,6 +62,15 @@ jobs:
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Create ffmpeg sidecar placeholders for Tauri build script
+        run: |
+          cd apps/desktop/src-tauri/binaries
+          for triple in aarch64-apple-darwin x86_64-apple-darwin; do
+            if [ ! -f "ffmpeg-$triple" ]; then
+              touch "ffmpeg-$triple"
+            fi
+          done
+
       - name: Enforce Rust formatting
         if: matrix.os == 'ubuntu-latest'
         run: pnpm exec turbo run cargo:fmt --filter=@openrec/desktop
